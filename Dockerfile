@@ -1,7 +1,14 @@
-FROM eclipse-temurin:17-jdk
-
+FROM eclipse-temurin:17-jdk AS build
 WORKDIR /app
 
-COPY build/libs/*.jar app.jar
+COPY . .
 
+RUN chmod +x ./gradlew
+RUN ./gradlew clean build -x test
+
+
+FROM eclipse-temurin:17-jdk
+WORKDIR /app
+
+COPY --from=build /app/build/libs/*.jar app.jar
 ENTRYPOINT ["java", "-jar", "app.jar"]
