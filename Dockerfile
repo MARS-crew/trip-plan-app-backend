@@ -1,21 +1,14 @@
-FROM eclipse-temurin:17-jdk AS base
+FROM eclipse-temurin:17-jdk AS build
 WORKDIR /app
 
-COPY gradlew .
-COPY gradle gradle
-COPY build.gradle settings.gradle .
+COPY . .
 
-FROM base AS dependencies
 RUN chmod +x ./gradlew
-RUN ./gradlew dependencies --no-daemon
+RUN ./gradlew clean build -x test
 
-FROM dependencies AS build
-COPY src src
-RUN ./gradlew bootJar --no-daemon
 
-FROM eclipse-temurin:17-jdk AS prod
+FROM eclipse-temurin:17-jdk
 WORKDIR /app
-COPY --from=build /app/build/libs/*.jar app.jar
-EXPOSE 8080
 
+COPY --from=build /app/build/libs/*.jar app.jar
 ENTRYPOINT ["java", "-jar", "app.jar"]
