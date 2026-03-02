@@ -40,10 +40,6 @@ src/
 
 
 
-### 코드컨벤션 참고
-
-https://www.notion.so/3175c24e663e801ab445fb5bbbe127d1?source=copy_link
-
 
 ### 추가 팁
 
