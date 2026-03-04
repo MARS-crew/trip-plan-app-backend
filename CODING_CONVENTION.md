@@ -349,17 +349,21 @@ public UserResponseDto saveUser(UserCreateRequestDto dto) {
 @Table(name = "tb_user")
 public class User extends BaseTimeEntity {
 
+    // 유저 PK
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     @Column(name = "user_id")
     private Long userId;
 
+    // 이메일
     @Column(name = "email", length = 120, nullable = false)
     private String email;
 
+    // 비밀번호
     @Column(name = "password", length = 255, nullable = false)
     private String password;
 
+    // 유저 활성/비활성 상태
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false)
     private UserStatus status;
