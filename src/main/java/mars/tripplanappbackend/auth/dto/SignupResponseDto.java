@@ -49,13 +49,13 @@ public class SignupResponseDto {
 
     // 국가
 
-    @Schema(description = "서비스 이용약관 동의 (Boolean)", example = "Y")
+    @Schema(description = "서비스 이용약관 동의", example = "Y")
     private UseYnEnum privacyAgreed = N;
 
-    @Schema(description = "앱 푸시 동의 (Boolean)", example = "Y")
+    @Schema(description = "앱 푸시 동의", example = "Y")
     private UseYnEnum marketingAgreed = N;
 
-    @Schema(description = "야간 마케팅 등의", example = "Y")
+    @Schema(description = "야간 마케팅 동의", example = "Y")
     private UseYnEnum nightMarketingAgreed = N;
 
     @Schema(description = "계정 생성 일시", example = "2026-01-10T23:45:00")

@@ -58,7 +58,7 @@ public class SignupRequestDto {
     @Schema(description = "앱 푸시 동의", example = "Y")
     private UseYnEnum marketingAgreed;
 
-    @Schema(description = "야간 마케팅 등의", example = "Y")
+    @Schema(description = "야간 마케팅 동의", example = "Y")
     private UseYnEnum nightMarketingAgreed;
 
     public UserEntity toEntity (String encodedPassword){
