@@ -18,33 +18,48 @@ import java.util.Date;
 public class JwtProvider {
 
     private final Key key;
-    private final long validityInMilliseconds;
+    private final long accessTokenExpiration;
+    private final long refreshTokenExpiration;
 
     public JwtProvider(
-            @Value("${jwt.secret}") String secretKey,
-            @Value("${jwt.expiration}") long validityInMilliseconds) {
+            @Value("${spring.jwt.secret}") String secretKey,
+            @Value("${spring.jwt.accessTokenExpiration}") long accessTokenExpiration,
+            @Value("${spring.jwt.refreshTokenExpiration}") long refreshTokenExpiration) {
+
         // HMAC-SHA 알고리즘에 적합한 키 규격을 보장하기 위해 Keys.hmacShaKeyFor 사용
         this.key = Keys.hmacShaKeyFor(secretKey.getBytes());
-        this.validityInMilliseconds = validityInMilliseconds;
+        this.accessTokenExpiration = accessTokenExpiration;
+        this.refreshTokenExpiration = refreshTokenExpiration;
     }
 
-    public String createAccessToken(String usersId) {
-        return createToken(usersId, validityInMilliseconds);
+    public String createAccessToken(String usersId, String email, String role) {
+        return createToken(usersId, email, role, accessTokenExpiration);
     }
 
     /**
      * Refresh Token 생성
-     * * Access Token 만료 시 재발급을 위해 보안상 더 긴 유효기간(14일)을 부여하며,
-     * 페이로드 노출 최소화를 위해 별도의 식별 값을 포함하지 않음
+     * Access Token 재발급을 위해 사용되며,
+     * 유효기간은 application.yml의 spring.jwt.refreshTokenExpiration 설정값을 따른다.
+     * 보안을 위해 payload에는 사용자 식별 정보를 포함하지 않는다.
      */
     public String createRefreshToken() {
-        long refreshTokenValidity = 14L * 24 * 60 * 60 * 1000;
-        return createToken(null, refreshTokenValidity);
+        Date now = new Date();
+
+        return Jwts.builder()
+                .setIssuedAt(now)
+                .setExpiration(new Date(now.getTime() + refreshTokenExpiration))
+                .signWith(key, SignatureAlgorithm.HS256)
+                .compact();
     }
 
-    private String createToken(String subject, long validity) {
-        Claims claims = Jwts.claims().setSubject(subject);
+    private String createToken(String usersId, String email, String role, long validity) {
+
+        Claims claims = Jwts.claims().setSubject(usersId);
+        claims.put("email", email);
+        claims.put("role", role);
+
         Date now = new Date();
+
         return Jwts.builder()
                 .setClaims(claims)
                 .setIssuedAt(now)
@@ -59,12 +74,23 @@ public class JwtProvider {
      * 이후 필터 체인에서 권한 확인의 근거로 사용됨
      */
     public Authentication getAuthentication(String token) {
-        String usersId = Jwts.parserBuilder().setSigningKey(key).build()
-                .parseClaimsJws(token).getBody().getSubject();
+        Claims claims = Jwts.parserBuilder()
+                .setSigningKey(key)
+                .build()
+                .parseClaimsJws(token)
+                .getBody();
 
-        return new org.springframework.security.authentication.UsernamePasswordAuthenticationToken(usersId, "", java.util.Collections.emptyList());
+        String usersId = claims.getSubject();
+        String role = claims.get("role", String.class);
+
+        var authorities = java.util.List.of(
+                new org.springframework.security.core.authority.SimpleGrantedAuthority("ROLE_" + role)
+        );
+
+        return new org.springframework.security.authentication.UsernamePasswordAuthenticationToken(
+                usersId, "", authorities
+        );
     }
-
     /**
      * 토큰 유효성 검증 및 예외 원인 기록
      * * 검증 실패 시 단순히 false를 반환하는 대신,

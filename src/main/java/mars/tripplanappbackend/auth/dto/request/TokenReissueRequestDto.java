@@ -1,4 +1,4 @@
-package mars.tripplanappbackend.auth.dto;
+package mars.tripplanappbackend.auth.dto.request;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Getter;

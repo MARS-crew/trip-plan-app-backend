@@ -6,8 +6,17 @@ import io.swagger.v3.oas.models.info.Info;
 import io.swagger.v3.oas.models.security.SecurityRequirement;
 import io.swagger.v3.oas.models.security.SecurityScheme;
 import io.swagger.v3.oas.models.servers.Server;
+import mars.tripplanappbackend.global.enums.ErrorCode;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import io.swagger.v3.oas.models.Operation;
+import io.swagger.v3.oas.models.responses.ApiResponse;
+import io.swagger.v3.oas.models.responses.ApiResponses;
+import io.swagger.v3.oas.models.media.Content;
+import io.swagger.v3.oas.models.media.MediaType;
+import io.swagger.v3.oas.models.examples.Example;
+import org.springdoc.core.customizers.OperationCustomizer;
+import org.springframework.web.method.HandlerMethod;
 import java.util.List;
 
 /**
@@ -49,5 +58,48 @@ public class SwaggerConfig {
                 .title("Trip-Plan-App Api")
                 .description("Trip-Plan-App swagger")
                 .version("1.0.0");
+    }
+
+    @Bean
+    public OperationCustomizer customize() {
+        return (operation, handlerMethod) -> {
+            ApiErrorExceptions annotation = handlerMethod.getMethodAnnotation(ApiErrorExceptions.class);
+            if (annotation != null) {
+                generateErrorCodeResponse(operation, annotation.value());
+            }
+            return operation;
+        };
+    }
+
+    private void generateErrorCodeResponse(Operation operation, ErrorCode[] errorCodes) {
+        ApiResponses responses = operation.getResponses();
+
+        for (ErrorCode errorCode : errorCodes) {
+            String status = String.valueOf(errorCode.getStatus().value());
+
+            // 1. 해당 상태 코드에 대한 응답 객체 가져오기 (없으면 생성)
+            ApiResponse apiResponse = responses.computeIfAbsent(status, k -> new ApiResponse().description("에러 발생"));
+
+            // 2. Content 객체 초기화 확인
+            Content content = apiResponse.getContent();
+            if (content == null) {
+                content = new Content();
+                apiResponse.setContent(content);
+            }
+
+            // 3. MediaType(application/json) 초기화 확인
+            MediaType mediaType = content.getOrDefault("application/json", new MediaType());
+            if (content.get("application/json") == null) {
+                content.addMediaType("application/json", mediaType);
+            }
+
+            // 4. Example 생성 및 등록
+            Example example = new Example();
+            // 전역 응답 규격(mars.tripplanappbackend.global.dto.ApiResponse) 적용
+            example.setValue(mars.tripplanappbackend.global.dto.ApiResponse.error(errorCode));
+
+            // 드롭다운에 표시될 이름은 에러 코드(예: USER_NOT_FOUND)로 설정
+            mediaType.addExamples(errorCode.name(), example);
+        }
     }
 }
