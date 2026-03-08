@@ -1,4 +1,4 @@
-package mars.tripplanappbackend.auth.entity;
+package mars.tripplanappbackend.domain;
 
 import mars.tripplanappbackend.global.entity.BaseEntity;
 import jakarta.persistence.*;
@@ -6,6 +6,8 @@ import lombok.*;
 import mars.tripplanappbackend.global.enums.Gender;
 import mars.tripplanappbackend.global.enums.UseYnEnum;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
+
+import mars.tripplanappbackend.global.enums.Role;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 
@@ -18,7 +20,7 @@ import static mars.tripplanappbackend.global.enums.UseYnEnum.N;
 @EntityListeners(AuditingEntityListener.class)
 @AllArgsConstructor
 @Builder
-public class UserEntity extends BaseEntity {
+public class User extends BaseEntity {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     @Column(nullable = false)
@@ -26,6 +28,13 @@ public class UserEntity extends BaseEntity {
 
     @Column(length = 15, nullable = false, unique = true, name="users_id")
     private String usersId;
+
+    @Column(nullable = false, unique = true)
+    private String email;
+
+    @Column(nullable = false)
+    @Enumerated(EnumType.STRING)
+    private Role role;
 
     @Column(length = 10, nullable = false)
     private String name;

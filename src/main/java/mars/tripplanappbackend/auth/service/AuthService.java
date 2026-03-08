@@ -1,7 +1,12 @@
 package mars.tripplanappbackend.auth.service;
 
-import mars.tripplanappbackend.auth.dto.*;
-import mars.tripplanappbackend.auth.entity.UserEntity;
+import mars.tripplanappbackend.auth.dto.request.LoginRequestDto;
+import mars.tripplanappbackend.auth.dto.request.SignupRequestDto;
+import mars.tripplanappbackend.auth.dto.request.TokenReissueRequestDto;
+import mars.tripplanappbackend.auth.dto.response.LoginResponseDto;
+import mars.tripplanappbackend.auth.dto.response.SignupResponseDto;
+import mars.tripplanappbackend.auth.dto.response.TokenReissueResponseDto;
+import mars.tripplanappbackend.domain.User;
 import mars.tripplanappbackend.auth.repository.UserRepository;
 import mars.tripplanappbackend.global.config.auth.JwtProvider;
 import mars.tripplanappbackend.global.enums.ErrorCode;
@@ -44,13 +49,12 @@ public class AuthService {
         String encodedPassword = passwordEncoder.encode(requestDto.getPassword());
 
         // DTO → Entity 변환을 DTO 내부에서 처리하여 서비스 로직 단순화
-        UserEntity user = requestDto.toEntity(encodedPassword);
+        User user = requestDto.toEntity(encodedPassword);
 
-        UserEntity savedUser = userRepository.save(user);
+        User savedUser = userRepository.save(user);
 
         return SignupResponseDto.from(savedUser);
     }
-
 
     /**
      * 로그인 처리
@@ -68,7 +72,7 @@ public class AuthService {
     public LoginResponseDto login(LoginRequestDto requestDto) {
 
         // 존재하지 않는 사용자 로그인 시도 방지
-        UserEntity user = userRepository.findByUsersId(requestDto.getUsersId())
+        User user = userRepository.findByUsersId(requestDto.getUsersId())
                 .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
 
         // BCrypt 해시 비교를 통해 비밀번호 검증
@@ -77,7 +81,11 @@ public class AuthService {
         }
 
         // AccessToken은 사용자 인증용으로 사용
-        String accessToken = jwtProvider.createAccessToken(user.getUsersId());
+        String accessToken = jwtProvider.createAccessToken(
+                user.getUsersId(),
+                user.getEmail(),
+                user.getRole().name()
+        );
 
         // RefreshToken은 AccessToken 재발급을 위한 용도로 생성
         String refreshToken = jwtProvider.createRefreshToken();
@@ -111,7 +119,7 @@ public class AuthService {
         String refreshToken = request.getRefreshToken();
 
         // DB에 저장된 RefreshToken 기준으로 사용자 조회
-        UserEntity user = userRepository.findByRefreshToken(refreshToken)
+        User user = userRepository.findByRefreshToken(refreshToken)
                 .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_TOKEN));
 
         // 서버에 저장된 만료시간 기준으로 RefreshToken 만료 여부 확인
@@ -125,7 +133,11 @@ public class AuthService {
         }
 
         // 새로운 AccessToken 발급
-        String newAccessToken = jwtProvider.createAccessToken(user.getUsersId());
+        String newAccessToken = jwtProvider.createAccessToken(
+                user.getUsersId(),
+                user.getEmail(),
+                user.getRole().name()
+        );
 
         // RefreshToken 재사용을 방지하기 위해 새 토큰으로 교체
         String newRefreshToken = jwtProvider.createRefreshToken();

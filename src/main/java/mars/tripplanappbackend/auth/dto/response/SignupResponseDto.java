@@ -1,10 +1,12 @@
-package mars.tripplanappbackend.auth.dto;
+package mars.tripplanappbackend.auth.dto.response;
 
 import com.fasterxml.jackson.annotation.JsonPropertyOrder;
-import mars.tripplanappbackend.auth.entity.UserEntity;
+import jakarta.validation.constraints.NotNull;
+import mars.tripplanappbackend.domain.User;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.*;
 import mars.tripplanappbackend.global.enums.Gender;
+import mars.tripplanappbackend.global.enums.Role;
 import mars.tripplanappbackend.global.enums.UseYnEnum;
 
 import java.time.LocalDate;
@@ -18,6 +20,8 @@ import static mars.tripplanappbackend.global.enums.UseYnEnum.N;
         "id",
         "usersId",
         "name",
+        "email",
+        "role",
         "nickname",
         "gender",
         "birth",
@@ -37,6 +41,12 @@ public class SignupResponseDto {
 
     @Schema(description = "이름", example = "최예은")
     private String name;
+
+    @Schema(description = "이메일", example = "cye4526@naver.com")
+    private String email;
+
+    @Schema(description = "권한", example = "USER")
+    private Role role;
 
     @Schema(description = "닉네임", example = "dmdkr")
     private String nickname;
@@ -61,11 +71,13 @@ public class SignupResponseDto {
     @Schema(description = "계정 생성 일시", example = "2026-01-10T23:45:00")
     private LocalDateTime createdAt;
 
-    public static SignupResponseDto from(UserEntity entity) {
+    public static SignupResponseDto from(User entity) {
         return SignupResponseDto.builder()
                 .id(entity.getId())
                 .usersId(entity.getUsersId())
                 .name(entity.getName())
+                .email(entity.getEmail())
+                .role(entity.getRole())
                 .nickname(entity.getNickname())
                 .gender(entity.getGender())
                 .birth(entity.getBirth())

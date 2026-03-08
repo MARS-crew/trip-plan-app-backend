@@ -1,7 +1,7 @@
-package mars.tripplanappbackend.auth.dto;
+package mars.tripplanappbackend.auth.dto.request;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
-import mars.tripplanappbackend.auth.entity.UserEntity;
+import mars.tripplanappbackend.domain.User;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
@@ -9,6 +9,7 @@ import jakarta.validation.constraints.Size;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import mars.tripplanappbackend.global.enums.Gender;
+import mars.tripplanappbackend.global.enums.Role;
 import mars.tripplanappbackend.global.enums.UseYnEnum;
 
 import java.time.LocalDate;
@@ -24,6 +25,10 @@ public class SignupRequestDto {
     @Schema(description = "이름", example = "최예은")
     @NotNull(message = "필수 입력값입니다.")
     private String name;
+
+    @Schema(description = "이메일", example = "cye4526@naver.com")
+    @NotNull(message = "필수 입력값입니다.")
+    private String email;
 
     @Schema(description = "닉네임", example = "dmdkr")
     @NotNull(message = "필수 입력값입니다.")
@@ -61,9 +66,11 @@ public class SignupRequestDto {
     @Schema(description = "야간 마케팅 동의", example = "Y")
     private UseYnEnum nightMarketingAgreed;
 
-    public UserEntity toEntity (String encodedPassword){
-        return UserEntity.builder()
+    public User toEntity (String encodedPassword){
+        return User.builder()
                 .usersId(this.usersId)
+                .email(this.email)
+                .role(Role.USER)
                 .name(this.name)
                 .nickname(this.nickname)
                 .password(encodedPassword)

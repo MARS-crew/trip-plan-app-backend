@@ -37,6 +37,7 @@ public class ApiResponse<T> {
      */
     public static <T> ApiResponse<T> ok(T data) {
         return ApiResponse.<T>builder()
+                .success(true)
                 .code("SUCCESS")
                 .message("요청에 성공하였습니다.")
                 .data(data)

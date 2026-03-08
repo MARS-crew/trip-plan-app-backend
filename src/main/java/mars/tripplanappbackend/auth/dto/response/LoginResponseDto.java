@@ -1,4 +1,4 @@
-package mars.tripplanappbackend.auth.dto;
+package mars.tripplanappbackend.auth.dto.response;
 
 import lombok.Builder;
 import lombok.Getter;
