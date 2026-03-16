@@ -1,13 +1,13 @@
 package mars.tripplanappbackend.auth.dto.response;
 
 import com.fasterxml.jackson.annotation.JsonPropertyOrder;
-import jakarta.validation.constraints.NotNull;
-import mars.tripplanappbackend.domain.User;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.*;
+import mars.tripplanappbackend.domain.User;
 import mars.tripplanappbackend.global.enums.Gender;
 import mars.tripplanappbackend.global.enums.Role;
 import mars.tripplanappbackend.global.enums.UseYnEnum;
+import mars.tripplanappbackend.user.enums.LoginType;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -22,6 +22,7 @@ import static mars.tripplanappbackend.global.enums.UseYnEnum.N;
         "name",
         "email",
         "role",
+        "loginType",
         "nickname",
         "gender",
         "birth",
@@ -48,6 +49,9 @@ public class SignupResponseDto {
     @Schema(description = "권한", example = "USER")
     private Role role;
 
+    @Schema(description = "로그인 방식", example = "LOCAL")
+    private LoginType loginType;
+
     @Schema(description = "닉네임", example = "dmdkr")
     private String nickname;
 
@@ -57,15 +61,16 @@ public class SignupResponseDto {
     @Schema(description = "생년월일", example = "2005-07-11")
     private LocalDate birth;
 
-    // 국가
-
     @Schema(description = "서비스 이용약관 동의", example = "Y")
+    @Builder.Default
     private UseYnEnum privacyAgreed = N;
 
     @Schema(description = "앱 푸시 동의", example = "Y")
+    @Builder.Default
     private UseYnEnum marketingAgreed = N;
 
     @Schema(description = "야간 마케팅 동의", example = "Y")
+    @Builder.Default
     private UseYnEnum nightMarketingAgreed = N;
 
     @Schema(description = "계정 생성 일시", example = "2026-01-10T23:45:00")
@@ -78,6 +83,7 @@ public class SignupResponseDto {
                 .name(entity.getName())
                 .email(entity.getEmail())
                 .role(entity.getRole())
+                .loginType(entity.getLoginType())
                 .nickname(entity.getNickname())
                 .gender(entity.getGender())
                 .birth(entity.getBirth())

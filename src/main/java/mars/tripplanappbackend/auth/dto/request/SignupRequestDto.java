@@ -11,6 +11,7 @@ import lombok.NoArgsConstructor;
 import mars.tripplanappbackend.global.enums.Gender;
 import mars.tripplanappbackend.global.enums.Role;
 import mars.tripplanappbackend.global.enums.UseYnEnum;
+import mars.tripplanappbackend.user.enums.LoginType;
 
 import java.time.LocalDate;
 
@@ -54,8 +55,6 @@ public class SignupRequestDto {
     @NotNull(message = "필수 입력값입니다.")
     private LocalDate birth;
 
-    // 국가
-
     @Schema(description = "서비스 이용약관 동의", example = "Y")
     @NotNull(message = "필수 입력값입니다.")
     private UseYnEnum privacyAgreed;
@@ -76,9 +75,10 @@ public class SignupRequestDto {
                 .password(encodedPassword)
                 .gender(this.gender)
                 .birth(this.birth)
+                .loginType(LoginType.LOCAL)
                 .privacyAgreed(this.privacyAgreed)
-                .marketingAgreed(this.marketingAgreed)
-                .nightMarketingAgreed(this.nightMarketingAgreed)
+                .marketingAgreed(this.marketingAgreed == null ? UseYnEnum.N : this.marketingAgreed)
+                .nightMarketingAgreed(this.nightMarketingAgreed == null ? UseYnEnum.N : this.nightMarketingAgreed)
                 .build();
     }
 }

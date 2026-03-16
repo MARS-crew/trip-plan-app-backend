@@ -5,6 +5,7 @@ import jakarta.persistence.*;
 import lombok.*;
 import mars.tripplanappbackend.global.enums.Gender;
 import mars.tripplanappbackend.global.enums.UseYnEnum;
+import mars.tripplanappbackend.user.enums.LoginType;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 import mars.tripplanappbackend.global.enums.Role;
@@ -23,10 +24,10 @@ import static mars.tripplanappbackend.global.enums.UseYnEnum.N;
 public class User extends BaseEntity {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    @Column(nullable = false)
+    @Column(name = "user_id", nullable = false)
     private Long id;
 
-    @Column(length = 15, nullable = false, unique = true, name="users_id")
+    @Column(length = 15, nullable = false, unique = true, name = "users_id")
     private String usersId;
 
     @Column(nullable = false, unique = true)
@@ -45,6 +46,15 @@ public class User extends BaseEntity {
     @Column(length = 255, nullable = false)
     private String password;
 
+    @Column(name = "birth_day", nullable = false)
+    private LocalDate birth;
+
+    @Column(name = "country_code", length = 20)
+    private String countryCode;
+
+    @Column(name = "social_provider_id", length = 90)
+    private String socialProviderId;
+
     @Column(name = "refresh_token")
     private String refreshToken;
 
@@ -60,20 +70,51 @@ public class User extends BaseEntity {
     @Enumerated(EnumType.STRING)
     private Gender gender;
 
-    @Column(nullable = false)
-    private LocalDate birth;
+    @Enumerated(EnumType.STRING)
+    @Builder.Default
+    @Column(nullable = false, name = "login_type", columnDefinition = "ENUM('LOCAL','GOOGLE','KAKAO','NAVER')")
+    private LoginType loginType = LoginType.LOCAL;
 
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false, name= "privacy_agreed")
+    @Builder.Default
+    @Column(nullable = false, name = "email_verified", columnDefinition = "ENUM('Y','N')")
+    private UseYnEnum emailVerified = N;
+
+    @Enumerated(EnumType.STRING)
+    @Builder.Default
+    @Column(nullable = false, name= "agree_privacy", columnDefinition = "ENUM('Y','N')")
     private UseYnEnum privacyAgreed = N;
 
     @Enumerated(EnumType.STRING)
-    @Column(nullable = true, name= "marketing_agreed")
+    @Builder.Default
+    @Column(nullable = false, name= "agree_marketing", columnDefinition = "ENUM('Y','N')")
     private UseYnEnum marketingAgreed = N;
 
     @Enumerated(EnumType.STRING)
-    @Column(nullable = true, name= "night_marketing_agreed")
+    @Builder.Default
+    @Column(nullable = false, name= "agree_night_marketing", columnDefinition = "ENUM('Y','N')")
     private UseYnEnum nightMarketingAgreed = N;
+
+    @Enumerated(EnumType.STRING)
+    @Builder.Default
+    @Column(nullable = false, name = "is_withdrawn", columnDefinition = "ENUM('Y','N')")
+    private UseYnEnum withdrawn = N;
+
+    @Column(name = "withdrawn_at")
+    private LocalDateTime withdrawnAt;
+
+    @Column(name = "withdrawal_reason_type", length = 40)
+    private String withdrawalReasonType;
+
+    @Column(name = "withdrawal_reason_text", length = 70)
+    private String withdrawalReasonText;
+
+    @Builder.Default
+    @Column(name = "is_deleted", nullable = false)
+    private Boolean isDeleted = false;
+
+    @Column(name = "deleted_date")
+    private LocalDateTime deletedDate;
 
     public boolean isRefreshTokenExpired() {
         if (this.refreshTokenExpiresAt == null) {
