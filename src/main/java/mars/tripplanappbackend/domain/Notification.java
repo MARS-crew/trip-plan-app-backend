@@ -27,7 +27,7 @@ import java.time.LocalDateTime;
 import static mars.tripplanappbackend.global.enums.UseYnEnum.N;
 
 @Entity
-@Table(name = "TB_NOTIFICATION")
+@Table(name = "notification")
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @AllArgsConstructor

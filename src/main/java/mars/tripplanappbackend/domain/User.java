@@ -24,7 +24,7 @@ import static mars.tripplanappbackend.global.enums.UseYnEnum.N;
 public class User extends BaseEntity {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    @Column(name = "user_id", nullable = false)
+    @Column(name = "id", nullable = false)
     private Long id;
 
     @Column(length = 15, nullable = false, unique = true, name = "users_id")

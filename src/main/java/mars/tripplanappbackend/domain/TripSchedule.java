@@ -23,7 +23,7 @@ import java.time.LocalDateTime;
 import java.time.LocalTime;
 
 @Entity
-@Table(name = "TB_TRIP_SCHEDULE")
+@Table(name = "trip_schedule")
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @AllArgsConstructor
