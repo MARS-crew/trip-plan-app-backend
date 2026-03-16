@@ -3,6 +3,7 @@ package mars.tripplanappbackend.auth.controller;
 import mars.tripplanappbackend.auth.dto.request.LoginRequestDto;
 import mars.tripplanappbackend.auth.dto.request.SignupRequestDto;
 import mars.tripplanappbackend.auth.dto.request.TokenReissueRequestDto;
+import mars.tripplanappbackend.auth.dto.response.CheckIdResponseDto;
 import mars.tripplanappbackend.auth.dto.response.LoginResponseDto;
 import mars.tripplanappbackend.auth.dto.response.SignupResponseDto;
 import mars.tripplanappbackend.auth.dto.response.TokenReissueResponseDto;
@@ -45,5 +46,13 @@ public class AuthController {
     public ApiResponse<TokenReissueResponseDto> reissue(
             @RequestBody TokenReissueRequestDto request) {
         return ApiResponse.ok(authService.reissue(request));
+    }
+
+    @GetMapping("/check-id")
+    @ApiErrorExceptions({ErrorCode.INVALID_INPUT,  ErrorCode.USER_NOT_FOUND, ErrorCode.INTERNAL_ERROR})
+    @Operation(summary = "아이디 중복 확인", description = "아이디 중복 확인 api")
+    public ApiResponse<CheckIdResponseDto> checkId(@RequestParam String usersId) {
+        CheckIdResponseDto response = authService.checkUsersIdDuplicate(usersId);
+        return ApiResponse.ok(response);
     }
 }

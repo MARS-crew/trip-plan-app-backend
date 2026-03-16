@@ -3,6 +3,7 @@ package mars.tripplanappbackend.auth.service;
 import mars.tripplanappbackend.auth.dto.request.LoginRequestDto;
 import mars.tripplanappbackend.auth.dto.request.SignupRequestDto;
 import mars.tripplanappbackend.auth.dto.request.TokenReissueRequestDto;
+import mars.tripplanappbackend.auth.dto.response.CheckIdResponseDto;
 import mars.tripplanappbackend.auth.dto.response.LoginResponseDto;
 import mars.tripplanappbackend.auth.dto.response.SignupResponseDto;
 import mars.tripplanappbackend.auth.dto.response.TokenReissueResponseDto;
@@ -145,5 +146,22 @@ public class AuthService {
         user.updateRefreshToken(newRefreshToken, LocalDateTime.now().plusDays(14));
 
         return new TokenReissueResponseDto(newAccessToken, newRefreshToken);
+    }
+
+    /**
+     * 아이디 중복 확인
+     *
+     * 회원가입 전 사용자가 입력한 아이디의 중복 여부를 확인한다.
+     * 이미 존재하는 아이디인 경우 예외를 발생시켜
+     * 클라이언트에 즉시 알린다.
+     *
+     * @param usersId 중복 확인할 아이디
+     * @return 사용 가능 여부 및 아이디 정보를 담은 응답 DTO
+     */
+    public CheckIdResponseDto checkUsersIdDuplicate(String usersId) {
+        if (userRepository.existsByUsersId(usersId)) {
+            throw new BusinessException(ErrorCode.DUPLICATE_USER);
+        }
+        return new CheckIdResponseDto(usersId, "사용 가능한 아이디입니다.");
     }
 }
