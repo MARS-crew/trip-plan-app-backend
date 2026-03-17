@@ -1,6 +1,6 @@
 package mars.tripplanappbackend.user.repository;
 
-import mars.tripplanappbackend.domain.SavedPlace;
+import mars.tripplanappbackend.user.domain.SavedPlace;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 

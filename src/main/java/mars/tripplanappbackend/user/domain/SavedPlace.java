@@ -1,4 +1,4 @@
-package mars.tripplanappbackend.domain;
+package mars.tripplanappbackend.user.domain;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -16,6 +16,7 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import mars.tripplanappbackend.global.entity.BaseEntity;
+import mars.tripplanappbackend.place.domain.Place;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 import java.time.LocalDateTime;

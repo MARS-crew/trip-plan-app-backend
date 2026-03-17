@@ -1,6 +1,6 @@
 package mars.tripplanappbackend.place.repository;
 
-import mars.tripplanappbackend.domain.PlaceTag;
+import mars.tripplanappbackend.place.domain.PlaceTag;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 

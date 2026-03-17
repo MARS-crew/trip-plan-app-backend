@@ -15,8 +15,8 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
-import mars.tripplanappbackend.domain.User;
 import mars.tripplanappbackend.global.entity.BaseEntity;
+import mars.tripplanappbackend.user.domain.User;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 import java.time.LocalDateTime;

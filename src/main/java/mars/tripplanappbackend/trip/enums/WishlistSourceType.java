@@ -1,4 +1,4 @@
-package mars.tripplanappbackend.place.enums;
+package mars.tripplanappbackend.trip.enums;
 
 public enum WishlistSourceType {
     SEARCH,

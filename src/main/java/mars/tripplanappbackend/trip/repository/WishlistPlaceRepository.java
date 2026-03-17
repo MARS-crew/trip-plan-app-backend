@@ -1,6 +1,6 @@
 package mars.tripplanappbackend.trip.repository;
 
-import mars.tripplanappbackend.domain.WishlistPlace;
+import mars.tripplanappbackend.trip.domain.WishlistPlace;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 

@@ -1,10 +1,8 @@
-package mars.tripplanappbackend.domain;
+package mars.tripplanappbackend.place.domain;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EntityListeners;
-import jakarta.persistence.EnumType;
-import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
@@ -18,45 +16,23 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import mars.tripplanappbackend.global.entity.BaseEntity;
-import mars.tripplanappbackend.trip.enums.TripStatus;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
-import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "trip")
+@Table(name = "place_tag_map")
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @AllArgsConstructor
 @Builder
 @EntityListeners(AuditingEntityListener.class)
-public class Trip extends BaseEntity {
+public class PlaceTagMap extends BaseEntity {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    @Column(name = "trip_id", nullable = false)
+    @Column(name = "place_tag_map_id", nullable = false)
     private Long id;
-
-    @Column(name = "title", length = 50, nullable = false)
-    private String title;
-
-    @Column(name = "start_date", nullable = false)
-    private LocalDate startDate;
-
-    @Column(name = "end_date", nullable = false)
-    private LocalDate endDate;
-
-    @Column(name = "image_url", length = 500)
-    private String imageUrl;
-
-    @Column(name = "share_code", length = 100)
-    private String shareCode;
-
-    @Enumerated(EnumType.STRING)
-    @Builder.Default
-    @Column(name = "trip_status", nullable = false, columnDefinition = "ENUM('PLANNED','ONGOING','COMPLETED')")
-    private TripStatus tripStatus = TripStatus.PLANNED;
 
     @Builder.Default
     @Column(name = "is_deleted", nullable = false)
@@ -66,6 +42,10 @@ public class Trip extends BaseEntity {
     private LocalDateTime deletedDate;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "user_id", nullable = false)
-    private User user;
+    @JoinColumn(name = "place_id", nullable = false)
+    private Place place;
+
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "place_tag_id", nullable = false)
+    private PlaceTag placeTag;
 }

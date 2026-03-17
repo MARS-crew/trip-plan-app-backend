@@ -3,10 +3,10 @@ package mars.tripplanappbackend.auth.dto.response;
 import com.fasterxml.jackson.annotation.JsonPropertyOrder;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.*;
-import mars.tripplanappbackend.domain.User;
-import mars.tripplanappbackend.global.enums.Gender;
 import mars.tripplanappbackend.global.enums.Role;
 import mars.tripplanappbackend.global.enums.UseYnEnum;
+import mars.tripplanappbackend.user.domain.User;
+import mars.tripplanappbackend.user.enums.Gender;
 import mars.tripplanappbackend.user.enums.LoginType;
 
 import java.time.LocalDate;

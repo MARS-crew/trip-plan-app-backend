@@ -1,6 +1,6 @@
 package mars.tripplanappbackend.notification.repository;
 
-import mars.tripplanappbackend.domain.Notification;
+import mars.tripplanappbackend.notification.domain.Notification;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 

@@ -1,10 +1,10 @@
-package mars.tripplanappbackend.domain;
+package mars.tripplanappbackend.user.domain;
 
 import mars.tripplanappbackend.global.entity.BaseEntity;
 import jakarta.persistence.*;
 import lombok.*;
-import mars.tripplanappbackend.global.enums.Gender;
 import mars.tripplanappbackend.global.enums.UseYnEnum;
+import mars.tripplanappbackend.user.enums.Gender;
 import mars.tripplanappbackend.user.enums.LoginType;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 

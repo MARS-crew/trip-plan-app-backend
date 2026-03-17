@@ -1,16 +1,16 @@
 package mars.tripplanappbackend.auth.dto.request;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
-import mars.tripplanappbackend.domain.User;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import lombok.Data;
 import lombok.NoArgsConstructor;
-import mars.tripplanappbackend.global.enums.Gender;
 import mars.tripplanappbackend.global.enums.Role;
 import mars.tripplanappbackend.global.enums.UseYnEnum;
+import mars.tripplanappbackend.user.domain.User;
+import mars.tripplanappbackend.user.enums.Gender;
 import mars.tripplanappbackend.user.enums.LoginType;
 
 import java.time.LocalDate;

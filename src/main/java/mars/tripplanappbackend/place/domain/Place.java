@@ -1,4 +1,4 @@
-package mars.tripplanappbackend.domain;
+package mars.tripplanappbackend.place.domain;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;

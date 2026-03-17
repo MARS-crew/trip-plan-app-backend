@@ -1,4 +1,4 @@
-package mars.tripplanappbackend.domain;
+package mars.tripplanappbackend.trip.domain;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -18,49 +18,46 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import mars.tripplanappbackend.global.entity.BaseEntity;
-import mars.tripplanappbackend.notification.enums.NotificationType;
-import mars.tripplanappbackend.global.enums.UseYnEnum;
+import mars.tripplanappbackend.trip.enums.TripStatus;
+import mars.tripplanappbackend.user.domain.User;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 
-import static mars.tripplanappbackend.global.enums.UseYnEnum.N;
-
 @Entity
-@Table(name = "notification")
+@Table(name = "trip")
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @AllArgsConstructor
 @Builder
 @EntityListeners(AuditingEntityListener.class)
-public class Notification extends BaseEntity {
+public class Trip extends BaseEntity {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    @Column(name = "notification_id", nullable = false)
+    @Column(name = "trip_id", nullable = false)
     private Long id;
 
-    @Enumerated(EnumType.STRING)
-    @Column(name = "type", nullable = false, columnDefinition = "ENUM('SCHEDULE','WEATHER','SYSTEM','MARKETING')")
-    private NotificationType type;
-
-    @Column(name = "title", length = 60, nullable = false)
+    @Column(name = "title", length = 50, nullable = false)
     private String title;
 
-    @Column(name = "content", length = 400, nullable = false)
-    private String content;
+    @Column(name = "start_date", nullable = false)
+    private LocalDate startDate;
+
+    @Column(name = "end_date", nullable = false)
+    private LocalDate endDate;
+
+    @Column(name = "image_url", length = 500)
+    private String imageUrl;
+
+    @Column(name = "share_code", length = 100)
+    private String shareCode;
 
     @Enumerated(EnumType.STRING)
     @Builder.Default
-    @Column(name = "is_read", nullable = false, columnDefinition = "ENUM('Y','N')")
-    private UseYnEnum isRead = N;
-
-    @Builder.Default
-    @Column(name = "send_at", nullable = false)
-    private LocalDateTime sendAt = LocalDateTime.now();
-
-    @Column(name = "read_at")
-    private LocalDateTime readAt;
+    @Column(name = "trip_status", nullable = false, columnDefinition = "ENUM('PLANNED','ONGOING','COMPLETED')")
+    private TripStatus tripStatus = TripStatus.PLANNED;
 
     @Builder.Default
     @Column(name = "is_deleted", nullable = false)
@@ -72,12 +69,4 @@ public class Notification extends BaseEntity {
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "user_id", nullable = false)
     private User user;
-
-    @ManyToOne(fetch = FetchType.LAZY, optional = true)
-    @JoinColumn(name = "trip_id", nullable = true)
-    private Trip trip;
-
-    @ManyToOne(fetch = FetchType.LAZY, optional = true)
-    @JoinColumn(name = "trip_schedule_id", nullable = true)
-    private TripSchedule tripSchedule;
 }
