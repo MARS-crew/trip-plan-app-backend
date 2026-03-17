@@ -1,12 +1,10 @@
 package mars.tripplanappbackend.auth.service;
 
+import mars.tripplanappbackend.auth.dto.request.FindIdRequestDto;
 import mars.tripplanappbackend.auth.dto.request.LoginRequestDto;
 import mars.tripplanappbackend.auth.dto.request.SignupRequestDto;
 import mars.tripplanappbackend.auth.dto.request.TokenReissueRequestDto;
-import mars.tripplanappbackend.auth.dto.response.CheckIdResponseDto;
-import mars.tripplanappbackend.auth.dto.response.LoginResponseDto;
-import mars.tripplanappbackend.auth.dto.response.SignupResponseDto;
-import mars.tripplanappbackend.auth.dto.response.TokenReissueResponseDto;
+import mars.tripplanappbackend.auth.dto.response.*;
 import mars.tripplanappbackend.domain.User;
 import mars.tripplanappbackend.auth.repository.UserRepository;
 import mars.tripplanappbackend.global.config.auth.JwtProvider;
@@ -163,5 +161,21 @@ public class AuthService {
             throw new BusinessException(ErrorCode.DUPLICATE_USER);
         }
         return new CheckIdResponseDto(usersId, "사용 가능한 아이디입니다.");
+    }
+
+    /**
+     * 아이디 찾기
+     *
+     * 사용자가 입력한 닉네임과 이메일로 계정을 조회한다.
+     * 일치하는 계정이 없을 경우 예외를 발생시킨다.
+     *
+     * @param requestDto 닉네임 및 이메일 요청 정보
+     * @return 조회된 사용자 아이디를 담은 응답 DTO
+     */
+    public FindIdResponseDto findUsersId(FindIdRequestDto requestDto) {
+        User user = userRepository.findByNicknameAndEmail(requestDto.getNickname(), requestDto.getEmail())
+                .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
+
+        return new FindIdResponseDto(user.getUsersId());
     }
 }
