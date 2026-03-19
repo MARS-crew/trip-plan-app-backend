@@ -32,7 +32,7 @@ public class ReviewImage extends BaseEntity {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     @Column(name = "review_image_id", nullable = false)
-    private Long id;
+    private Long reviewImageId;
 
     @Column(name = "image_url", length = 600, nullable = false)
     private String imageUrl;

@@ -32,7 +32,7 @@ public class PlaceTagMap extends BaseEntity {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     @Column(name = "place_tag_map_id", nullable = false)
-    private Long id;
+    private Long placeTagMapId;
 
     @Builder.Default
     @Column(name = "is_deleted", nullable = false)

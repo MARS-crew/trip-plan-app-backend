@@ -37,7 +37,7 @@ public class Trip extends BaseEntity {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     @Column(name = "trip_id", nullable = false)
-    private Long id;
+    private Long tripId;
 
     @Column(name = "title", length = 50, nullable = false)
     private String title;

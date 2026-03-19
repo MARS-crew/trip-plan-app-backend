@@ -29,7 +29,7 @@ public class PlaceTag extends BaseEntity {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     @Column(name = "place_tag_id", nullable = false)
-    private Long id;
+    private Long placeTagId;
 
     @Column(name = "tag_name", length = 50, nullable = false)
     private String tagName;

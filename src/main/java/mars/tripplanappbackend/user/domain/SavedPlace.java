@@ -33,7 +33,7 @@ public class SavedPlace extends BaseEntity {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     @Column(name = "saved_place_id", nullable = false)
-    private Long id;
+    private Long savedPlaceId;
 
     @Builder.Default
     @Column(name = "is_deleted", nullable = false)

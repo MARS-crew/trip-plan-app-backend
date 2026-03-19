@@ -78,7 +78,7 @@ public class SignupResponseDto {
 
     public static SignupResponseDto from(User entity) {
         return SignupResponseDto.builder()
-                .id(entity.getId())
+                .id(entity.getUserId())
                 .usersId(entity.getUsersId())
                 .name(entity.getName())
                 .email(entity.getEmail())

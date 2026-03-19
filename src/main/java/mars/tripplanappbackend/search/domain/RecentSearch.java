@@ -33,7 +33,7 @@ public class RecentSearch extends BaseEntity {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     @Column(name = "recent_search_id", nullable = false)
-    private Long id;
+    private Long recentSearchId;
 
     @Column(name = "keyword", length = 100, nullable = false)
     private String keyword;

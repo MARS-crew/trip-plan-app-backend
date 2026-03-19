@@ -10,6 +10,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
+import jakarta.validation.constraints.Size;
 import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -35,7 +36,7 @@ public class TripSchedule extends BaseEntity {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     @Column(name = "trip_schedule_id", nullable = false)
-    private Long id;
+    private Long tripScheduleId;
 
     @Column(name = "day_no", nullable = false)
     private Integer dayNo;
@@ -43,7 +44,8 @@ public class TripSchedule extends BaseEntity {
     @Column(name = "schedule_date", nullable = false)
     private LocalDate scheduleDate;
 
-    @Column(name = "title", length = 20, nullable = false)
+    @Size(max = 10)
+    @Column(name = "title", length = 10, nullable = false)
     private String title;
 
     @Column(name = "address", length = 255)

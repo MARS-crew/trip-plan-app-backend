@@ -34,7 +34,7 @@ public class Place extends BaseEntity {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     @Column(name = "place_id", nullable = false)
-    private Long id;
+    private Long placeId;
 
     @Column(name = "name", length = 80, nullable = false)
     private String name;

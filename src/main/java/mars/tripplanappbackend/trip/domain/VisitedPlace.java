@@ -34,7 +34,7 @@ public class VisitedPlace extends BaseEntity {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     @Column(name = "visited_place_id", nullable = false)
-    private Long id;
+    private Long visitedPlaceId;
 
     @Builder.Default
     @Column(name = "visited_at", nullable = false)
