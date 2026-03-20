@@ -5,9 +5,9 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.*;
 import mars.tripplanappbackend.global.enums.Role;
 import mars.tripplanappbackend.global.enums.UseYnEnum;
-import mars.tripplanappbackend.user.domain.User;
-import mars.tripplanappbackend.user.enums.Gender;
-import mars.tripplanappbackend.user.enums.LoginType;
+import mars.tripplanappbackend.mypage.domain.User;
+import mars.tripplanappbackend.mypage.enums.Gender;
+import mars.tripplanappbackend.mypage.enums.LoginType;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
