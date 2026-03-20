@@ -22,7 +22,7 @@ import mars.tripplanappbackend.global.enums.UseYnEnum;
 import mars.tripplanappbackend.notification.enums.NotificationType;
 import mars.tripplanappbackend.trip.domain.Trip;
 import mars.tripplanappbackend.trip.domain.TripSchedule;
-import mars.tripplanappbackend.user.domain.User;
+import mars.tripplanappbackend.mypage.domain.User;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 import java.time.LocalDateTime;

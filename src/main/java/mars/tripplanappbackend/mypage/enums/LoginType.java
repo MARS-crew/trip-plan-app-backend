@@ -1,4 +1,4 @@
-package mars.tripplanappbackend.user.enums;
+package mars.tripplanappbackend.mypage.enums;
 
 public enum LoginType {
     LOCAL,

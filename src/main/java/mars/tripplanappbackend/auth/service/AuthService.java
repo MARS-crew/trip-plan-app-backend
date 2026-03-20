@@ -10,8 +10,8 @@ import mars.tripplanappbackend.global.config.auth.JwtProvider;
 import mars.tripplanappbackend.global.enums.ErrorCode;
 import mars.tripplanappbackend.global.exception.BusinessException;
 import lombok.RequiredArgsConstructor;
-import mars.tripplanappbackend.user.domain.User;
-import mars.tripplanappbackend.user.repository.UserRepository;
+import mars.tripplanappbackend.mypage.domain.User;
+import mars.tripplanappbackend.mypage.repository.MyPageRepository;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -23,7 +23,7 @@ import java.time.LocalDateTime;
 @Transactional(readOnly = true)
 public class AuthService {
 
-    private final UserRepository userRepository;
+    private final MyPageRepository myPageRepository;
     private final BCryptPasswordEncoder passwordEncoder;
     private final JwtProvider jwtProvider;
 
@@ -51,7 +51,7 @@ public class AuthService {
         // DTO → Entity 변환을 DTO 내부에서 처리하여 서비스 로직 단순화
         User user = requestDto.toEntity(encodedPassword);
 
-        User savedUser = userRepository.save(user);
+        User savedUser = myPageRepository.save(user);
 
         return SignupResponseDto.from(savedUser);
     }
@@ -72,7 +72,7 @@ public class AuthService {
     public LoginResponseDto login(LoginRequestDto requestDto) {
 
         // 존재하지 않는 사용자 로그인 시도 방지
-        User user = userRepository.findByUsersId(requestDto.getUsersId())
+        User user = myPageRepository.findByUsersId(requestDto.getUsersId())
                 .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
 
         // BCrypt 해시 비교를 통해 비밀번호 검증
@@ -119,7 +119,7 @@ public class AuthService {
         String refreshToken = request.getRefreshToken();
 
         // DB에 저장된 RefreshToken 기준으로 사용자 조회
-        User user = userRepository.findByRefreshToken(refreshToken)
+        User user = myPageRepository.findByRefreshToken(refreshToken)
                 .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_TOKEN));
 
         // 서버에 저장된 만료시간 기준으로 RefreshToken 만료 여부 확인
