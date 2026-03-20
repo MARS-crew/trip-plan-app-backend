@@ -19,7 +19,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import mars.tripplanappbackend.global.entity.BaseEntity;
 import mars.tripplanappbackend.trip.enums.TripStatus;
-import mars.tripplanappbackend.user.domain.User;
+import mars.tripplanappbackend.mypage.domain.User;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 import java.time.LocalDate;
