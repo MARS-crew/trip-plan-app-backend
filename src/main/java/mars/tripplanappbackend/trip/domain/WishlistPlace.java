@@ -36,7 +36,7 @@ public class WishlistPlace extends BaseEntity {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     @Column(name = "wishlist_place_id", nullable = false)
-    private Long id;
+    private Long wishlistPlaceId;
 
     @Enumerated(EnumType.STRING)
     @Builder.Default

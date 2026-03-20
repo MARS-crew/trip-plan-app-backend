@@ -24,18 +24,22 @@
 ### 프로젝트 구조
 
 ```
-src/
-  main/
-     java/mars/tripplanappbackend/
-	common/
-		config/ 어플리케이션 환경 설정
-		    auth/config/ Security 설정 및 JWT 관련 설정
-		    filter/ 요청 로깅 등 로깅 필터 설정
-		    swagger/ 스웨거 설정
-		dto/ 공통 Response 객체
-		entity/ 생성/수정 시간 자동 기록
-		enums/ 공통 에러 코드
-		exception/ 전역 예외 관리
+├───main
+│   ├───java
+│   │   └───mars
+│   │       └───tripplanappbackend
+│   │           ├───domain   // 엔티티
+│   │           └───global    // 애플리케이션 전역에서 공통으로 사용되는 설정, 예외 처리 등을 관리
+│   │               ├───config 
+│   │               │   ├───auth  // Jwt 관련 설정
+│   │               │   ├───filter // 요청 로깅 등 로깅 필터 설정
+│   │               │   └───swagger // 스웨거 설정
+│   │               ├───dto   // 공통 response 객체
+│   │               ├───entity  // 생성/수정 시간 자동 기록
+│   │               ├───enums // 공통 에러 코드 및 공통 enums 관리
+│   │               ├───exception  // 전역 예외 관리
+│   │               ├───pagination  // 페이징 관련 설정 및 DTO
+│   │               └───security  // SpringSecurity 관리
 ```
 
 

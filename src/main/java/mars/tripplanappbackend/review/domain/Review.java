@@ -10,6 +10,9 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.Size;
 import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -36,12 +39,15 @@ public class Review extends BaseEntity {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     @Column(name = "review_id", nullable = false)
-    private Long id;
+    private Long reviewId;
 
+    @Min(1)
+    @Max(5)
     @Column(name = "rating", nullable = false)
     private Integer rating;
 
-    @Column(name = "content", length = 600, nullable = false)
+    @Size(max = 500)
+    @Column(name = "content", length = 500, nullable = false)
     private String content;
 
     @Column(name = "visited_date", nullable = false)
