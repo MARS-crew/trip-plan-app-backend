@@ -1,11 +1,10 @@
 package mars.tripplanappbackend.auth.service;
 
+import mars.tripplanappbackend.auth.dto.request.FindIdRequestDto;
 import mars.tripplanappbackend.auth.dto.request.LoginRequestDto;
 import mars.tripplanappbackend.auth.dto.request.SignupRequestDto;
 import mars.tripplanappbackend.auth.dto.request.TokenReissueRequestDto;
-import mars.tripplanappbackend.auth.dto.response.LoginResponseDto;
-import mars.tripplanappbackend.auth.dto.response.SignupResponseDto;
-import mars.tripplanappbackend.auth.dto.response.TokenReissueResponseDto;
+import mars.tripplanappbackend.auth.dto.response.*;
 import mars.tripplanappbackend.global.config.auth.JwtProvider;
 import mars.tripplanappbackend.global.enums.ErrorCode;
 import mars.tripplanappbackend.global.exception.BusinessException;
@@ -145,5 +144,38 @@ public class AuthService {
         user.updateRefreshToken(newRefreshToken, LocalDateTime.now().plusDays(14));
 
         return new TokenReissueResponseDto(newAccessToken, newRefreshToken);
+    }
+
+    /**
+     * 아이디 중복 확인
+     *
+     * 회원가입 전 사용자가 입력한 아이디의 중복 여부를 확인한다.
+     * 이미 존재하는 아이디인 경우 예외를 발생시켜
+     * 클라이언트에 즉시 알린다.
+     *
+     * @param usersId 중복 확인할 아이디
+     * @return 사용 가능 여부 및 아이디 정보를 담은 응답 DTO
+     */
+    public CheckIdResponseDto checkUsersIdDuplicate(String usersId) {
+        if (myPageRepository.existsByUsersId(usersId)) {
+            throw new BusinessException(ErrorCode.DUPLICATE_USER);
+        }
+        return new CheckIdResponseDto(usersId, "사용 가능한 아이디입니다.");
+    }
+
+    /**
+     * 아이디 찾기
+     *
+     * 사용자가 입력한 닉네임과 이메일로 계정을 조회한다.
+     * 일치하는 계정이 없을 경우 예외를 발생시킨다.
+     *
+     * @param requestDto 닉네임 및 이메일 요청 정보
+     * @return 조회된 사용자 아이디를 담은 응답 DTO
+     */
+    public FindIdResponseDto findUsersId(FindIdRequestDto requestDto) {
+        User user = myPageRepository.findByNicknameAndEmail(requestDto.getNickname(), requestDto.getEmail())
+                .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
+
+        return new FindIdResponseDto(user.getUsersId());
     }
 }

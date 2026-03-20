@@ -4,12 +4,11 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import mars.tripplanappbackend.auth.dto.request.FindIdRequestDto;
 import mars.tripplanappbackend.auth.dto.request.LoginRequestDto;
 import mars.tripplanappbackend.auth.dto.request.SignupRequestDto;
 import mars.tripplanappbackend.auth.dto.request.TokenReissueRequestDto;
-import mars.tripplanappbackend.auth.dto.response.LoginResponseDto;
-import mars.tripplanappbackend.auth.dto.response.SignupResponseDto;
-import mars.tripplanappbackend.auth.dto.response.TokenReissueResponseDto;
+import mars.tripplanappbackend.auth.dto.response.*;
 import mars.tripplanappbackend.auth.service.AuthService;
 import mars.tripplanappbackend.global.config.swagger.ApiErrorExceptions;
 import mars.tripplanappbackend.global.dto.ApiResponse;
@@ -46,5 +45,21 @@ public class AuthController {
     public ApiResponse<TokenReissueResponseDto> reissue(
             @RequestBody TokenReissueRequestDto request) {
         return ApiResponse.ok(authService.reissue(request));
+    }
+
+    @GetMapping("/check-id")
+    @ApiErrorExceptions({ErrorCode.INVALID_INPUT,  ErrorCode.USER_NOT_FOUND, ErrorCode.INTERNAL_ERROR})
+    @Operation(summary = "아이디 중복 확인", description = "아이디 중복 확인 api")
+    public ApiResponse<CheckIdResponseDto> checkId(@RequestParam String usersId) {
+        CheckIdResponseDto response = authService.checkUsersIdDuplicate(usersId);
+        return ApiResponse.ok(response);
+    }
+
+    @PostMapping("/find-id")
+    @ApiErrorExceptions({ErrorCode.INVALID_INPUT, ErrorCode.USER_NOT_FOUND, ErrorCode.INTERNAL_ERROR})
+    @Operation(summary = "아이디 찾기", description = "아이디 찾기 api (이메일, 닉네임)")
+    public ApiResponse<FindIdResponseDto> findId(@Valid @RequestBody FindIdRequestDto requestDto){
+        FindIdResponseDto response = authService.findUsersId(requestDto);
+        return ApiResponse.ok(response);
     }
 }
