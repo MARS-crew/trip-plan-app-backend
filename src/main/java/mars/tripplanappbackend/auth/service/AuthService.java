@@ -159,7 +159,7 @@ public class AuthService {
      * @return 사용 가능 여부 및 아이디 정보를 담은 응답 DTO
      */
     public CheckIdResponseDto checkUsersIdDuplicate(String usersId) {
-        if (userRepository.existsByUsersId(usersId)) {
+        if (myPageRepository.existsByUsersId(usersId)) {
             throw new BusinessException(ErrorCode.DUPLICATE_USER);
         }
         return new CheckIdResponseDto(usersId, "사용 가능한 아이디입니다.");
