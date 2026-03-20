@@ -1,5 +1,9 @@
 package mars.tripplanappbackend.auth.controller;
 
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
+import lombok.RequiredArgsConstructor;
 import mars.tripplanappbackend.auth.dto.request.LoginRequestDto;
 import mars.tripplanappbackend.auth.dto.request.SignupRequestDto;
 import mars.tripplanappbackend.auth.dto.request.TokenReissueRequestDto;
@@ -8,10 +12,6 @@ import mars.tripplanappbackend.auth.dto.response.LoginResponseDto;
 import mars.tripplanappbackend.auth.dto.response.SignupResponseDto;
 import mars.tripplanappbackend.auth.dto.response.TokenReissueResponseDto;
 import mars.tripplanappbackend.auth.service.AuthService;
-import io.swagger.v3.oas.annotations.Operation;
-import io.swagger.v3.oas.annotations.tags.Tag;
-import jakarta.validation.Valid;
-import lombok.RequiredArgsConstructor;
 import mars.tripplanappbackend.global.config.swagger.ApiErrorExceptions;
 import mars.tripplanappbackend.global.dto.ApiResponse;
 import mars.tripplanappbackend.global.enums.ErrorCode;
@@ -30,6 +30,7 @@ public class AuthController {
     public SignupResponseDto signUp(@Valid @RequestBody SignupRequestDto requestDto) {
         return authService.signUp(requestDto);
     }
+
     @PostMapping("/login")
     @ApiErrorExceptions({ErrorCode.INVALID_INPUT, ErrorCode.USER_NOT_FOUND,
             ErrorCode.PASSWORD_MISMATCH, ErrorCode.INTERNAL_ERROR})

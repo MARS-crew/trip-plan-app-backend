@@ -1,16 +1,17 @@
 package mars.tripplanappbackend.auth.dto.request;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
-import mars.tripplanappbackend.domain.User;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import lombok.Data;
 import lombok.NoArgsConstructor;
-import mars.tripplanappbackend.global.enums.Gender;
 import mars.tripplanappbackend.global.enums.Role;
 import mars.tripplanappbackend.global.enums.UseYnEnum;
+import mars.tripplanappbackend.user.domain.User;
+import mars.tripplanappbackend.user.enums.Gender;
+import mars.tripplanappbackend.user.enums.LoginType;
 
 import java.time.LocalDate;
 
@@ -19,11 +20,12 @@ import java.time.LocalDate;
 public class SignupRequestDto {
     @Schema(description = "로그인 아이디", example = "cye4526")
     @NotNull(message = "필수 입력값입니다.")
-    @Size(min=3, max=15)
+    @Size(min=3, max=40)
     private String usersId;
 
     @Schema(description = "이름", example = "최예은")
     @NotNull(message = "필수 입력값입니다.")
+    @Size(max = 10)
     private String name;
 
     @Schema(description = "이메일", example = "cye4526@naver.com")
@@ -32,6 +34,7 @@ public class SignupRequestDto {
 
     @Schema(description = "닉네임", example = "dmdkr")
     @NotNull(message = "필수 입력값입니다.")
+    @Size(max = 20)
     private String nickname;
 
     @Schema(description = "비밀번호", example = "cye1111*")
@@ -54,8 +57,6 @@ public class SignupRequestDto {
     @NotNull(message = "필수 입력값입니다.")
     private LocalDate birth;
 
-    // 국가
-
     @Schema(description = "서비스 이용약관 동의", example = "Y")
     @NotNull(message = "필수 입력값입니다.")
     private UseYnEnum privacyAgreed;
@@ -76,9 +77,10 @@ public class SignupRequestDto {
                 .password(encodedPassword)
                 .gender(this.gender)
                 .birth(this.birth)
+                .loginType(LoginType.LOCAL)
                 .privacyAgreed(this.privacyAgreed)
-                .marketingAgreed(this.marketingAgreed)
-                .nightMarketingAgreed(this.nightMarketingAgreed)
+                .marketingAgreed(this.marketingAgreed == null ? UseYnEnum.N : this.marketingAgreed)
+                .nightMarketingAgreed(this.nightMarketingAgreed == null ? UseYnEnum.N : this.nightMarketingAgreed)
                 .build();
     }
 }
