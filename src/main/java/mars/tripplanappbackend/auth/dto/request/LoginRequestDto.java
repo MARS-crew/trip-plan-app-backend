@@ -11,7 +11,7 @@ import lombok.NoArgsConstructor;
 public class LoginRequestDto {
     @Schema(description = "로그인 아이디", example = "cye4526")
     @NotNull(message = "필수 입력값입니다.")
-    @Size(min=3, max=15)
+    @Size(min=3, max=40)
     private String usersId;
 
     @Schema(description = "비밀번호", example = "cye1111*")

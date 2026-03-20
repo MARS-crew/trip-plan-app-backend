@@ -1,6 +1,6 @@
-package mars.tripplanappbackend.auth.repository;
+package mars.tripplanappbackend.user.repository;
 
-import mars.tripplanappbackend.domain.User;
+import mars.tripplanappbackend.user.domain.User;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 import java.util.Optional;
@@ -9,5 +9,4 @@ import java.util.Optional;
 public interface UserRepository extends JpaRepository<User, Long> {
     Optional<User> findByUsersId(String usersId);
     Optional<User> findByRefreshToken(String refreshToken);
-
 }
