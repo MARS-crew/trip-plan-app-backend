@@ -63,7 +63,7 @@ public class SecurityConfig {
                 // 화이트리스트 기반의 접근 제어: swagger, 회원가입 외의 모든 요청은 인증 필수
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/swagger-ui/**", "/swagger-ui.html", "/api-docs/**", "/v3/api-docs/**").permitAll()
-                        .requestMatchers("/api/v1/auth/signup/**").permitAll()
+                        .requestMatchers("/api/v1/auth/signup/**", "/api/v1/auth/login/**", "/api/v1/auth/reissue/**").permitAll()
                         .anyRequest().authenticated()
                 )
 
