@@ -3,11 +3,15 @@ package mars.tripplanappbackend.place.dto.response;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Builder;
 import lombok.Getter;
+import mars.tripplanappbackend.place.domain.Place;
 import mars.tripplanappbackend.place.enums.PlaceType;
 
 import java.math.BigDecimal;
 import java.util.List;
 
+/**
+ * 메인 페이지 추천 여행지 단건 응답 DTO입니다.
+ */
 @Getter
 @Builder
 @Schema(description = "메인 페이지 추천 여행지 항목")
@@ -31,7 +35,7 @@ public class RecommendedPlaceResponseDto {
     @Schema(description = "장소 유형", example = "BEACH")
     private PlaceType placeType;
 
-    @Schema(description = "평균 평점", example = "4.8")
+    @Schema(description = "평균 별점", example = "4.8")
     private BigDecimal ratingAvg;
 
     @Schema(description = "리뷰 수", example = "128")
@@ -39,4 +43,25 @@ public class RecommendedPlaceResponseDto {
 
     @Schema(description = "대표 태그 목록", example = "[\"바다\", \"야경\", \"산책\"]")
     private List<String> tags;
+
+    /**
+     * 장소 엔티티와 태그 목록을 추천 여행지 응답 DTO로 변환합니다.
+     *
+     * @param place 장소 엔티티
+     * @param tags 장소 대표 태그 목록
+     * @return 추천 여행지 응답 DTO
+     */
+    public static RecommendedPlaceResponseDto from(Place place, List<String> tags) {
+        return RecommendedPlaceResponseDto.builder()
+                .placeId(place.getPlaceId())
+                .name(place.getName())
+                .countryName(place.getCountryName())
+                .cityName(place.getCityName())
+                .imageUrl(place.getImageUrl())
+                .placeType(place.getPlaceType())
+                .ratingAvg(place.getRatingAvg())
+                .reviewCount(place.getReviewCount())
+                .tags(tags)
+                .build();
+    }
 }
