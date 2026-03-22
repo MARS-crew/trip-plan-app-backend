@@ -14,3 +14,4 @@ public interface MyPageRepository extends JpaRepository<User, Long> {
 
     Optional<User> findByNicknameAndEmail(String email, String nickname);
 }
+
