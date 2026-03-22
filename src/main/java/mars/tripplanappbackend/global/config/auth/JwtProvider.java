@@ -81,14 +81,17 @@ public class JwtProvider {
                 .getBody();
 
         String usersId = claims.getSubject();
+        String email = claims.get("email", String.class);
         String role = claims.get("role", String.class);
+
+        UserPrincipal userPrincipal = new UserPrincipal(usersId, email, role);
 
         var authorities = java.util.List.of(
                 new org.springframework.security.core.authority.SimpleGrantedAuthority("ROLE_" + role)
         );
 
         return new org.springframework.security.authentication.UsernamePasswordAuthenticationToken(
-                usersId, "", authorities
+                userPrincipal, "", authorities
         );
     }
     /**

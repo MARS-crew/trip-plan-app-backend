@@ -4,6 +4,8 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
+import mars.tripplanappbackend.global.config.auth.CurrentUser;
+import mars.tripplanappbackend.global.config.auth.UserPrincipal;
 import mars.tripplanappbackend.global.config.swagger.ApiErrorExceptions;
 import mars.tripplanappbackend.global.dto.ApiResponse;
 import mars.tripplanappbackend.global.enums.ErrorCode;
@@ -48,8 +50,8 @@ public class PlaceController {
             @Parameter(description = "조회할 장소 PK", example = "7")
             @PathVariable("placeId") Long placeId,
             @Parameter(hidden = true)
-            @AuthenticationPrincipal String usersId
+            @CurrentUser UserPrincipal userPrincipal
     ) {
-        return ApiResponse.ok(placeService.findOne(placeId, usersId));
+        return ApiResponse.ok(placeService.findOne(placeId, userPrincipal.getUsersId()));
     }
 }
