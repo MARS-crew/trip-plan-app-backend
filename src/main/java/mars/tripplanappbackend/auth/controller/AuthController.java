@@ -4,10 +4,7 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
-import mars.tripplanappbackend.auth.dto.request.FindIdRequestDto;
-import mars.tripplanappbackend.auth.dto.request.LoginRequestDto;
-import mars.tripplanappbackend.auth.dto.request.SignupRequestDto;
-import mars.tripplanappbackend.auth.dto.request.TokenReissueRequestDto;
+import mars.tripplanappbackend.auth.dto.request.*;
 import mars.tripplanappbackend.auth.dto.response.*;
 import mars.tripplanappbackend.auth.dto.response.CheckIdResponseDto;
 import mars.tripplanappbackend.auth.dto.response.LoginResponseDto;
@@ -66,10 +63,20 @@ public class AuthController {
         return ApiResponse.ok(socialLoginService.socialLogin(LoginType.KAKAO, requestDto.getAccessToken()));
     }
 
+    @PostMapping("/naver")
+    @ApiErrorExceptions({ErrorCode.INVALID_TOKEN, ErrorCode.EXPIRED_REFRESH_TOKEN,
+            ErrorCode.USER_NOT_FOUND, ErrorCode.INTERNAL_ERROR})
+    @Operation(summary = "네이버 소셜 로그인", 
+            description = "네이버 소셜 로그인 api, " +
+            "네이버에서 발급받은 accessToken을 요청으로 보내면 회원가입/로그인 여부를 판단함")
+    public ApiResponse<SocialLoginResponseDto> naverLogin(@Valid @RequestBody SocialLoginRequestDto requestDto){
+        return ApiResponse.ok(socialLoginService.socialLogin(LoginType.NAVER, requestDto.getAccessToken()));
+    }
+
+
     @GetMapping("/check-id")
     @ApiErrorExceptions({ErrorCode.INVALID_INPUT,  ErrorCode.USER_NOT_FOUND,
             ErrorCode.INTERNAL_ERROR, ErrorCode.DUPLICATE_USER})
-
     @Operation(summary = "아이디 중복 확인", description = "아이디 중복 확인 api")
     public ApiResponse<CheckIdResponseDto> checkId(@RequestParam String usersId) {
         CheckIdResponseDto response = authService.checkUsersIdDuplicate(usersId);
