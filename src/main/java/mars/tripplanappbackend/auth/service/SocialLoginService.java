@@ -35,6 +35,12 @@ public class SocialLoginService {
     @Value("${NAVER_CLIENT_SECRET}")
     private String naverClientSecret;
 
+    @Value("${GOOGLE_CLIENT_ID}")
+    private String googleClientId;
+
+    @Value("${GOOGLE_CLIENT_SECRET}")
+    private String googleClientSecret;
+
     /**
      * 소셜 로그인 공통 진입점.
      *
@@ -89,6 +95,7 @@ public class SocialLoginService {
         return switch (loginType) {
             case KAKAO -> getKakaoUserInfo(accessToken);
             case NAVER -> getNaverUserInfo(accessToken);
+            case GOOGLE -> getGoogleUserInfo(accessToken);
             default    -> throw new BusinessException(ErrorCode.INVALID_INPUT);
         };
     }
@@ -168,6 +175,48 @@ public class SocialLoginService {
                     .gender(account.getGender())
                     .birthYear(account.getBirthYear())
                     .birthday(account.getBirthday())
+                    .build();
+
+        } catch (BusinessException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new BusinessException(ErrorCode.INVALID_TOKEN);
+        }
+    }
+
+    /**
+     * 구글 API 서버에서 사용자 프로필 정보를 조회하고 공통 DTO로 변환한다.
+     *
+     * 구글은 생년월일과 성별을 제공하지 않으므로 해당 필드는 null로 반환된다.
+     * 프론트엔드에서 회원가입 시 직접 입력받아야 한다.
+     *
+     * @param accessToken 프론트엔드로부터 전달받은 구글 액세스 토큰
+     * @return 공통 사용자 정보 DTO
+     * @throws BusinessException INVALID_TOKEN - 토큰이 유효하지 않거나 API 호출 실패 시
+     */
+    private SocialUserInfoResponseDto getGoogleUserInfo(String accessToken) {
+        HttpHeaders headers = new HttpHeaders();
+        headers.setBearerAuth(accessToken);
+
+        try {
+            ResponseEntity<GoogleUserInfoResponseDto> response = restTemplate.exchange(
+                    "https://www.googleapis.com/oauth2/v2/userinfo",
+                    HttpMethod.GET,
+                    new HttpEntity<>(headers),
+                    GoogleUserInfoResponseDto.class
+            );
+
+            GoogleUserInfoResponseDto body = response.getBody();
+            if (body == null) throw new BusinessException(ErrorCode.INVALID_TOKEN);
+
+            return SocialUserInfoResponseDto.builder()
+                    .socialProviderId(body.getId())
+                    .nickname(body.getGivenName())
+                    .email(body.getEmail())
+                    .name(body.getName())
+                    .gender(null)
+                    .birthYear(null)
+                    .birthday(null)
                     .build();
 
         } catch (BusinessException e) {
