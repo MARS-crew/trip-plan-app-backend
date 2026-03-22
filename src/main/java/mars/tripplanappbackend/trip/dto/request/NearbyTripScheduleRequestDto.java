@@ -5,6 +5,9 @@ import jakarta.validation.constraints.NotNull;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
+/**
+ * 가까운 여행일정 조회 요청 DTO.
+ */
 @Getter
 @NoArgsConstructor
 @Schema(description = "가까운 여행일정 조회 요청")
