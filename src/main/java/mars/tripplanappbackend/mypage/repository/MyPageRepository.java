@@ -14,4 +14,6 @@ public interface MyPageRepository extends JpaRepository<User, Long> {
     Optional<User> findByRefreshToken(String refreshToken);
     Optional<User> findByLoginTypeAndSocialProviderId(LoginType loginType, String socialProviderId);
 
+    boolean existsByUsersId(String usersId);
 }
+
