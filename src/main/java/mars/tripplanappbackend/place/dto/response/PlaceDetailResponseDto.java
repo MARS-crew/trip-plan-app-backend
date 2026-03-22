@@ -3,11 +3,15 @@ package mars.tripplanappbackend.place.dto.response;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Builder;
 import lombok.Getter;
+import mars.tripplanappbackend.place.domain.Place;
 import mars.tripplanappbackend.place.enums.PlaceType;
 
 import java.math.BigDecimal;
 import java.util.List;
 
+/**
+ * 여행지 상세 조회 응답 DTO입니다.
+ */
 @Getter
 @Builder
 @Schema(description = "여행지 상세 조회 응답")
@@ -28,7 +32,7 @@ public class PlaceDetailResponseDto {
     @Schema(description = "주소", example = "부산 해운대구 우동")
     private String address;
 
-    @Schema(description = "장소 설명", example = "부산을 대표하는 해변으로 산책과 야경을 즐기기 좋은 명소입니다.")
+    @Schema(description = "장소 설명", example = "부산을 대표하는 해변으로 산책과 야경을 즐기기 좋은 장소입니다.")
     private String description;
 
     @Schema(description = "위도", example = "35.1586980")
@@ -37,7 +41,7 @@ public class PlaceDetailResponseDto {
     @Schema(description = "경도", example = "129.1603840")
     private BigDecimal longitude;
 
-    @Schema(description = "평균 평점", example = "4.8")
+    @Schema(description = "평균 별점", example = "4.8")
     private BigDecimal ratingAvg;
 
     @Schema(description = "리뷰 수", example = "128")
@@ -60,4 +64,39 @@ public class PlaceDetailResponseDto {
 
     @Schema(description = "리뷰 미리보기 목록")
     private List<PlaceReviewPreviewResponseDto> reviewPreviews;
+
+    /**
+     * 장소 엔티티와 부가 정보를 상세 응답 DTO로 변환합니다.
+     *
+     * @param place 장소 엔티티
+     * @param tags 대표 태그 목록
+     * @param saved 저장 여부
+     * @param reviewPreviews 리뷰 미리보기 목록
+     * @return 여행지 상세 응답 DTO
+     */
+    public static PlaceDetailResponseDto from(
+            Place place,
+            List<String> tags,
+            boolean saved,
+            List<PlaceReviewPreviewResponseDto> reviewPreviews
+    ) {
+        return PlaceDetailResponseDto.builder()
+                .placeId(place.getPlaceId())
+                .name(place.getName())
+                .countryName(place.getCountryName())
+                .cityName(place.getCityName())
+                .address(place.getAddress())
+                .description(place.getDescription())
+                .latitude(place.getLatitude())
+                .longitude(place.getLongitude())
+                .ratingAvg(place.getRatingAvg())
+                .reviewCount(place.getReviewCount())
+                .openingHours(place.getOpeningHours())
+                .imageUrl(place.getImageUrl())
+                .placeType(place.getPlaceType())
+                .saved(saved)
+                .tags(tags)
+                .reviewPreviews(reviewPreviews)
+                .build();
+    }
 }

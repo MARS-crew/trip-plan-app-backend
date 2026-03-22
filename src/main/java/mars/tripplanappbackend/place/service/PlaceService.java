@@ -36,51 +36,79 @@ public class PlaceService {
     private final ReviewRepository reviewRepository;
     private final ReviewImageRepository reviewImageRepository;
 
+    /**
+     * 장소 상세 페이지에 필요한 조회 결과를 응답 DTO 형태로 반환합니다.
+     *
+     * @param placeId 조회할 장소 PK
+     * @param usersId JWT 인증 정보에서 추출한 사용자 아이디
+     * @return 장소 기본 정보, 태그, 저장 여부, 리뷰 미리보기를 담은 응답 DTO
+     */
     public PlaceDetailResponseDto findOne(Long placeId, String usersId) {
+        validateAuthenticatedUser(usersId);
+
+        Place place = placeRepository.findByPlaceIdAndIsDeletedFalse(placeId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.PLACE_NOT_FOUND));
+
+        List<String> tags = findPlaceTags(placeId);
+        boolean saved = savedPlaceRepository.existsByUser_UsersIdAndPlace_PlaceIdAndIsDeletedFalse(usersId, placeId);
+        List<PlaceReviewPreviewResponseDto> reviewPreviews = findReviewPreviews(placeId);
+
+        return PlaceDetailResponseDto.from(place, tags, saved, reviewPreviews);
+    }
+
+    /**
+     * 인증 사용자 아이디가 비어 있지 않고 실제 회원으로 존재하는지 검증
+     *
+     * @param usersId JWT 인증 정보에서 추출한 사용자 아이디
+     */
+    private void validateAuthenticatedUser(String usersId) {
         if (usersId == null || usersId.isBlank()) {
             throw new BusinessException(ErrorCode.UNAUTHORIZED);
         }
 
         myPageRepository.findByUsersId(usersId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
+    }
 
-        Place place = placeRepository.findByPlaceIdAndIsDeletedFalse(placeId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.PLACE_NOT_FOUND));
-
-        List<String> tags = placeTagMapRepository.findAllByPlace_PlaceIdAndIsDeletedFalse(placeId).stream()
+    /**
+     * 장소 상세 상단에 노출할 태그를 최대 3개까지 조회합니다.
+     *
+     * @param placeId 조회할 장소 PK
+     * @return 중복이 제거된 태그명 목록
+     */
+    private List<String> findPlaceTags(Long placeId) {
+        return placeTagMapRepository.findAllByPlace_PlaceIdAndIsDeletedFalse(placeId).stream()
                 .map(placeTagMap -> placeTagMap.getPlaceTag().getTagName())
                 .distinct()
                 .limit(MAX_TAG_COUNT)
                 .toList();
-
-        boolean saved = savedPlaceRepository.existsByUser_UsersIdAndPlace_PlaceIdAndIsDeletedFalse(usersId, placeId);
-
-        List<Review> reviewPreviews = reviewRepository.findTop3ByPlace_PlaceIdAndIsDeletedFalseOrderByCreatedAtDesc(placeId);
-        Map<Long, List<String>> reviewImages = getReviewImages(reviewPreviews);
-
-        return PlaceDetailResponseDto.builder()
-                .placeId(place.getPlaceId())
-                .name(place.getName())
-                .countryName(place.getCountryName())
-                .cityName(place.getCityName())
-                .address(place.getAddress())
-                .description(place.getDescription())
-                .latitude(place.getLatitude())
-                .longitude(place.getLongitude())
-                .ratingAvg(place.getRatingAvg())
-                .reviewCount(place.getReviewCount())
-                .openingHours(place.getOpeningHours())
-                .imageUrl(place.getImageUrl())
-                .placeType(place.getPlaceType())
-                .saved(saved)
-                .tags(tags)
-                .reviewPreviews(reviewPreviews.stream()
-                        .map(review -> toReviewPreview(review, reviewImages.getOrDefault(review.getReviewId(), List.of())))
-                        .toList())
-                .build();
     }
 
-    private Map<Long, List<String>> getReviewImages(List<Review> reviews) {
+    /**
+     * 장소 상세 하단에 노출할 최신 리뷰 미리보기 3건을 조회
+     *
+     * @param placeId 조회할 장소 PK
+     * @return 리뷰 응답 DTO 목록
+     */
+    private List<PlaceReviewPreviewResponseDto> findReviewPreviews(Long placeId) {
+        List<Review> reviews = reviewRepository.findTop3ByPlace_PlaceIdAndIsDeletedFalseOrderByCreatedAtDesc(placeId);
+        Map<Long, List<String>> reviewImages = findReviewImages(reviews);
+
+        return reviews.stream()
+                .map(review -> PlaceReviewPreviewResponseDto.from(
+                        review,
+                        reviewImages.getOrDefault(review.getReviewId(), List.of())
+                ))
+                .toList();
+    }
+
+    /**
+     * 리뷰 목록에 포함된 리뷰 이미지 URL을 리뷰 PK 기준으로 그룹화시킵니다.
+     *
+     * @param reviews 리뷰 미리보기 대상 목록
+     * @return reviewId 기준 이미지 URL 목록 맵
+     */
+    private Map<Long, List<String>> findReviewImages(List<Review> reviews) {
         if (reviews.isEmpty()) {
             return Collections.emptyMap();
         }
@@ -89,23 +117,13 @@ public class PlaceService {
                 .map(Review::getReviewId)
                 .toList();
 
-        List<ReviewImage> reviewImages = reviewImageRepository.findAllByReview_ReviewIdInAndIsDeletedFalseOrderBySortOrderAsc(reviewIds);
+        List<ReviewImage> reviewImages = reviewImageRepository
+                .findAllByReview_ReviewIdInAndIsDeletedFalseOrderBySortOrderAsc(reviewIds);
 
         return reviewImages.stream()
                 .collect(Collectors.groupingBy(
                         reviewImage -> reviewImage.getReview().getReviewId(),
                         Collectors.mapping(ReviewImage::getImageUrl, Collectors.toList())
                 ));
-    }
-
-    private PlaceReviewPreviewResponseDto toReviewPreview(Review review, List<String> imageUrls) {
-        return PlaceReviewPreviewResponseDto.builder()
-                .reviewId(review.getReviewId())
-                .nickname(review.getUser().getNickname())
-                .rating(review.getRating())
-                .content(review.getContent())
-                .visitedDate(review.getVisitedDate())
-                .imageUrls(imageUrls)
-                .build();
     }
 }
