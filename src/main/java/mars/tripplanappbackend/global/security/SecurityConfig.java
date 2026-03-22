@@ -59,14 +59,14 @@ public class SecurityConfig {
                                 response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Unauthorized"))
                 )
 
-                // Swagger 및 인증 관련 API는 공개하고, 나머지 요청은 인증을 요구한다.
+                // 화이트리스트 기반의 접근 제어: swagger, 회원가입 외의 모든 요청은 인증 필수
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/swagger-ui/**", "/swagger-ui.html", "/api-docs/**", "/v3/api-docs/**").permitAll()
                         .requestMatchers("/api/v1/auth/**").permitAll()
                         .anyRequest().authenticated()
                 )
 
-                // UsernamePasswordAuthenticationFilter 이전에 JWT 검증 필터를 적용한다.
+                // ID/Password 인증 필터 이전에 JWT 토큰의 유효성을 먼저 검사
                 .addFilterBefore(new JwtFilter(jwtProvider), UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
@@ -85,6 +85,8 @@ public class SecurityConfig {
         configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"));
         configuration.setAllowedHeaders(List.of("*"));
         configuration.setAllowCredentials(true);
+
+        // 클라이언트(브라우저) 측 JavaScript에서 응답 헤더의 토큰을 읽을 수 있도록 허용
         configuration.setExposedHeaders(List.of("Authorization"));
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
