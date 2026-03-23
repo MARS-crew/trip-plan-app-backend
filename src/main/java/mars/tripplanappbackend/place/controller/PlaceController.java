@@ -12,8 +12,10 @@ import mars.tripplanappbackend.global.dto.ApiResponse;
 import mars.tripplanappbackend.global.enums.ErrorCode;
 import mars.tripplanappbackend.place.dto.request.RecommendedPlaceRequestDto;
 import mars.tripplanappbackend.place.dto.request.SavePlaceRequestDto;
+import mars.tripplanappbackend.place.dto.request.SharePlaceRequestDto;
 import mars.tripplanappbackend.place.dto.response.RecommendedPlaceListResponseDto;
 import mars.tripplanappbackend.place.dto.response.SavePlaceResponseDto;
+import mars.tripplanappbackend.place.dto.response.SharePlaceResponseDto;
 import mars.tripplanappbackend.place.service.PlaceService;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -22,7 +24,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * 장소 관련 조회 및 상세 화면 액션 API를 제공하는 컨트롤러입니다.
+ * 장소 조회와 여행지 상세 화면의 액션 API를 제공하는 컨트롤러입니다.
  */
 @RestController
 @RequestMapping("/api/v1/places")
@@ -78,5 +80,35 @@ public class PlaceController {
     ) {
         SavePlaceRequestDto requestDto = SavePlaceRequestDto.of(placeId, userPrincipal.getUsersId());
         return ApiResponse.ok(placeService.savePlace(requestDto));
+    }
+
+    /**
+     * 여행지 상세 화면에서 사용할 공유 메타데이터를 조회합니다.
+     * 프론트는 반환된 제목, 설명, 링크, 이미지를 공유 시트에 바로 사용할 수 있습니다.
+     *
+     * @param placeId 공유할 장소 PK
+     * @param userPrincipal 현재 인증된 사용자 정보
+     * @return 여행지 공유 응답
+     */
+    @GetMapping("/{placeId}/share")
+    @ApiErrorExceptions({
+            ErrorCode.INVALID_INPUT,
+            ErrorCode.UNAUTHORIZED,
+            ErrorCode.USER_NOT_FOUND,
+            ErrorCode.PLACE_NOT_FOUND,
+            ErrorCode.INTERNAL_ERROR
+    })
+    @Operation(
+            summary = "여행지 공유",
+            description = "여행지 상세 페이지에서 사용할 공유 메타데이터를 조회합니다."
+    )
+    public ApiResponse<SharePlaceResponseDto> sharePlace(
+            @Parameter(description = "공유할 장소 PK", example = "7")
+            @PathVariable("placeId") Long placeId,
+            @Parameter(hidden = true)
+            @CurrentUser UserPrincipal userPrincipal
+    ) {
+        SharePlaceRequestDto requestDto = SharePlaceRequestDto.of(placeId, userPrincipal.getUsersId());
+        return ApiResponse.ok(placeService.sharePlace(requestDto));
     }
 }
