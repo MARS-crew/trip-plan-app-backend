@@ -4,10 +4,7 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
-import mars.tripplanappbackend.auth.dto.request.FindIdRequestDto;
-import mars.tripplanappbackend.auth.dto.request.LoginRequestDto;
-import mars.tripplanappbackend.auth.dto.request.SignupRequestDto;
-import mars.tripplanappbackend.auth.dto.request.TokenReissueRequestDto;
+import mars.tripplanappbackend.auth.dto.request.*;
 import mars.tripplanappbackend.auth.dto.response.*;
 import mars.tripplanappbackend.auth.dto.response.CheckIdResponseDto;
 import mars.tripplanappbackend.auth.dto.response.LoginResponseDto;
@@ -66,6 +63,14 @@ public class AuthController {
     @Operation(summary = "아이디 찾기", description = "아이디 찾기 api (이메일, 닉네임)")
     public ApiResponse<FindIdResponseDto> findId(@Valid @RequestBody FindIdRequestDto requestDto){
         FindIdResponseDto response = authService.findUsersId(requestDto);
+        return ApiResponse.ok(response);
+    }
+
+    @PostMapping("/email-request")
+    @ApiErrorExceptions({ErrorCode.INVALID_INPUT, ErrorCode.USER_NOT_FOUND, ErrorCode.INTERNAL_ERROR})
+    @Operation(summary = "이메일 전송", description = "이메일 전송 api, gmail만 가능")
+    public ApiResponse<EmailResponseDto> findId(@Valid @RequestBody EmailRequestDto requestDto){
+        EmailResponseDto response = authService.sendEmail(requestDto);
         return ApiResponse.ok(response);
     }
 }

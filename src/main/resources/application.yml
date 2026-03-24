@@ -19,6 +19,25 @@ spring:
       ddl-auto: update
     show-sql: true
 
+  mail:
+    host: smtp.gmail.com
+    port: 587
+    username: ${GOOGLE_USERNAME}
+    password: ${GOOGLE_PASSWORD}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          timeout: 5000
+          starttls:
+            enable: true
+            required: true
+
+  data:
+    redis:
+      host: ${REDIS_HOST}
+      port: 6379
+
 springdoc:
   swagger-ui:
     path: /swagger-ui.html
