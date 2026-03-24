@@ -13,5 +13,7 @@ public interface MyPageRepository extends JpaRepository<User, Long> {
     boolean existsByUsersId(String usersId);
 
     Optional<User> findByNicknameAndEmail(String email, String nickname);
+
+    Optional<User> findByEmail(String email);
 }
 
