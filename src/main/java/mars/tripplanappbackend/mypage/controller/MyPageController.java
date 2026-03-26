@@ -2,11 +2,14 @@ package mars.tripplanappbackend.mypage.controller;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import mars.tripplanappbackend.global.config.swagger.ApiErrorExceptions;
 import mars.tripplanappbackend.global.dto.ApiResponse;
 import mars.tripplanappbackend.global.enums.ErrorCode;
+import mars.tripplanappbackend.mypage.dto.request.UpdateProfileRequestDto;
 import mars.tripplanappbackend.mypage.dto.resopnse.MyProfileResponseDto;
+import mars.tripplanappbackend.mypage.dto.resopnse.UpdateProfileResponseDto;
 import mars.tripplanappbackend.mypage.service.MyPageService;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
@@ -31,4 +34,16 @@ public class MyPageController {
         return ApiResponse.ok(response);
     }
 
+    @PatchMapping("/me")
+    @Operation(summary = "프로필 수정", description = "사용자 프로필 수정")
+    @ApiErrorExceptions({ErrorCode.USER_NOT_FOUND, ErrorCode.INTERNAL_ERROR, ErrorCode.EXPIRED_REFRESH_TOKEN,
+            ErrorCode.INVALID_TOKEN, ErrorCode.INVALID_INPUT, ErrorCode.PASSWORD_MISMATCH})
+    public ApiResponse<UpdateProfileResponseDto> updateProfile(
+            @RequestBody @Valid UpdateProfileRequestDto requestDto,
+            Authentication authentication
+    ) {
+        String usersId = authentication.getName();
+        UpdateProfileResponseDto response = myPageService.updateProfile(usersId, requestDto);
+        return ApiResponse.ok(response);
+    }
 }

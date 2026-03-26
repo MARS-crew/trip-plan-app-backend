@@ -122,4 +122,19 @@ public class User extends BaseEntity {
         }
         return this.refreshTokenExpiresAt.isBefore(LocalDateTime.now());
     }
+
+    public void updateProfile(String nickname, LocalDate birth,
+                              Gender gender, String countryCode) {
+
+        if (nickname != null) this.nickname = nickname;
+        if (birth != null) this.birth = birth;
+        if (gender != null) this.gender = gender;
+        if (countryCode != null) this.countryCode = countryCode;
+    }
+
+    public void updatePassword(String encryptedPassword) {
+        if (encryptedPassword != null) {
+            this.password = encryptedPassword;
+        }
+    }
 }
