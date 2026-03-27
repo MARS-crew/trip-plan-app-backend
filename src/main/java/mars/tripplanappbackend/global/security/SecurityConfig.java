@@ -21,9 +21,9 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 import java.util.List;
 
 /**
- * 애플리케이션 보안 정책 설정
- * * JWT 기반의 Stateless 인증 체계를 따르며
- * 내부 서비스 Swagger 및 CORS 허용 정책을 관리합니다.
+ * 애플리케이션 보안 정책 설정.
+ * JWT 기반의 Stateless 인증 체계를 적용하며,
+ * Swagger 및 CORS 허용 정책을 함께 관리한다.
  */
 @Configuration
 @EnableWebSecurity
@@ -47,36 +47,35 @@ public class SecurityConfig {
 
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
 
-                // 서버 메모리에 인증 상태를 저장하지 않고, 클라이언트의 토큰으로만 인증하기 위해 STATELESS 설정
+                // 서버 메모리에 인증 상태를 저장하지 않고, 토큰으로만 인증하기 위해 STATELESS 설정
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
 
-                // H2 콘솔 및 iframe을 사용하는 관리 도구와의 호환성을 위해 동일 도메인의 프레임을 허용
+                // iframe 기반 도구와의 호환성을 위해 sameOrigin 허용
                 .headers(headers -> headers.frameOptions(HeadersConfigurer.FrameOptionsConfig::sameOrigin))
 
-                // 인증되지 않은 사용자가 보호된 리소스에 접근할 경우, 커스텀 응답 대신 단순 401 에러를 반환
+                // 인증되지 않은 요청은 401 응답을 반환
                 .exceptionHandling(exception -> exception
-                        .authenticationEntryPoint((request, response, authException) -> {
-                            response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Unauthorized");
-                        })
+                        .authenticationEntryPoint((request, response, authException) ->
+                                response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Unauthorized"))
                 )
 
-                // 요청 경로 기반 접근 제어: swagger, 인증 API는 공개하고 나머지 요청은 인증 필수
+                // swagger 및 인증 API는 공개하고 나머지 요청은 인증 필수
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/swagger-ui/**", "/swagger-ui.html", "/api-docs/**", "/v3/api-docs/**").permitAll()
                         .requestMatchers("/api/v1/auth/**").permitAll()
                         .anyRequest().authenticated()
                 )
-
-                // ID/Password 인증 필터 이전에 JWT 토큰의 유효성을 먼저 검증
+          
+                // UsernamePasswordAuthenticationFilter 이전에 JWT 유효성 검사 수행
                 .addFilterBefore(new JwtFilter(jwtProvider), UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
     }
 
     /**
-     * cors 설정
-     * * 프론트엔드와의 통신을 위해 모든 메서드와 헤더를 허용하고,
-     * 클라이언트가 JWT 토큰을 인식할 수 있도록 Authorization 헤더를 노출합니다.
+     * CORS 설정.
+     * 프론트엔드와의 통신을 위해 모든 메서드/헤더를 허용하고,
+     * Authorization 헤더를 응답 헤더로 노출한다.
      */
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
@@ -86,8 +85,6 @@ public class SecurityConfig {
         configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"));
         configuration.setAllowedHeaders(List.of("*"));
         configuration.setAllowCredentials(true);
-
-        // 클라이언트(브라우저) 측 JavaScript에서 응답 헤더의 토큰을 읽을 수 있도록 허용
         configuration.setExposedHeaders(List.of("Authorization"));
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();

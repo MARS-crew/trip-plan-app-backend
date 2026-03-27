@@ -9,4 +9,6 @@ import java.util.List;
 @Repository
 public interface PlaceTagMapRepository extends JpaRepository<PlaceTagMap, Long> {
     List<PlaceTagMap> findAllByPlace_PlaceIdInAndIsDeletedFalse(List<Long> placeIds);
+
+    List<PlaceTagMap> findAllByPlace_PlaceIdAndIsDeletedFalse(Long placeId);
 }
