@@ -12,6 +12,7 @@ import mars.tripplanappbackend.global.enums.UseYnEnum;
 import mars.tripplanappbackend.global.exception.BusinessException;
 import lombok.RequiredArgsConstructor;
 import mars.tripplanappbackend.mypage.domain.User;
+import mars.tripplanappbackend.mypage.enums.LoginType;
 import mars.tripplanappbackend.mypage.repository.MyPageRepository;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.mail.SimpleMailMessage;
@@ -37,9 +38,8 @@ public class AuthService {
     /**
      * 회원가입 처리
      *
+     * 소셜 가입은 비밀번호 없이 진행되므로 loginType이 LOCAL인 경우에만 비밀번호를 검증한다.
      * 비밀번호는 평문 저장을 방지하기 위해 BCrypt로 암호화 후 저장한다.
-     * 또한 서비스 레이어에서 비밀번호 확인 값을 비교하여
-     * 클라이언트의 잘못된 요청을 사전에 차단한다.
      *
      * @param requestDto 회원가입 요청 정보
      * @return 저장된 사용자 정보를 기반으로 생성된 응답 DTO
@@ -47,28 +47,30 @@ public class AuthService {
     @Transactional
     public SignupResponseDto signUp(SignupRequestDto requestDto) {
 
-        // 클라이언트 입력 실수로 서로 다른 비밀번호가 전달되는 경우를 방지
-        if (!requestDto.getPassword().equals(requestDto.getPasswordConfirm())) {
-            throw new BusinessException(ErrorCode.PASSWORD_MISMATCH);
+        String encodedPassword = null;
+
+        if (requestDto.getLoginType() == null || requestDto.getLoginType() == LoginType.LOCAL) {
+            // 일반 가입은 비밀번호 필수
+            if (requestDto.getPassword() == null || requestDto.getPasswordConfirm() == null) {
+                throw new BusinessException(ErrorCode.INVALID_INPUT);
+            }
+            // 클라이언트 입력 실수로 서로 다른 비밀번호가 전달되는 경우를 방지
+            if (!requestDto.getPassword().equals(requestDto.getPasswordConfirm())) {
+                throw new BusinessException(ErrorCode.PASSWORD_MISMATCH);
+            }
+            encodedPassword = passwordEncoder.encode(requestDto.getPassword());
         }
 
-        // 비밀번호는 보안을 위해 해싱 처리 후 저장
-        String encodedPassword = passwordEncoder.encode(requestDto.getPassword());
-
-        // DTO → Entity 변환을 DTO 내부에서 처리하여 서비스 로직 단순화
         User user = requestDto.toEntity(encodedPassword);
-
         User savedUser = myPageRepository.save(user);
-
         return SignupResponseDto.from(savedUser);
     }
 
     /**
      * 로그인 처리
      *
-     * 사용자의 ID로 계정을 조회하고,
-     * 저장된 해시 비밀번호와 입력 비밀번호를 비교한다.
-     *
+     * 사용자의 ID로 계정을 조회하고, 저장된 해시 비밀번호와 입력 비밀번호를 비교한다.
+     * 소셜 가입 회원이 일반 로그인 API를 호출하는 경우 예외를 던진다.
      * 로그인 성공 시 AccessToken + RefreshToken을 발급하며,
      * RefreshToken은 재발급을 위해 DB에 저장한다.
      *
@@ -78,26 +80,26 @@ public class AuthService {
     @Transactional
     public LoginResponseDto login(LoginRequestDto requestDto) {
 
-        // 존재하지 않는 사용자 로그인 시도 방지
         User user = myPageRepository.findByUsersId(requestDto.getUsersId())
                 .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
+
+        // 소셜 가입 회원이 일반 로그인 시도 방지
+        if (user.getLoginType() != LoginType.LOCAL) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT);
+        }
 
         // BCrypt 해시 비교를 통해 비밀번호 검증
         if (!passwordEncoder.matches(requestDto.getPassword(), user.getPassword())) {
             throw new BusinessException(ErrorCode.INVALID_INPUT);
         }
 
-        // AccessToken은 사용자 인증용으로 사용
         String accessToken = jwtProvider.createAccessToken(
                 user.getUsersId(),
                 user.getEmail(),
                 user.getRole().name()
         );
 
-        // RefreshToken은 AccessToken 재발급을 위한 용도로 생성
         String refreshToken = jwtProvider.createRefreshToken();
-
-        // RefreshToken 탈취 위험을 줄이기 위해 유효기간을 DB에 함께 저장
         user.updateRefreshToken(refreshToken, LocalDateTime.now().plusDays(14));
 
         return LoginResponseDto.builder()
@@ -107,14 +109,12 @@ public class AuthService {
                 .build();
     }
 
-
     /**
      * AccessToken 재발급
      *
      * 클라이언트가 RefreshToken을 전달하면
      * 해당 토큰이 DB에 저장된 값과 일치하는지 확인하고,
      * 만료 여부와 토큰 유효성을 검증한 뒤 새로운 토큰을 발급한다.
-     *
      * RefreshToken은 보안을 위해 재발급 시 새로운 값으로 갱신한다.
      *
      * @param request RefreshToken 재발급 요청
@@ -125,7 +125,6 @@ public class AuthService {
 
         String refreshToken = request.getRefreshToken();
 
-        // DB에 저장된 RefreshToken 기준으로 사용자 조회
         User user = myPageRepository.findByRefreshToken(refreshToken)
                 .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_TOKEN));
 
@@ -139,7 +138,6 @@ public class AuthService {
             throw new BusinessException(ErrorCode.INVALID_TOKEN);
         }
 
-        // 새로운 AccessToken 발급
         String newAccessToken = jwtProvider.createAccessToken(
                 user.getUsersId(),
                 user.getEmail(),
@@ -148,7 +146,6 @@ public class AuthService {
 
         // RefreshToken 재사용을 방지하기 위해 새 토큰으로 교체
         String newRefreshToken = jwtProvider.createRefreshToken();
-
         user.updateRefreshToken(newRefreshToken, LocalDateTime.now().plusDays(14));
 
         return new TokenReissueResponseDto(newAccessToken, newRefreshToken);
@@ -271,5 +268,4 @@ public class AuthService {
 
         return new EmailVerifyResponseDto(requestDto.getEmail(), UseYnEnum.Y);
     }
-
 }
