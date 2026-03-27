@@ -83,7 +83,6 @@ public class AuthController {
         return ApiResponse.ok(socialLoginService.socialLogin(LoginType.GOOGLE, requestDto.getAccessToken()));
     }
 
-
     @GetMapping("/check-id")
     @ApiErrorExceptions({ErrorCode.INVALID_INPUT,  ErrorCode.USER_NOT_FOUND,
             ErrorCode.INTERNAL_ERROR, ErrorCode.DUPLICATE_USER})
