@@ -6,6 +6,5 @@ import org.springframework.stereotype.Repository;
 
 @Repository
 public interface SavedPlaceRepository extends JpaRepository<SavedPlace, Long> {
-
-    boolean existsByUser_UserIdAndPlace_PlaceIdAndIsDeletedFalse(Long userId, Long placeId);
+    boolean existsByUser_UsersIdAndPlace_PlaceIdAndIsDeletedFalse(String usersId, Long placeId);
 }

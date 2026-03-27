@@ -1,6 +1,11 @@
 package mars.tripplanappbackend.global.config.auth;
 
-import io.jsonwebtoken.*;
+import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.ExpiredJwtException;
+import io.jsonwebtoken.Jwts;
+import io.jsonwebtoken.MalformedJwtException;
+import io.jsonwebtoken.SignatureAlgorithm;
+import io.jsonwebtoken.UnsupportedJwtException;
 import io.jsonwebtoken.security.Keys;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.core.Authentication;
@@ -10,9 +15,7 @@ import java.security.Key;
 import java.util.Date;
 
 /**
- * JWT 토큰의 생명주기 관리 및 유효성 검증
- * * 클라이언트의 신원을 확인하기 위한 Access Token과
- * 세션 연장을 위한 Refresh Token의 발급 정책을 정의함
+ * JWT 토큰의 생명주기 관리 및 유효성 검증을 담당합니다.
  */
 @Component
 public class JwtProvider {
@@ -24,9 +27,8 @@ public class JwtProvider {
     public JwtProvider(
             @Value("${spring.jwt.secret}") String secretKey,
             @Value("${spring.jwt.accessTokenExpiration}") long accessTokenExpiration,
-            @Value("${spring.jwt.refreshTokenExpiration}") long refreshTokenExpiration) {
-
-        // HMAC-SHA 알고리즘에 적합한 키 규격을 보장하기 위해 Keys.hmacShaKeyFor 사용
+            @Value("${spring.jwt.refreshTokenExpiration}") long refreshTokenExpiration
+    ) {
         this.key = Keys.hmacShaKeyFor(secretKey.getBytes());
         this.accessTokenExpiration = accessTokenExpiration;
         this.refreshTokenExpiration = refreshTokenExpiration;
@@ -37,10 +39,9 @@ public class JwtProvider {
     }
 
     /**
-     * Refresh Token 생성
-     * Access Token 재발급을 위해 사용되며,
-     * 유효기간은 application.yml의 spring.jwt.refreshTokenExpiration 설정값을 따른다.
-     * 보안을 위해 payload에는 사용자 식별 정보를 포함하지 않는다.
+     * Access Token 재발급에 사용할 Refresh Token을 생성합니다.
+     *
+     * @return refresh token
      */
     public String createRefreshToken() {
         Date now = new Date();
@@ -53,7 +54,6 @@ public class JwtProvider {
     }
 
     private String createToken(String usersId, String email, String role, long validity) {
-
         Claims claims = Jwts.claims().setSubject(usersId);
         claims.put("email", email);
         claims.put("role", role);
@@ -69,9 +69,10 @@ public class JwtProvider {
     }
 
     /**
-     * 토큰 기반 인증 정보 추출
-     * * SecurityContextHolder에 저장될 Authentication 객체를 생성하며,
-     * 이후 필터 체인에서 권한 확인의 근거로 사용됨
+     * 토큰의 클레임을 읽어 SecurityContext에 저장할 Authentication 객체를 생성합니다.
+     *
+     * @param token JWT access token
+     * @return authentication
      */
     public Authentication getAuthentication(String token) {
         Claims claims = Jwts.parserBuilder()
@@ -81,20 +82,26 @@ public class JwtProvider {
                 .getBody();
 
         String usersId = claims.getSubject();
+        String email = claims.get("email", String.class);
         String role = claims.get("role", String.class);
+
+        UserPrincipal userPrincipal = new UserPrincipal(usersId, email, role);
 
         var authorities = java.util.List.of(
                 new org.springframework.security.core.authority.SimpleGrantedAuthority("ROLE_" + role)
         );
 
         return new org.springframework.security.authentication.UsernamePasswordAuthenticationToken(
-                usersId, "", authorities
+                userPrincipal, "", authorities
         );
     }
+
     /**
-     * 토큰 유효성 검증 및 예외 원인 기록
-     * * 검증 실패 시 단순히 false를 반환하는 대신,
-     * Request 객체에 에러 타입을 담아 후속 필터나 엔트리포인트에서 상세한 응답을 보낼 수 있게 함
+     * HTTP 요청 컨텍스트가 있는 경우 토큰 유효성을 검사하고 예외 원인을 request attribute로 남깁니다.
+     *
+     * @param token JWT token
+     * @param request current request
+     * @return validity
      */
     public boolean validateToken(String token, jakarta.servlet.http.HttpServletRequest request) {
         try {
@@ -114,7 +121,12 @@ public class JwtProvider {
         return false;
     }
 
-    // 내부 로직용(HTTP 요청 컨텍스트가 없는 경우) 단순 유효성 검사
+    /**
+     * HTTP 요청 컨텍스트 없이 사용할 단순 유효성 검사입니다.
+     *
+     * @param token JWT token
+     * @return validity
+     */
     public boolean validateToken(String token) {
         try {
             Jwts.parserBuilder().setSigningKey(key).build().parseClaimsJws(token);

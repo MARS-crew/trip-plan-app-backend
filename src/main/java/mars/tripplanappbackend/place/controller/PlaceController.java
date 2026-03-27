@@ -11,18 +11,16 @@ import mars.tripplanappbackend.global.config.swagger.ApiErrorExceptions;
 import mars.tripplanappbackend.global.dto.ApiResponse;
 import mars.tripplanappbackend.global.enums.ErrorCode;
 import mars.tripplanappbackend.place.dto.request.RecommendedPlaceRequestDto;
-import mars.tripplanappbackend.place.dto.request.SavePlaceRequestDto;
+import mars.tripplanappbackend.place.dto.response.PlaceDetailResponseDto;
 import mars.tripplanappbackend.place.dto.response.RecommendedPlaceListResponseDto;
-import mars.tripplanappbackend.place.dto.response.SavePlaceResponseDto;
 import mars.tripplanappbackend.place.service.PlaceService;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * 장소 관련 조회 및 상세 화면 액션 API를 제공하는 컨트롤러입니다.
+ * 장소 관련 조회 API를 제공하는 컨트롤러입니다.
  */
 @RestController
 @RequestMapping("/api/v1/places")
@@ -51,32 +49,29 @@ public class PlaceController {
     }
 
     /**
-     * 여행지 상세 화면에서 선택한 장소를 저장 목록에 추가합니다.
+     * 여행지 상세 페이지에 필요한 장소 상세 정보를 조회합니다.
      *
-     * @param placeId 저장할 장소 PK
+     * @param placeId 조회할 장소 PK
      * @param userPrincipal 현재 인증된 사용자 정보
-     * @return 저장 항목 추가 응답
+     * @return 장소 기본 정보, 태그, 저장 여부, 리뷰 미리보기를 포함한 공통 응답
      */
-    @PostMapping("/{placeId}/saved-places")
+    @GetMapping("/{placeId}")
     @ApiErrorExceptions({
-            ErrorCode.INVALID_INPUT,
             ErrorCode.UNAUTHORIZED,
             ErrorCode.USER_NOT_FOUND,
             ErrorCode.PLACE_NOT_FOUND,
-            ErrorCode.SAVED_PLACE_ALREADY_EXISTS,
             ErrorCode.INTERNAL_ERROR
     })
     @Operation(
-            summary = "저장 항목 추가",
-            description = "여행지 상세 페이지에서 선택한 장소를 저장 목록에 추가합니다."
+            summary = "여행지 상세 조회",
+            description = "여행지 상세 페이지에 필요한 장소 기본 정보, 태그, 저장 여부, 리뷰 미리보기를 조회합니다."
     )
-    public ApiResponse<SavePlaceResponseDto> savePlace(
-            @Parameter(description = "저장할 장소 PK", example = "7")
+    public ApiResponse<PlaceDetailResponseDto> findOne(
+            @Parameter(description = "조회할 장소 PK", example = "7")
             @PathVariable("placeId") Long placeId,
             @Parameter(hidden = true)
             @CurrentUser UserPrincipal userPrincipal
     ) {
-        SavePlaceRequestDto requestDto = SavePlaceRequestDto.of(placeId, userPrincipal.getUsersId());
-        return ApiResponse.ok(placeService.savePlace(requestDto));
+        return ApiResponse.ok(placeService.findOne(placeId, userPrincipal.getUsersId()));
     }
 }

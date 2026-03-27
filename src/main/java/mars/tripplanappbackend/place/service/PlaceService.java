@@ -3,19 +3,21 @@ package mars.tripplanappbackend.place.service;
 import lombok.RequiredArgsConstructor;
 import mars.tripplanappbackend.global.enums.ErrorCode;
 import mars.tripplanappbackend.global.exception.BusinessException;
-import mars.tripplanappbackend.mypage.domain.SavedPlace;
-import mars.tripplanappbackend.mypage.domain.User;
 import mars.tripplanappbackend.mypage.repository.MyPageRepository;
 import mars.tripplanappbackend.mypage.repository.SavedPlaceRepository;
 import mars.tripplanappbackend.place.domain.Place;
 import mars.tripplanappbackend.place.domain.PlaceTagMap;
 import mars.tripplanappbackend.place.dto.request.RecommendedPlaceRequestDto;
-import mars.tripplanappbackend.place.dto.request.SavePlaceRequestDto;
+import mars.tripplanappbackend.place.dto.response.PlaceDetailResponseDto;
+import mars.tripplanappbackend.place.dto.response.PlaceReviewPreviewResponseDto;
 import mars.tripplanappbackend.place.dto.response.RecommendedPlaceListResponseDto;
 import mars.tripplanappbackend.place.dto.response.RecommendedPlaceResponseDto;
-import mars.tripplanappbackend.place.dto.response.SavePlaceResponseDto;
 import mars.tripplanappbackend.place.repository.PlaceRepository;
 import mars.tripplanappbackend.place.repository.PlaceTagMapRepository;
+import mars.tripplanappbackend.review.domain.Review;
+import mars.tripplanappbackend.review.domain.ReviewImage;
+import mars.tripplanappbackend.review.repository.ReviewImageRepository;
+import mars.tripplanappbackend.review.repository.ReviewRepository;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -26,7 +28,7 @@ import java.util.Map;
 import java.util.stream.Collectors;
 
 /**
- * 장소 조회 및 상세 화면 액션 관련 비즈니스 로직을 처리하는 서비스입니다.
+ * 장소 조회 관련 비즈니스 로직을 처리하는 서비스입니다.
  */
 @Service
 @RequiredArgsConstructor
@@ -35,10 +37,12 @@ public class PlaceService {
 
     private static final int MAX_TAG_COUNT = 3;
 
-    private final PlaceRepository placeRepository;
-    private final PlaceTagMapRepository placeTagMapRepository;
     private final MyPageRepository myPageRepository;
     private final SavedPlaceRepository savedPlaceRepository;
+    private final PlaceRepository placeRepository;
+    private final PlaceTagMapRepository placeTagMapRepository;
+    private final ReviewRepository reviewRepository;
+    private final ReviewImageRepository reviewImageRepository;
 
     /**
      * 메인 페이지에 노출할 추천 여행지 목록을 조회합니다.
@@ -65,36 +69,27 @@ public class PlaceService {
     }
 
     /**
-     * 여행지 상세 화면에서 선택한 장소를 저장 목록에 추가합니다.
-     * 사용자와 장소 존재 여부를 검증한 뒤, 이미 저장된 장소가 아니면 저장 항목을 생성합니다.
+     * 장소 상세 페이지에 필요한 조회 결과를 응답 DTO 형태로 반환합니다.
      *
-     * @param requestDto 저장 항목 추가 요청 DTO
-     * @return 저장 항목 추가 응답 DTO
+     * @param placeId 조회할 장소 PK
+     * @param usersId JWT 인증 정보에서 추출한 사용자 아이디
+     * @return 장소 기본 정보, 태그, 저장 여부, 리뷰 미리보기를 담은 응답 DTO
      */
-    @Transactional
-    public SavePlaceResponseDto savePlace(SavePlaceRequestDto requestDto) {
-        validateSavePlaceRequest(requestDto);
+    public PlaceDetailResponseDto findOne(Long placeId, String usersId) {
+        validateAuthenticatedUser(usersId);
 
-        User user = findUser(requestDto.getUsersId());
-        Place place = findPlace(requestDto.getPlaceId());
+        Place place = placeRepository.findByPlaceIdAndIsDeletedFalse(placeId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.PLACE_NOT_FOUND));
 
-        if (savedPlaceRepository.existsByUser_UserIdAndPlace_PlaceIdAndIsDeletedFalse(user.getUserId(), place.getPlaceId())) {
-            throw new BusinessException(ErrorCode.SAVED_PLACE_ALREADY_EXISTS);
-        }
+        List<String> tags = findPlaceTags(placeId);
+        boolean saved = savedPlaceRepository.existsByUser_UsersIdAndPlace_PlaceIdAndIsDeletedFalse(usersId, placeId);
+        List<PlaceReviewPreviewResponseDto> reviewPreviews = findReviewPreviews(placeId);
 
-        SavedPlace savedPlace = savedPlaceRepository.save(
-                SavedPlace.builder()
-                        .user(user)
-                        .place(place)
-                        .build()
-        );
-
-        return SavePlaceResponseDto.from(savedPlace);
+        return PlaceDetailResponseDto.from(place, tags, saved, reviewPreviews);
     }
 
     /**
-     * 조회된 장소 목록을 기준으로 장소별 대표 태그를 묶어 반환합니다.
-     * 중복 태그는 제거하고, 화면에 필요한 최대 3개의 태그만 유지합니다.
+     * 추천 대상 장소 목록에 포함된 대표 태그를 장소별로 묶어 반환합니다.
      *
      * @param places 추천 대상 장소 목록
      * @return 장소 PK별 대표 태그 목록
@@ -127,35 +122,73 @@ public class PlaceService {
     }
 
     /**
-     * 저장 요청 파라미터가 유효한지 확인합니다.
+     * 인증 사용자 아이디가 비어 있지 않고 실제 회원으로 존재하는지 검증합니다.
      *
-     * @param requestDto 저장 요청 DTO
+     * @param usersId JWT 인증 정보에서 추출한 사용자 아이디
      */
-    private void validateSavePlaceRequest(SavePlaceRequestDto requestDto) {
-        if (requestDto.getPlaceId() == null || requestDto.getPlaceId() < 1 || requestDto.getUsersId() == null) {
-            throw new BusinessException(ErrorCode.INVALID_INPUT);
+    private void validateAuthenticatedUser(String usersId) {
+        if (usersId == null || usersId.isBlank()) {
+            throw new BusinessException(ErrorCode.UNAUTHORIZED);
         }
-    }
 
-    /**
-     * 사용자 아이디로 활성 사용자 정보를 조회합니다.
-     *
-     * @param usersId JWT에서 추출한 사용자 아이디
-     * @return 사용자 엔티티
-     */
-    private User findUser(String usersId) {
-        return myPageRepository.findByUsersId(usersId)
+        myPageRepository.findByUsersId(usersId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
     }
 
     /**
-     * 장소 PK로 삭제되지 않은 장소 정보를 조회합니다.
+     * 장소 상세 상단에 노출할 태그를 최대 3개까지 조회합니다.
      *
-     * @param placeId 장소 PK
-     * @return 장소 엔티티
+     * @param placeId 조회할 장소 PK
+     * @return 중복이 제거된 태그명 목록
      */
-    private Place findPlace(Long placeId) {
-        return placeRepository.findByPlaceIdAndIsDeletedFalse(placeId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.PLACE_NOT_FOUND));
+    private List<String> findPlaceTags(Long placeId) {
+        return placeTagMapRepository.findAllByPlace_PlaceIdAndIsDeletedFalse(placeId).stream()
+                .map(placeTagMap -> placeTagMap.getPlaceTag().getTagName())
+                .distinct()
+                .limit(MAX_TAG_COUNT)
+                .toList();
+    }
+
+    /**
+     * 장소 상세 하단에 노출할 최신 리뷰 미리보기 3건을 조회합니다.
+     *
+     * @param placeId 조회할 장소 PK
+     * @return 리뷰 응답 DTO 목록
+     */
+    private List<PlaceReviewPreviewResponseDto> findReviewPreviews(Long placeId) {
+        List<Review> reviews = reviewRepository.findTop3ByPlace_PlaceIdAndIsDeletedFalseOrderByCreatedAtDesc(placeId);
+        Map<Long, List<String>> reviewImages = findReviewImages(reviews);
+
+        return reviews.stream()
+                .map(review -> PlaceReviewPreviewResponseDto.from(
+                        review,
+                        reviewImages.getOrDefault(review.getReviewId(), List.of())
+                ))
+                .toList();
+    }
+
+    /**
+     * 리뷰 목록에 포함된 리뷰 이미지 URL을 리뷰 PK 기준으로 그룹화합니다.
+     *
+     * @param reviews 리뷰 미리보기 대상 목록
+     * @return reviewId 기준 이미지 URL 목록 맵
+     */
+    private Map<Long, List<String>> findReviewImages(List<Review> reviews) {
+        if (reviews.isEmpty()) {
+            return Collections.emptyMap();
+        }
+
+        List<Long> reviewIds = reviews.stream()
+                .map(Review::getReviewId)
+                .toList();
+
+        List<ReviewImage> reviewImages = reviewImageRepository
+                .findAllByReview_ReviewIdInAndIsDeletedFalseOrderBySortOrderAsc(reviewIds);
+
+        return reviewImages.stream()
+                .collect(Collectors.groupingBy(
+                        reviewImage -> reviewImage.getReview().getReviewId(),
+                        Collectors.mapping(ReviewImage::getImageUrl, Collectors.toList())
+                ));
     }
 }
