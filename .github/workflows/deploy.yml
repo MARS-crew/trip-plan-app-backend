@@ -2,7 +2,7 @@ name: Backend Deploy
 
 on:
   push:
-    branches: ["main"]
+    branches: ["develop"]
 
 jobs:
   deploy:
@@ -22,20 +22,47 @@ jobs:
         run: chmod +x gradlew
 
       - name: Build with Gradle
-        run: ./gradlew clean bootJar -x test
+        run: ./gradlew clean bootJar -x test --no-daemon
+
+      - name: Prepare deploy directory
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          port: ${{ secrets.SSH_PORT }}
+          script: |
+            mkdir -p "${{ secrets.DEPLOY_PATH }}/deploy-artifacts"
+
+      - name: Copy jar to server
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          port: ${{ secrets.SSH_PORT }}
+          source: "build/libs/*.jar"
+          target: "${{ secrets.DEPLOY_PATH }}/deploy-artifacts"
 
       - name: Deploy to server
         uses: appleboy/ssh-action@v1.2.0
         with:
-          host: 125.133.62.199
-          username: marssq
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_KEY }}
-          port: 26022
+          port: ${{ secrets.SSH_PORT }}
           script: |
             set -e
-            cd /home/marssq/trip-backend
-            git fetch origin
-            git checkout main
-            git pull origin main
+            cd "${{ secrets.DEPLOY_PATH }}"
+            cp deploy-artifacts/build/libs/*.jar app.jar
+            cat <<'EOF' > Dockerfile.deploy
+            FROM eclipse-temurin:17-jdk
+            WORKDIR /app
+            COPY app.jar app.jar
+            EXPOSE 8080
+            ENTRYPOINT ["java", "-jar", "app.jar"]
+            EOF
+            docker build --no-cache -f Dockerfile.deploy -t trip-backend:latest .
             docker compose down || true
-            docker compose up -d --build
+            docker compose up -d --no-build
+            rm -f Dockerfile.deploy
