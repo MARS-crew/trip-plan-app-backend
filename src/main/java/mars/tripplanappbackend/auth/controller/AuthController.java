@@ -99,4 +99,12 @@ public class AuthController {
         FindIdResponseDto response = authService.findUsersId(requestDto);
         return ApiResponse.ok(response);
     }
+
+    @PostMapping("/email-request")
+    @ApiErrorExceptions({ErrorCode.INVALID_INPUT, ErrorCode.USER_NOT_FOUND, ErrorCode.INTERNAL_ERROR})
+    @Operation(summary = "이메일 전송", description = "이메일 전송 api, gmail만 가능")
+    public ApiResponse<EmailResponseDto> findId(@Valid @RequestBody EmailRequestDto requestDto){
+        EmailResponseDto response = authService.sendEmail(requestDto);
+        return ApiResponse.ok(response);
+    }
 }
