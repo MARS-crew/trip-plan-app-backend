@@ -122,4 +122,8 @@ public class User extends BaseEntity {
         }
         return this.refreshTokenExpiresAt.isBefore(LocalDateTime.now());
     }
+
+    public void setEmailVerified(UseYnEnum useYnEnum) {
+        this.emailVerified = UseYnEnum.Y;
+    }
 }
