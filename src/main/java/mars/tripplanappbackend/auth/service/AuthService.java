@@ -1,9 +1,6 @@
 package mars.tripplanappbackend.auth.service;
 
-import mars.tripplanappbackend.auth.dto.request.FindIdRequestDto;
-import mars.tripplanappbackend.auth.dto.request.LoginRequestDto;
-import mars.tripplanappbackend.auth.dto.request.SignupRequestDto;
-import mars.tripplanappbackend.auth.dto.request.TokenReissueRequestDto;
+import mars.tripplanappbackend.auth.dto.request.*;
 import mars.tripplanappbackend.auth.dto.response.*;
 import mars.tripplanappbackend.auth.dto.response.CheckIdResponseDto;
 import mars.tripplanappbackend.auth.dto.response.LoginResponseDto;
@@ -11,16 +8,21 @@ import mars.tripplanappbackend.auth.dto.response.SignupResponseDto;
 import mars.tripplanappbackend.auth.dto.response.TokenReissueResponseDto;
 import mars.tripplanappbackend.global.config.auth.JwtProvider;
 import mars.tripplanappbackend.global.enums.ErrorCode;
+import mars.tripplanappbackend.global.enums.UseYnEnum;
 import mars.tripplanappbackend.global.exception.BusinessException;
 import lombok.RequiredArgsConstructor;
 import mars.tripplanappbackend.mypage.domain.User;
 import mars.tripplanappbackend.mypage.enums.LoginType;
 import mars.tripplanappbackend.mypage.repository.MyPageRepository;
+import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.mail.SimpleMailMessage;
+import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.concurrent.TimeUnit;
 
 @Service
 @RequiredArgsConstructor
@@ -30,6 +32,8 @@ public class AuthService {
     private final MyPageRepository myPageRepository;
     private final BCryptPasswordEncoder passwordEncoder;
     private final JwtProvider jwtProvider;
+    private final JavaMailSender mailSender;
+    private final RedisTemplate<String, String> redisTemplate;
 
     /**
      * 회원가입 처리
@@ -178,5 +182,90 @@ public class AuthService {
                 .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
 
         return new FindIdResponseDto(user.getUsersId());
+    }
+
+    /**
+     *
+     * 이메일 전송
+     *
+     * 입력된 gmail로 인증 코드 6자리를 전송한다.
+     * 전송에 실패할 경우 EMAIL_SEND_FAIL 에러를 발생시킨다.
+     *
+     * @param requestDto 요청 보낸 이메일 정보
+     * @return 이메일 전송 결과를 담은 응답 DTO
+     */
+
+    @Transactional
+    public EmailResponseDto sendEmail(EmailRequestDto requestDto) {
+        
+        String email = requestDto.getEmail();
+        String code = generateVerificationCode();
+
+        
+        //redis에 저장되는 내용 ex) email verify: email@gmail.com
+        // 5분 뒤에 알아서 삭제됨
+        redisTemplate.opsForValue().set(
+                "email verify:" + email,
+                code,
+                5,
+                TimeUnit.MINUTES
+        );
+
+        // 사용자에게 전달되는 이메일 내용
+        SimpleMailMessage message = new SimpleMailMessage();
+        message.setTo(email);
+        message.setSubject("PLI 이메일 인증");
+        message.setText("PLI 이메일 인증 코드: " + code);
+
+        try {
+            mailSender.send(message);
+        } catch (Exception e) {
+            throw new BusinessException(ErrorCode.EMAIL_SEND_FAIL);
+        }
+
+        return new EmailResponseDto(email);
+    }
+
+    // 인증 코드 계산 방법
+    private String generateVerificationCode() {
+        int code = (int) (Math.random() * 900000) + 100000;
+        return String.valueOf(code);
+    }
+
+    /**
+     * 이메일 인증
+     *
+     * 전송된 이메일과 인증코드를 입력받고
+     * Redis에 저장된 인증 코드와 비교하여 일치하는지 확인한다.
+     * 일치하지 않으면 INVALID_EMAIL_CODE 에러 처리
+     *
+     * @param requestDto 전송 보낸 이메일, 전송된 인증 코드
+     * @return 인증된 이메일, 인증 여부
+     */
+    @Transactional
+    public EmailVerifyResponseDto verifyEmailCode(EmailVerifyRequestDto requestDto) {
+        String redisKey = "email verify:" + requestDto.getEmail();
+        String savedCode = redisTemplate.opsForValue().get(redisKey);
+
+        // 코드가 만료됐을 경우 (5분 이후)
+        if (savedCode == null) {
+            throw new BusinessException(ErrorCode.EMAIL_CODE_EXPIRED);
+        }
+
+        // 코드가 일치하지 않을 경우
+        if (!savedCode.equals(requestDto.getCode())) {
+            throw new BusinessException(ErrorCode.INVALID_EMAIL_CODE);
+        }
+
+        // 인증 성공 시 Redis에서 삭제
+        redisTemplate.delete(redisKey);
+
+        // DB에서 사용자 찾기 후 email_verified Y로 업데이트
+        User user = myPageRepository.findByEmail(requestDto.getEmail())
+                .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
+        user.setEmailVerified(UseYnEnum.Y);
+        myPageRepository.save(user);
+
+        return new EmailVerifyResponseDto(requestDto.getEmail(), UseYnEnum.Y);
     }
 }
