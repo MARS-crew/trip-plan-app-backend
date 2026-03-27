@@ -41,7 +41,7 @@ public class CurrentUserArgumentResolver implements HandlerMethodArgumentResolve
         }
 
         if (principal instanceof String usersId) {
-            return UserPrincipal.from(usersId);
+            return new UserPrincipal(usersId, null, null);
         }
 
         return null;
