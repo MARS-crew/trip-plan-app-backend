@@ -10,6 +10,7 @@ import java.util.Optional;
 
 @Repository
 public interface PlaceRepository extends JpaRepository<Place, Long> {
+
     List<Place> findByIsDeletedFalseOrderByRatingAvgDescReviewCountDesc(Pageable pageable);
 
     Optional<Place> findByPlaceIdAndIsDeletedFalse(Long placeId);
