@@ -14,4 +14,10 @@ public interface PlaceRepository extends JpaRepository<Place, Long> {
     List<Place> findByIsDeletedFalseOrderByRatingAvgDescReviewCountDesc(Pageable pageable);
 
     Optional<Place> findByPlaceIdAndIsDeletedFalse(Long placeId);
+
+    List<Place> findAllByCityNameAndPlaceIdNotAndIsDeletedFalse(String cityName, Long placeId);
+
+    List<Place> findAllByCountryNameAndPlaceIdNotAndIsDeletedFalse(String countryName, Long placeId);
+
+    List<Place> findAllByPlaceIdNotAndIsDeletedFalse(Long placeId);
 }
