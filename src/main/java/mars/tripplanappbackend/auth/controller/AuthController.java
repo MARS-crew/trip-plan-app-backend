@@ -30,7 +30,7 @@ public class AuthController {
     @ApiErrorExceptions({ErrorCode.INVALID_INPUT, ErrorCode.INTERNAL_ERROR, ErrorCode.DUPLICATE_USER})
     @Operation(summary = "회원가입",
             description = "회원가입 api, loginType에는 LOCAL, KAKAO, NAVER, GOOGLE 하나를 작성. " +
-                    "소셜 로그인 시도 시 비밀번호 미작성해도 회원가입 가능함. 컬럼을 아예 날리거나 null로 작성")
+                    "소셜 로그인 시도 시 비밀번호 관련 컬럼 삭제 후 진행, 로컬 로그인 시도 시 loginType을 Local 또는 컬러 삭제, socialProviderId 삭제")
     public SignupResponseDto signUp(@Valid @RequestBody SignupRequestDto requestDto) {
         return authService.signUp(requestDto);
     }

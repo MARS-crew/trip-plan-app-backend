@@ -2,6 +2,7 @@ package mars.tripplanappbackend.auth.dto.response;
 
 import com.fasterxml.jackson.annotation.JsonPropertyOrder;
 import io.swagger.v3.oas.annotations.media.Schema;
+import jakarta.validation.constraints.NotNull;
 import lombok.*;
 import mars.tripplanappbackend.global.enums.Role;
 import mars.tripplanappbackend.global.enums.UseYnEnum;
@@ -26,6 +27,7 @@ import static mars.tripplanappbackend.global.enums.UseYnEnum.N;
         "nickname",
         "gender",
         "birth",
+        "countryCode",
         "privacyAgreed",
         "marketingAgreed",
         "nightMarketingAgreed",
@@ -61,6 +63,9 @@ public class SignupResponseDto {
     @Schema(description = "생년월일", example = "2005-07-11")
     private LocalDate birth;
 
+    @Schema(description = "국가", example = "서울 / 대한민국")
+    private String countryCode;
+
     @Schema(description = "서비스 이용약관 동의", example = "Y")
     @Builder.Default
     private UseYnEnum privacyAgreed = N;
@@ -87,6 +92,7 @@ public class SignupResponseDto {
                 .nickname(entity.getNickname())
                 .gender(entity.getGender())
                 .birth(entity.getBirth())
+                .countryCode(entity.getCountryCode())
                 .privacyAgreed(entity.getPrivacyAgreed())
                 .marketingAgreed(entity.getMarketingAgreed())
                 .nightMarketingAgreed(entity.getNightMarketingAgreed())
