@@ -1,24 +1,39 @@
 package mars.tripplanappbackend.place.service;
 
 import lombok.RequiredArgsConstructor;
+import mars.tripplanappbackend.global.enums.ErrorCode;
+import mars.tripplanappbackend.global.exception.BusinessException;
+import mars.tripplanappbackend.mypage.repository.MyPageRepository;
+import mars.tripplanappbackend.mypage.repository.SavedPlaceRepository;
 import mars.tripplanappbackend.place.domain.Place;
 import mars.tripplanappbackend.place.domain.PlaceTagMap;
+import mars.tripplanappbackend.place.dto.request.NearbyRecommendedPlaceRequestDto;
 import mars.tripplanappbackend.place.dto.request.RecommendedPlaceRequestDto;
+import mars.tripplanappbackend.place.dto.response.NearbyRecommendedPlaceListResponseDto;
+import mars.tripplanappbackend.place.dto.response.NearbyRecommendedPlaceResponseDto;
+import mars.tripplanappbackend.place.dto.response.PlaceDetailResponseDto;
+import mars.tripplanappbackend.place.dto.response.PlaceReviewPreviewResponseDto;
 import mars.tripplanappbackend.place.dto.response.RecommendedPlaceListResponseDto;
 import mars.tripplanappbackend.place.dto.response.RecommendedPlaceResponseDto;
 import mars.tripplanappbackend.place.repository.PlaceRepository;
 import mars.tripplanappbackend.place.repository.PlaceTagMapRepository;
+import mars.tripplanappbackend.review.domain.Review;
+import mars.tripplanappbackend.review.domain.ReviewImage;
+import mars.tripplanappbackend.review.repository.ReviewImageRepository;
+import mars.tripplanappbackend.review.repository.ReviewRepository;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
 /**
- * 장소 조회 관련 비즈니스 로직을 처리하는 서비스입니다.
+ * 메인 페이지와 여행지 상세 페이지에서 사용하는 장소 API의 비즈니스 로직을 처리하는 서비스입니다.
  */
 @Service
 @RequiredArgsConstructor
@@ -26,13 +41,18 @@ import java.util.stream.Collectors;
 public class PlaceService {
 
     private static final int MAX_TAG_COUNT = 3;
+    private static final int MAX_NEARBY_RECOMMENDED_PLACE_COUNT = 3;
+    private static final long MAX_NEARBY_DISTANCE_METERS = 1_000L;
 
+    private final MyPageRepository myPageRepository;
+    private final SavedPlaceRepository savedPlaceRepository;
     private final PlaceRepository placeRepository;
     private final PlaceTagMapRepository placeTagMapRepository;
+    private final ReviewRepository reviewRepository;
+    private final ReviewImageRepository reviewImageRepository;
 
     /**
-     * 메인 페이지에 노출할 추천 여행지 목록을 조회합니다.
-     * 장소는 평점과 리뷰 수를 기준으로 정렬해 조회하고, 각 장소의 대표 태그를 함께 반환합니다.
+     * 평점과 리뷰 수를 기준으로 메인 페이지 추천 여행지 목록을 조회합니다.
      *
      * @param requestDto 추천 여행지 조회 요청 DTO
      * @return 추천 여행지 목록 응답 DTO
@@ -55,11 +75,68 @@ public class PlaceService {
     }
 
     /**
-     * 조회된 장소 목록을 기준으로 장소별 대표 태그를 묶어 반환합니다.
-     * 중복 태그는 제거하고, 화면에 필요한 최대 3개의 태그만 유지합니다.
+     * 여행지 상세 페이지에 노출할 주변 추천 장소 목록을 조회합니다.
+     * 주변 장소는 같은 도시를 우선으로 찾고, 없으면 같은 국가, 그것도 부족하면
+     * 현재 장소를 제외한 전체 장소에서 후보를 조회합니다.
      *
-     * @param places 추천 대상 장소 목록
-     * @return 장소 PK별 대표 태그 목록
+     * @param requestDto 주변 추천 장소 조회 요청 DTO
+     * @return 주변 추천 장소 목록 응답 DTO
+     */
+    public NearbyRecommendedPlaceListResponseDto getNearbyRecommendedPlaces(
+            NearbyRecommendedPlaceRequestDto requestDto
+    ) {
+        validateAuthenticatedUser(requestDto.getUsersId());
+
+        Place targetPlace = placeRepository.findByPlaceIdAndIsDeletedFalse(requestDto.getPlaceId())
+                .orElseThrow(() -> new BusinessException(ErrorCode.PLACE_NOT_FOUND));
+
+        List<Place> sortedCandidates = findNearbyCandidates(targetPlace).stream()
+                .sorted(buildNearbyPlaceComparator(targetPlace))
+                .toList();
+
+        List<Place> selectedCandidates = sortedCandidates.stream()
+                .filter(place -> isWithinNearbyDistance(targetPlace, place))
+                .limit(MAX_NEARBY_RECOMMENDED_PLACE_COUNT)
+                .toList();
+
+        if (selectedCandidates.isEmpty()) {
+            selectedCandidates = sortedCandidates.stream()
+                    .limit(MAX_NEARBY_RECOMMENDED_PLACE_COUNT)
+                    .toList();
+        }
+
+        List<NearbyRecommendedPlaceResponseDto> nearbyRecommendedPlaces = selectedCandidates.stream()
+                .map(place -> NearbyRecommendedPlaceResponseDto.from(place, calculateDistanceMeters(targetPlace, place)))
+                .toList();
+
+        return NearbyRecommendedPlaceListResponseDto.of(nearbyRecommendedPlaces);
+    }
+
+    /**
+     * 여행지 상세 페이지에 필요한 장소 상세 응답 데이터를 조회합니다.
+     *
+     * @param placeId 조회할 장소 PK
+     * @param usersId 인증 사용자 아이디
+     * @return 여행지 상세 응답 DTO
+     */
+    public PlaceDetailResponseDto findOne(Long placeId, String usersId) {
+        validateAuthenticatedUser(usersId);
+
+        Place place = placeRepository.findByPlaceIdAndIsDeletedFalse(placeId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.PLACE_NOT_FOUND));
+
+        List<String> tags = findPlaceTags(placeId);
+        boolean saved = savedPlaceRepository.existsByUser_UsersIdAndPlace_PlaceIdAndIsDeletedFalse(usersId, placeId);
+        List<PlaceReviewPreviewResponseDto> reviewPreviews = findReviewPreviews(placeId);
+
+        return PlaceDetailResponseDto.from(place, tags, saved, reviewPreviews);
+    }
+
+    /**
+     * 메인 페이지 추천 장소 목록에 사용할 대표 태그를 장소별로 묶어 반환합니다.
+     *
+     * @param places 추천 장소 엔티티 목록
+     * @return 장소 PK를 키로 가지는 태그 목록 맵
      */
     private Map<Long, List<String>> getTagsByPlaceId(List<Place> places) {
         if (places.isEmpty()) {
@@ -85,6 +162,178 @@ public class PlaceService {
                                                 .toList()
                                 )
                         )
+                ));
+    }
+
+    /**
+     * 인증 사용자 아이디가 비어 있지 않고 실제 사용자 테이블에 존재하는지 확인합니다.
+     *
+     * @param usersId 인증 사용자 아이디
+     */
+    private void validateAuthenticatedUser(String usersId) {
+        if (usersId == null || usersId.isBlank()) {
+            throw new BusinessException(ErrorCode.UNAUTHORIZED);
+        }
+
+        myPageRepository.findByUsersId(usersId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
+    }
+
+    /**
+     * 여행지 상세 페이지에 노출할 장소 태그를 최대 3개까지 조회합니다.
+     *
+     * @param placeId 조회할 장소 PK
+     * @return 중복을 제거한 장소 태그 목록
+     */
+    private List<String> findPlaceTags(Long placeId) {
+        return placeTagMapRepository.findAllByPlace_PlaceIdAndIsDeletedFalse(placeId).stream()
+                .map(placeTagMap -> placeTagMap.getPlaceTag().getTagName())
+                .distinct()
+                .limit(MAX_TAG_COUNT)
+                .toList();
+    }
+
+    /**
+     * 주변 추천 후보 장소를 같은 도시 기준으로 먼저 조회하고, 없으면 같은 국가,
+     * 마지막으로는 현재 장소를 제외한 전체 장소에서 조회합니다.
+     *
+     * @param targetPlace 현재 상세 페이지 기준 장소
+     * @return 주변 추천 후보 장소 목록
+     */
+    private List<Place> findNearbyCandidates(Place targetPlace) {
+        if (hasText(targetPlace.getCityName())) {
+            List<Place> cityPlaces = placeRepository.findAllByCityNameAndPlaceIdNotAndIsDeletedFalse(
+                    targetPlace.getCityName(),
+                    targetPlace.getPlaceId()
+            );
+            if (!cityPlaces.isEmpty()) {
+                return cityPlaces;
+            }
+        }
+
+        if (hasText(targetPlace.getCountryName())) {
+            List<Place> countryPlaces = placeRepository.findAllByCountryNameAndPlaceIdNotAndIsDeletedFalse(
+                    targetPlace.getCountryName(),
+                    targetPlace.getPlaceId()
+            );
+            if (!countryPlaces.isEmpty()) {
+                return countryPlaces;
+            }
+        }
+
+        return placeRepository.findAllByPlaceIdNotAndIsDeletedFalse(targetPlace.getPlaceId());
+    }
+
+    /**
+     * 주변 추천 장소 정렬 기준을 생성합니다.
+     * 거리 우선 정렬 후 평점, 리뷰 수, 장소 PK 순으로 정렬합니다.
+     *
+     * @param targetPlace 현재 상세 페이지 기준 장소
+     * @return 주변 추천 후보 정렬 Comparator
+     */
+    private Comparator<Place> buildNearbyPlaceComparator(Place targetPlace) {
+        return Comparator
+                .comparing(
+                        (Place place) -> calculateDistanceMeters(targetPlace, place),
+                        Comparator.nullsLast(Long::compareTo)
+                )
+                .thenComparing(Place::getRatingAvg, Comparator.nullsLast(Comparator.reverseOrder()))
+                .thenComparing(Place::getReviewCount, Comparator.nullsLast(Comparator.reverseOrder()))
+                .thenComparing(Place::getPlaceId);
+    }
+
+    /**
+     * 후보 장소가 주변 추천 섹션의 거리 기준 이내인지 확인합니다.
+     *
+     * @param targetPlace 현재 상세 페이지 기준 장소
+     * @param candidate 주변 추천 후보 장소
+     * @return 1km 이내이면 true
+     */
+    private boolean isWithinNearbyDistance(Place targetPlace, Place candidate) {
+        Long distanceMeters = calculateDistanceMeters(targetPlace, candidate);
+        return distanceMeters != null && distanceMeters <= MAX_NEARBY_DISTANCE_METERS;
+    }
+
+    /**
+     *
+     * @param source 기준 장소
+     * @param target 비교 대상 장소
+     * @return 거리(미터), 좌표가 없으면 null
+     */
+    private Long calculateDistanceMeters(Place source, Place target) {
+        if (source.getLatitude() == null || source.getLongitude() == null
+                || target.getLatitude() == null || target.getLongitude() == null) {
+            return null;
+        }
+
+        double sourceLatitude = source.getLatitude().doubleValue();
+        double sourceLongitude = source.getLongitude().doubleValue();
+        double targetLatitude = target.getLatitude().doubleValue();
+        double targetLongitude = target.getLongitude().doubleValue();
+
+        double latitudeDelta = Math.toRadians(targetLatitude - sourceLatitude);
+        double longitudeDelta = Math.toRadians(targetLongitude - sourceLongitude);
+        double latitude1 = Math.toRadians(sourceLatitude);
+        double latitude2 = Math.toRadians(targetLatitude);
+
+        double haversine = Math.sin(latitudeDelta / 2) * Math.sin(latitudeDelta / 2)
+                + Math.cos(latitude1) * Math.cos(latitude2)
+                * Math.sin(longitudeDelta / 2) * Math.sin(longitudeDelta / 2);
+        double distance = 6_371_000d * 2 * Math.atan2(Math.sqrt(haversine), Math.sqrt(1 - haversine));
+
+        return Math.round(distance);
+    }
+
+    /**
+     * 전달된 문자열이 실제로 사용할 수 있는 값인지 확인합니다.
+     *
+     * @param value 확인할 문자열 값
+     * @return null이 아니고 공백이 아니면 true
+     */
+    private boolean hasText(String value) {
+        return value != null && !value.isBlank();
+    }
+
+    /**
+     * 여행지 상세 페이지에 노출할 최신 리뷰 미리보기 3개를 조회합니다.
+     *
+     * @param placeId 조회할 장소 PK
+     * @return 리뷰 미리보기 응답 DTO 목록
+     */
+    private List<PlaceReviewPreviewResponseDto> findReviewPreviews(Long placeId) {
+        List<Review> reviews = reviewRepository.findTop3ByPlace_PlaceIdAndIsDeletedFalseOrderByCreatedAtDesc(placeId);
+        Map<Long, List<String>> reviewImages = findReviewImages(reviews);
+
+        return reviews.stream()
+                .map(review -> PlaceReviewPreviewResponseDto.from(
+                        review,
+                        reviewImages.getOrDefault(review.getReviewId(), List.of())
+                ))
+                .toList();
+    }
+
+    /**
+     * 리뷰 목록에 포함된 이미지 URL을 리뷰 PK 기준으로 묶어 반환합니다.
+     *
+     * @param reviews 미리보기용으로 조회한 리뷰 엔티티 목록
+     * @return 리뷰 PK를 키로 가지는 이미지 URL 목록 맵
+     */
+    private Map<Long, List<String>> findReviewImages(List<Review> reviews) {
+        if (reviews.isEmpty()) {
+            return Collections.emptyMap();
+        }
+
+        List<Long> reviewIds = reviews.stream()
+                .map(Review::getReviewId)
+                .toList();
+
+        List<ReviewImage> reviewImages = reviewImageRepository
+                .findAllByReview_ReviewIdInAndIsDeletedFalseOrderBySortOrderAsc(reviewIds);
+
+        return reviewImages.stream()
+                .collect(Collectors.groupingBy(
+                        reviewImage -> reviewImage.getReview().getReviewId(),
+                        Collectors.mapping(ReviewImage::getImageUrl, Collectors.toList())
                 ));
     }
 }

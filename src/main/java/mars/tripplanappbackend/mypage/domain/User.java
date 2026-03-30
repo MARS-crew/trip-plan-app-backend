@@ -43,7 +43,7 @@ public class User extends BaseEntity {
     @Column(length = 20, nullable = false)
     private String nickname;
 
-    @Column(length = 255, nullable = false)
+    @Column(length = 255, nullable = true)
     private String password;
 
     @Column(name = "birth_day", nullable = false)
@@ -121,6 +121,10 @@ public class User extends BaseEntity {
             return true;
         }
         return this.refreshTokenExpiresAt.isBefore(LocalDateTime.now());
+    }
+
+    public void setEmailVerified(UseYnEnum useYnEnum) {
+        this.emailVerified = UseYnEnum.Y;
     }
 
     public void updateProfile(String nickname, LocalDate birth,

@@ -38,14 +38,12 @@ public class SignupRequestDto {
     private String nickname;
 
     @Schema(description = "비밀번호", example = "cye1111*")
-    @NotNull(message = "필수 입력값입니다.")
     @Pattern(regexp = "^(?=.*[A-Za-z])(?=.*\\d)(?=.*[@$!%*#?&])[A-Za-z\\d@$!%*#?&]{8,20}$",
             message = "비밀번호는 8~20자이며, 영문, 숫자, 특수문자를 포함해야 합니다.")
     @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
     private String password;
 
     @Schema(description = "비밀번호 확인", example = "cye1111*")
-    @NotNull(message = "필수 입력값입니다.")
     @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
     private String passwordConfirm;
 
@@ -57,6 +55,10 @@ public class SignupRequestDto {
     @NotNull(message = "필수 입력값입니다.")
     private LocalDate birth;
 
+    @Schema(description = "국가", example = "서울 / 대한민국")
+    @NotNull(message = "필수 입력값입니다.")
+    private String countryCode;
+
     @Schema(description = "서비스 이용약관 동의", example = "Y")
     @NotNull(message = "필수 입력값입니다.")
     private UseYnEnum privacyAgreed;
@@ -66,6 +68,12 @@ public class SignupRequestDto {
 
     @Schema(description = "야간 마케팅 동의", example = "Y")
     private UseYnEnum nightMarketingAgreed;
+
+    @Schema(description = "소셜 제공자 타입 (일반 가입 시 null)", example = "LOCAL")
+    private LoginType loginType;
+
+    @Schema(description = "소셜 고유 식별자 (일반 가입 시 null)", example = "4808178777")
+    private String socialProviderId;
 
     public User toEntity (String encodedPassword){
         return User.builder()
@@ -77,7 +85,9 @@ public class SignupRequestDto {
                 .password(encodedPassword)
                 .gender(this.gender)
                 .birth(this.birth)
-                .loginType(LoginType.LOCAL)
+                .countryCode(this.countryCode)
+                .loginType(this.loginType != null ? this.loginType : LoginType.LOCAL)
+                .socialProviderId(this.socialProviderId)
                 .privacyAgreed(this.privacyAgreed)
                 .marketingAgreed(this.marketingAgreed == null ? UseYnEnum.N : this.marketingAgreed)
                 .nightMarketingAgreed(this.nightMarketingAgreed == null ? UseYnEnum.N : this.nightMarketingAgreed)
