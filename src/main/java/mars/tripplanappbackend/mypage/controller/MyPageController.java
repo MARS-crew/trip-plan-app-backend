@@ -10,6 +10,7 @@ import mars.tripplanappbackend.global.config.swagger.ApiErrorExceptions;
 import mars.tripplanappbackend.global.dto.ApiResponse;
 import mars.tripplanappbackend.global.enums.ErrorCode;
 import mars.tripplanappbackend.mypage.dto.request.UpdateProfileRequestDto;
+import mars.tripplanappbackend.mypage.dto.resopnse.AgreeResponseDto;
 import mars.tripplanappbackend.mypage.dto.resopnse.MyProfileResponseDto;
 import mars.tripplanappbackend.mypage.dto.resopnse.UpdateProfileResponseDto;
 import mars.tripplanappbackend.mypage.service.MyPageService;
@@ -45,6 +46,16 @@ public class MyPageController {
     ) {
         String usersId = userPrincipal.getUsersId();
         UpdateProfileResponseDto response = myPageService.updateProfile(usersId, requestDto);
+        return ApiResponse.ok(response);
+    }
+
+    @GetMapping("/agree")
+    @Operation(summary = "알림 설정 조회", description = "푸시 알림 설정 조회 api")
+    public ApiResponse<AgreeResponseDto> getNotificationSetting(
+            @CurrentUser UserPrincipal userPrincipal
+    ) {
+        String usersId = userPrincipal.getUsersId();
+        AgreeResponseDto response = myPageService.getAgree(usersId);
         return ApiResponse.ok(response);
     }
 }
