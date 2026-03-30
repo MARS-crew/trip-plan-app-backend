@@ -36,14 +36,14 @@ public class MyPageController {
     }
 
     @PatchMapping("/me")
-    @Operation(summary = "프로필 수정", description = "사용자 프로필 수정")
+    @Operation(summary = "프로필 수정", description = "사용자 프로필 수정, 한 컬럼씩 수정 가능")
     @ApiErrorExceptions({ErrorCode.USER_NOT_FOUND, ErrorCode.INTERNAL_ERROR, ErrorCode.EXPIRED_REFRESH_TOKEN,
             ErrorCode.INVALID_TOKEN, ErrorCode.INVALID_INPUT, ErrorCode.PASSWORD_MISMATCH})
     public ApiResponse<UpdateProfileResponseDto> updateProfile(
             @RequestBody @Valid UpdateProfileRequestDto requestDto,
-            Authentication authentication
+            @CurrentUser UserPrincipal userPrincipal
     ) {
-        String usersId = authentication.getName();
+        String usersId = userPrincipal.getUsersId();
         UpdateProfileResponseDto response = myPageService.updateProfile(usersId, requestDto);
         return ApiResponse.ok(response);
     }
