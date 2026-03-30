@@ -55,6 +55,10 @@ public class SignupRequestDto {
     @NotNull(message = "필수 입력값입니다.")
     private LocalDate birth;
 
+    @Schema(description = "국가", example = "서울 / 대한민국")
+    @NotNull(message = "필수 입력값입니다.")
+    private String countryCode;
+
     @Schema(description = "서비스 이용약관 동의", example = "Y")
     @NotNull(message = "필수 입력값입니다.")
     private UseYnEnum privacyAgreed;
@@ -65,7 +69,7 @@ public class SignupRequestDto {
     @Schema(description = "야간 마케팅 동의", example = "Y")
     private UseYnEnum nightMarketingAgreed;
 
-    @Schema(description = "소셜 제공자 타입 (일반 가입 시 null)", example = "KAKAO")
+    @Schema(description = "소셜 제공자 타입 (일반 가입 시 null)", example = "LOCAL")
     private LoginType loginType;
 
     @Schema(description = "소셜 고유 식별자 (일반 가입 시 null)", example = "4808178777")
@@ -81,6 +85,7 @@ public class SignupRequestDto {
                 .password(encodedPassword)
                 .gender(this.gender)
                 .birth(this.birth)
+                .countryCode(this.countryCode)
                 .loginType(this.loginType != null ? this.loginType : LoginType.LOCAL)
                 .socialProviderId(this.socialProviderId)
                 .privacyAgreed(this.privacyAgreed)
