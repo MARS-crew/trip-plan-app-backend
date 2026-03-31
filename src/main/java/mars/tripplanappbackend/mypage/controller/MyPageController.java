@@ -13,6 +13,7 @@ import mars.tripplanappbackend.mypage.dto.request.UpdateAgreeRequestDto;
 import mars.tripplanappbackend.mypage.dto.request.UpdateProfileRequestDto;
 import mars.tripplanappbackend.mypage.dto.resopnse.AgreeResponseDto;
 import mars.tripplanappbackend.mypage.dto.resopnse.MyProfileResponseDto;
+import mars.tripplanappbackend.mypage.dto.resopnse.SettingResponseDto;
 import mars.tripplanappbackend.mypage.dto.resopnse.UpdateProfileResponseDto;
 import mars.tripplanappbackend.mypage.service.MyPageService;
 import org.springframework.web.bind.annotation.*;
@@ -70,6 +71,17 @@ public class MyPageController {
     ) {
         String usersId = userPrincipal.getUsersId();
         AgreeResponseDto response = myPageService.updateAgree(usersId, requestDto);
+        return ApiResponse.ok(response);
+    }
+
+    @GetMapping("/setting")
+    @Operation(summary = "계정 설정 조회", description = "계정 설정 조회 api")
+    @ApiErrorExceptions({ErrorCode.USER_NOT_FOUND, ErrorCode.INVALID_INPUT, ErrorCode.INTERNAL_ERROR})
+    public ApiResponse<SettingResponseDto> getSetting(
+            @CurrentUser UserPrincipal userPrincipal
+    ) {
+        String usersId = userPrincipal.getUsersId();
+        SettingResponseDto response = myPageService.getSetting(usersId);
         return ApiResponse.ok(response);
     }
 }
