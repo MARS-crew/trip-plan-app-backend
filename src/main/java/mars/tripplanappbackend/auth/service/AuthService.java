@@ -268,4 +268,16 @@ public class AuthService {
 
         return new EmailVerifyResponseDto(requestDto.getEmail(), UseYnEnum.Y);
     }
+
+    /**
+     *
+     * @param usersId JWT 토큰에서 추출된 사용자 식별자
+     * refreshToken을 null로 업데이트하여 로그아웃 처리
+     */
+    @Transactional
+    public void logout(String usersId) {
+        User user = myPageRepository.findByUsersId(usersId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
+        user.updateRefreshToken(null, null);
+    }
 }

@@ -12,6 +12,8 @@ import mars.tripplanappbackend.auth.dto.response.SignupResponseDto;
 import mars.tripplanappbackend.auth.dto.response.TokenReissueResponseDto;
 import mars.tripplanappbackend.auth.service.AuthService;
 import mars.tripplanappbackend.auth.service.SocialLoginService;
+import mars.tripplanappbackend.global.config.auth.CurrentUser;
+import mars.tripplanappbackend.global.config.auth.UserPrincipal;
 import mars.tripplanappbackend.global.config.swagger.ApiErrorExceptions;
 import mars.tripplanappbackend.global.dto.ApiResponse;
 import mars.tripplanappbackend.global.enums.ErrorCode;
@@ -116,6 +118,16 @@ public class AuthController {
     public ApiResponse<EmailVerifyResponseDto> findId(@Valid @RequestBody EmailVerifyRequestDto requestDto){
         EmailVerifyResponseDto response = authService.verifyEmailCode(requestDto);
         return ApiResponse.ok(response);
+    }
+
+    @PostMapping("/logout")
+    @ApiErrorExceptions({ErrorCode.USER_NOT_FOUND, ErrorCode.INTERNAL_ERROR})
+    @Operation(summary = "로그아웃",
+            description = "로그아웃 api")
+    public ApiResponse<Void> logout(
+            @CurrentUser UserPrincipal userPrincipal) {
+        authService.logout(userPrincipal.getUsersId());
+        return ApiResponse.ok(null);
     }
 
 }
