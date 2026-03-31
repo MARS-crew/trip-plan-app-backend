@@ -48,4 +48,12 @@ public class RecentSearch extends BaseEntity {
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "user_id", nullable = false)
     private User user;
+
+    /**
+     * 최근 검색어를 삭제 상태로 변경합니다.
+     */
+    public void markDeleted() {
+        this.isDeleted = true;
+        this.deletedDate = LocalDateTime.now();
+    }
 }
