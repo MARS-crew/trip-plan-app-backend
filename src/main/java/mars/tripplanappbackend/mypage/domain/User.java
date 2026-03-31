@@ -146,4 +146,13 @@ public class User extends BaseEntity {
         if (marketingAgreed != null) this.marketingAgreed = marketingAgreed;
         if (nightMarketingAgreed != null) this.nightMarketingAgreed = nightMarketingAgreed;
     }
+
+    public void withdraw(String reasonType, String reasonText) {
+        this.withdrawn = UseYnEnum.Y;
+        this.withdrawnAt = LocalDateTime.now();
+        this.withdrawalReasonType = reasonType;
+        this.withdrawalReasonText = reasonText;
+        this.refreshToken = null;
+        this.refreshTokenExpiresAt = null;
+    }
 }

@@ -130,4 +130,18 @@ public class AuthController {
         return ApiResponse.ok(null);
     }
 
+    @DeleteMapping("/withdraw")
+    @Operation(summary = "회원탈퇴", description = "회원탈퇴 api\n\n" +
+            "reasonType (탈퇴 유형)\n" +
+            "NOT_ENOUGH_ACCESS : 앱에 잘 접속하지 않아요\n" +
+            "LOW_REVIEW_TRUST : 리뷰의 신뢰성이 떨어져요\n" +
+            "INAPPROPRIATE_TRIP : 여행지 추천이 적당하지 않아요\n" +
+            "OTHER : 기타 (reasonText 필수)\n\n" +
+            "reasonText(기타 탈퇴 사유): OTHER 선택 시에만 입력")
+    public ApiResponse<Void> withdraw(@CurrentUser UserPrincipal userPrincipal,
+                                      @RequestBody WithdrawRequestDto requestDto) {
+        authService.withdraw(userPrincipal.getUsersId(), requestDto);
+        return ApiResponse.ok(null);
+    }
+
 }
