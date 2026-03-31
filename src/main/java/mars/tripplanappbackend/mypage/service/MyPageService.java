@@ -8,6 +8,7 @@ import mars.tripplanappbackend.mypage.dto.request.UpdateAgreeRequestDto;
 import mars.tripplanappbackend.mypage.dto.request.UpdateProfileRequestDto;
 import mars.tripplanappbackend.mypage.dto.resopnse.AgreeResponseDto;
 import mars.tripplanappbackend.mypage.dto.resopnse.MyProfileResponseDto;
+import mars.tripplanappbackend.mypage.dto.resopnse.SettingResponseDto;
 import mars.tripplanappbackend.mypage.dto.resopnse.UpdateProfileResponseDto;
 import mars.tripplanappbackend.mypage.repository.SavedPlaceRepository;
 import mars.tripplanappbackend.mypage.repository.MyPageRepository;
@@ -117,5 +118,13 @@ public class MyPageService {
         );
 
         return new AgreeResponseDto(user);
+    }
+
+    @Transactional(readOnly = true)
+    public SettingResponseDto getSetting(String usersId) {
+        User user = myPageRepository.findByUsersId(usersId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
+
+        return new SettingResponseDto(user);
     }
 }
