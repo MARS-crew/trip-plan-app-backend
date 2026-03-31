@@ -5,6 +5,7 @@ import mars.tripplanappbackend.global.enums.ErrorCode;
 import mars.tripplanappbackend.global.exception.BusinessException;
 import mars.tripplanappbackend.mypage.domain.User;
 import mars.tripplanappbackend.mypage.dto.request.UpdateProfileRequestDto;
+import mars.tripplanappbackend.mypage.dto.resopnse.AgreeResponseDto;
 import mars.tripplanappbackend.mypage.dto.resopnse.MyProfileResponseDto;
 import mars.tripplanappbackend.mypage.dto.resopnse.UpdateProfileResponseDto;
 import mars.tripplanappbackend.mypage.repository.SavedPlaceRepository;
@@ -83,6 +84,14 @@ public class MyPageService {
 
         // 비밀번호 null 처리
         return new UpdateProfileResponseDto(user);
+    }
+
+    @Transactional(readOnly = true)
+    public AgreeResponseDto getAgree(String usersId) {
+        User user = myPageRepository.findByUsersId(usersId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
+
+        return new AgreeResponseDto(user);
     }
 
 }
