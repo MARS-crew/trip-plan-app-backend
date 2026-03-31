@@ -6,12 +6,11 @@ import mars.tripplanappbackend.global.exception.BusinessException;
 import mars.tripplanappbackend.mypage.domain.User;
 import mars.tripplanappbackend.mypage.dto.request.UpdateAgreeRequestDto;
 import mars.tripplanappbackend.mypage.dto.request.UpdateProfileRequestDto;
-import mars.tripplanappbackend.mypage.dto.resopnse.AgreeResponseDto;
-import mars.tripplanappbackend.mypage.dto.resopnse.MyProfileResponseDto;
-import mars.tripplanappbackend.mypage.dto.resopnse.SettingResponseDto;
-import mars.tripplanappbackend.mypage.dto.resopnse.UpdateProfileResponseDto;
+import mars.tripplanappbackend.mypage.dto.resopnse.*;
 import mars.tripplanappbackend.mypage.repository.SavedPlaceRepository;
 import mars.tripplanappbackend.mypage.repository.MyPageRepository;
+import mars.tripplanappbackend.trip.repository.TripRepository;
+import mars.tripplanappbackend.trip.repository.VisitedPlaceRepository;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -24,14 +23,14 @@ public class MyPageService {
     private final MyPageRepository myPageRepository;
     private final SavedPlaceRepository savedPlaceRepository;
     private final BCryptPasswordEncoder passwordEncoder;
+    private final TripRepository tripRepository;
+    private final VisitedPlaceRepository visitedPlaceRepository;
 
     /**
      * 현재 로그인한 사용자의 프로필 정보를 조회
      *
-     *
      * @param usersId JWT 토큰에서 추출된 사용자 식별자
      * @return 사용자 프로필 정보가 담긴 response
-     *
      * 사용자를 찾을 수 없는 경우 USER_NOT_FOUND
      */
     @Transactional(readOnly = true)
@@ -45,7 +44,7 @@ public class MyPageService {
 
     /**
      *
-     * @param usersId JWT 토큰에서 추출된 사용자 식별자
+     * @param usersId    JWT 토큰에서 추출된 사용자 식별자
      * @param requestDto 프로필 정보 수정 request
      * @return 변경된 값이 담긴 response
      *
@@ -89,7 +88,7 @@ public class MyPageService {
     }
 
     /**
-     * 
+     *
      * @param usersId JWT 토큰에서 추출된 사용자 식별자
      * @return 사용자의 알림 설정 조회
      */
@@ -103,7 +102,7 @@ public class MyPageService {
 
     /**
      *
-     * @param usersId JWT 토큰에서 추출된 사용자 식별자
+     * @param usersId    JWT 토큰에서 추출된 사용자 식별자
      * @param requestDto 변경할 알림 설정
      * @return 변경된 알림 설정이 담긴 response
      */
@@ -120,11 +119,35 @@ public class MyPageService {
         return new AgreeResponseDto(user);
     }
 
+    /**
+     *
+     * @param usersId JWT 토큰에서 추출된 사용자 식별자
+     * @return 사용자의 계정 설정 조회
+     */
     @Transactional(readOnly = true)
     public SettingResponseDto getSetting(String usersId) {
         User user = myPageRepository.findByUsersId(usersId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
 
         return new SettingResponseDto(user);
+    }
+
+    /**
+     * 
+     * @param usersId JWT 토큰에서 추출된 사용자 식별자
+     * @return 사용자의 마이페이지 정보 조회
+     */
+    @Transactional(readOnly = true)
+    public MyPageResponseDto getMyPage(String usersId) {
+        User user = myPageRepository.findByUsersId(usersId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
+
+        return new MyPageResponseDto(
+                user.getNickname(),
+                user.getEmail(),
+                tripRepository.countByUser_UserIdAndIsDeletedFalse(user.getUserId()),
+                savedPlaceRepository.countByUserAndIsDeletedFalse(user),
+                visitedPlaceRepository.countByUser_UserIdAndIsDeletedFalse(user.getUserId())
+        );
     }
 }
