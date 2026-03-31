@@ -6,4 +6,5 @@ import org.springframework.stereotype.Repository;
 
 @Repository
 public interface VisitedPlaceRepository extends JpaRepository<VisitedPlace, Long> {
+    long countByUser_UserIdAndIsDeletedFalse(Long userId);
 }

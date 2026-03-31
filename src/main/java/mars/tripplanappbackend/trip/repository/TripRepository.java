@@ -23,4 +23,6 @@ public interface TripRepository extends JpaRepository<Trip, Long> {
             Long userId,
             java.time.LocalDate startDate
     );
+
+    long countByUser_UserIdAndIsDeletedFalse(Long userId);
 }

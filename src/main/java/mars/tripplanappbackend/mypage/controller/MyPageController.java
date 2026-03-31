@@ -11,10 +11,7 @@ import mars.tripplanappbackend.global.dto.ApiResponse;
 import mars.tripplanappbackend.global.enums.ErrorCode;
 import mars.tripplanappbackend.mypage.dto.request.UpdateAgreeRequestDto;
 import mars.tripplanappbackend.mypage.dto.request.UpdateProfileRequestDto;
-import mars.tripplanappbackend.mypage.dto.resopnse.AgreeResponseDto;
-import mars.tripplanappbackend.mypage.dto.resopnse.MyProfileResponseDto;
-import mars.tripplanappbackend.mypage.dto.resopnse.SettingResponseDto;
-import mars.tripplanappbackend.mypage.dto.resopnse.UpdateProfileResponseDto;
+import mars.tripplanappbackend.mypage.dto.resopnse.*;
 import mars.tripplanappbackend.mypage.service.MyPageService;
 import org.springframework.web.bind.annotation.*;
 
@@ -82,6 +79,17 @@ public class MyPageController {
     ) {
         String usersId = userPrincipal.getUsersId();
         SettingResponseDto response = myPageService.getSetting(usersId);
+        return ApiResponse.ok(response);
+    }
+
+    @GetMapping("/mypage")
+    @Operation(summary = "마이페이지 조회", description = "마이페이지 조회 api")
+    @ApiErrorExceptions({ErrorCode.USER_NOT_FOUND, ErrorCode.INVALID_INPUT, ErrorCode.INTERNAL_ERROR})
+    public ApiResponse<MyPageResponseDto> getMyPage(
+            @CurrentUser UserPrincipal userPrincipal
+    ) {
+        String usersId = userPrincipal.getUsersId();
+        MyPageResponseDto response = myPageService.getMyPage(usersId);
         return ApiResponse.ok(response);
     }
 }
