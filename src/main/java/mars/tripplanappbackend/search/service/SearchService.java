@@ -5,8 +5,10 @@ import mars.tripplanappbackend.global.enums.ErrorCode;
 import mars.tripplanappbackend.global.exception.BusinessException;
 import mars.tripplanappbackend.mypage.repository.MyPageRepository;
 import mars.tripplanappbackend.search.domain.RecentSearch;
+import mars.tripplanappbackend.search.dto.request.DeleteRecentSearchRequestDto;
 import mars.tripplanappbackend.search.dto.request.RecentSearchListRequestDto;
 import mars.tripplanappbackend.search.dto.request.SearchCategoryRequestDto;
+import mars.tripplanappbackend.search.dto.response.DeleteRecentSearchResponseDto;
 import mars.tripplanappbackend.search.dto.response.RecentSearchListResponseDto;
 import mars.tripplanappbackend.search.dto.response.RecentSearchResponseDto;
 import mars.tripplanappbackend.search.dto.response.SearchCategoryListResponseDto;
@@ -67,6 +69,27 @@ public class SearchService {
                 .toList();
 
         return RecentSearchListResponseDto.of(responseDtos);
+    }
+
+    /**
+     * 검색 페이지 최근 검색어 목록에서 선택한 항목 하나를 삭제합니다.
+     *
+     * @param requestDto 최근 검색어 삭제 요청 DTO
+     * @return 최근 검색어 삭제 응답 DTO
+     */
+    @Transactional
+    public DeleteRecentSearchResponseDto deleteRecentSearch(DeleteRecentSearchRequestDto requestDto) {
+        validateAuthenticatedUser(requestDto.getUsersId());
+
+        RecentSearch recentSearch = recentSearchRepository
+                .findByRecentSearchIdAndUser_UsersIdAndIsDeletedFalse(
+                        requestDto.getRecentSearchId(),
+                        requestDto.getUsersId()
+                )
+                .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_INPUT));
+
+        recentSearch.markDeleted();
+        return DeleteRecentSearchResponseDto.from(recentSearch);
     }
 
     /**
