@@ -9,6 +9,7 @@ import mars.tripplanappbackend.global.config.auth.UserPrincipal;
 import mars.tripplanappbackend.global.config.swagger.ApiErrorExceptions;
 import mars.tripplanappbackend.global.dto.ApiResponse;
 import mars.tripplanappbackend.global.enums.ErrorCode;
+import mars.tripplanappbackend.mypage.dto.request.UpdateAgreeRequestDto;
 import mars.tripplanappbackend.mypage.dto.request.UpdateProfileRequestDto;
 import mars.tripplanappbackend.mypage.dto.resopnse.AgreeResponseDto;
 import mars.tripplanappbackend.mypage.dto.resopnse.MyProfileResponseDto;
@@ -51,11 +52,24 @@ public class MyPageController {
 
     @GetMapping("/agree")
     @Operation(summary = "알림 설정 조회", description = "푸시 알림 설정 조회 api")
+    @ApiErrorExceptions({ErrorCode.FORBIDDEN, ErrorCode.INVALID_INPUT, ErrorCode.INTERNAL_ERROR})
     public ApiResponse<AgreeResponseDto> getNotificationSetting(
             @CurrentUser UserPrincipal userPrincipal
     ) {
         String usersId = userPrincipal.getUsersId();
         AgreeResponseDto response = myPageService.getAgree(usersId);
+        return ApiResponse.ok(response);
+    }
+
+    @PatchMapping("/agree")
+    @Operation(summary = "알림 설정 수정", description = "푸시 알림 설정 수정 api")
+    @ApiErrorExceptions({ErrorCode.USER_NOT_FOUND, ErrorCode.INTERNAL_ERROR, ErrorCode.INVALID_INPUT})
+    public ApiResponse<AgreeResponseDto> updateNotificationSetting(
+            @CurrentUser UserPrincipal userPrincipal,
+            @RequestBody UpdateAgreeRequestDto requestDto
+    ) {
+        String usersId = userPrincipal.getUsersId();
+        AgreeResponseDto response = myPageService.updateAgree(usersId, requestDto);
         return ApiResponse.ok(response);
     }
 }

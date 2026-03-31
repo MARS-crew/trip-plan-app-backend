@@ -4,6 +4,7 @@ import lombok.RequiredArgsConstructor;
 import mars.tripplanappbackend.global.enums.ErrorCode;
 import mars.tripplanappbackend.global.exception.BusinessException;
 import mars.tripplanappbackend.mypage.domain.User;
+import mars.tripplanappbackend.mypage.dto.request.UpdateAgreeRequestDto;
 import mars.tripplanappbackend.mypage.dto.request.UpdateProfileRequestDto;
 import mars.tripplanappbackend.mypage.dto.resopnse.AgreeResponseDto;
 import mars.tripplanappbackend.mypage.dto.resopnse.MyProfileResponseDto;
@@ -86,6 +87,11 @@ public class MyPageService {
         return new UpdateProfileResponseDto(user);
     }
 
+    /**
+     * 
+     * @param usersId JWT 토큰에서 추출된 사용자 식별자
+     * @return 사용자의 알림 설정 조회
+     */
     @Transactional(readOnly = true)
     public AgreeResponseDto getAgree(String usersId) {
         User user = myPageRepository.findByUsersId(usersId)
@@ -94,4 +100,22 @@ public class MyPageService {
         return new AgreeResponseDto(user);
     }
 
+    /**
+     *
+     * @param usersId JWT 토큰에서 추출된 사용자 식별자
+     * @param requestDto 변경할 알림 설정
+     * @return 변경된 알림 설정이 담긴 response
+     */
+    @Transactional
+    public AgreeResponseDto updateAgree(String usersId, UpdateAgreeRequestDto requestDto) {
+        User user = myPageRepository.findByUsersId(usersId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
+
+        user.updateAgree(
+                requestDto.getMarketingAgreed(),
+                requestDto.getNightMarketingAgreed()
+        );
+
+        return new AgreeResponseDto(user);
+    }
 }

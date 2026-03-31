@@ -141,4 +141,9 @@ public class User extends BaseEntity {
             this.password = encryptedPassword;
         }
     }
+
+    public void updateAgree(UseYnEnum marketingAgreed, UseYnEnum nightMarketingAgreed) {
+        if (marketingAgreed != null) this.marketingAgreed = marketingAgreed;
+        if (nightMarketingAgreed != null) this.nightMarketingAgreed = nightMarketingAgreed;
+    }
 }
