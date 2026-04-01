@@ -13,5 +13,7 @@ public interface RecentSearchRepository extends JpaRepository<RecentSearch, Long
 
     List<RecentSearch> findAllByUser_UsersIdAndIsDeletedFalseOrderByCreatedAtDesc(String usersId, Pageable pageable);
 
+    List<RecentSearch> findAllByUser_UsersIdAndIsDeletedFalse(String usersId);
+
     Optional<RecentSearch> findByRecentSearchIdAndUser_UsersIdAndIsDeletedFalse(Long recentSearchId, String usersId);
 }

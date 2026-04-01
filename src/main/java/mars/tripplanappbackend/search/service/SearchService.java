@@ -5,9 +5,11 @@ import mars.tripplanappbackend.global.enums.ErrorCode;
 import mars.tripplanappbackend.global.exception.BusinessException;
 import mars.tripplanappbackend.mypage.repository.MyPageRepository;
 import mars.tripplanappbackend.search.domain.RecentSearch;
+import mars.tripplanappbackend.search.dto.request.DeleteAllRecentSearchRequestDto;
 import mars.tripplanappbackend.search.dto.request.DeleteRecentSearchRequestDto;
 import mars.tripplanappbackend.search.dto.request.RecentSearchListRequestDto;
 import mars.tripplanappbackend.search.dto.request.SearchCategoryRequestDto;
+import mars.tripplanappbackend.search.dto.response.DeleteAllRecentSearchResponseDto;
 import mars.tripplanappbackend.search.dto.response.DeleteRecentSearchResponseDto;
 import mars.tripplanappbackend.search.dto.response.RecentSearchListResponseDto;
 import mars.tripplanappbackend.search.dto.response.RecentSearchResponseDto;
@@ -24,7 +26,7 @@ import java.util.Comparator;
 import java.util.List;
 
 /**
- * 검색 페이지 관련 비즈니스 로직을 처리하는 서비스입니다.
+ * 검색 페이지에서 사용하는 카테고리, 최근 검색어 관련 비즈니스 로직을 처리하는 서비스입니다.
  */
 @Service
 @RequiredArgsConstructor
@@ -35,7 +37,7 @@ public class SearchService {
     private final RecentSearchRepository recentSearchRepository;
 
     /**
-     * 검색 페이지에 고정 노출되는 카테고리 목록을 노출 순서대로 조회합니다.
+     * 검색 페이지 상단에 고정 노출되는 카테고리 목록을 정렬 순서대로 조회합니다.
      *
      * @param requestDto 검색 카테고리 조회 요청 DTO
      * @return 검색 카테고리 목록 응답 DTO
@@ -72,7 +74,7 @@ public class SearchService {
     }
 
     /**
-     * 검색 페이지 최근 검색어 목록에서 선택한 항목 하나를 삭제합니다.
+     * 검색 페이지 최근 검색어 목록에서 선택한 항목 한 건을 soft delete 처리합니다.
      *
      * @param requestDto 최근 검색어 삭제 요청 DTO
      * @return 최근 검색어 삭제 응답 DTO
@@ -90,6 +92,23 @@ public class SearchService {
 
         recentSearch.markDeleted();
         return DeleteRecentSearchResponseDto.from(recentSearch);
+    }
+
+    /**
+     * 검색 페이지 최근 검색어 목록에 남아 있는 항목을 현재 로그인 사용자 기준으로 전체 삭제합니다.
+     *
+     * @param requestDto 최근 검색어 전체 삭제 요청 DTO
+     * @return 최근 검색어 전체 삭제 응답 DTO
+     */
+    @Transactional
+    public DeleteAllRecentSearchResponseDto deleteAllRecentSearches(DeleteAllRecentSearchRequestDto requestDto) {
+        validateAuthenticatedUser(requestDto.getUsersId());
+
+        List<RecentSearch> recentSearches =
+                recentSearchRepository.findAllByUser_UsersIdAndIsDeletedFalse(requestDto.getUsersId());
+
+        recentSearches.forEach(RecentSearch::markDeleted);
+        return DeleteAllRecentSearchResponseDto.from(recentSearches.size());
     }
 
     /**
