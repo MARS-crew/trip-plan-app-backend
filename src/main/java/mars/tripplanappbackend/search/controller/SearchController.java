@@ -9,9 +9,11 @@ import mars.tripplanappbackend.global.config.auth.UserPrincipal;
 import mars.tripplanappbackend.global.config.swagger.ApiErrorExceptions;
 import mars.tripplanappbackend.global.dto.ApiResponse;
 import mars.tripplanappbackend.global.enums.ErrorCode;
+import mars.tripplanappbackend.search.dto.request.DeleteAllRecentSearchRequestDto;
 import mars.tripplanappbackend.search.dto.request.DeleteRecentSearchRequestDto;
 import mars.tripplanappbackend.search.dto.request.RecentSearchListRequestDto;
 import mars.tripplanappbackend.search.dto.request.SearchCategoryRequestDto;
+import mars.tripplanappbackend.search.dto.response.DeleteAllRecentSearchResponseDto;
 import mars.tripplanappbackend.search.dto.response.DeleteRecentSearchResponseDto;
 import mars.tripplanappbackend.search.dto.response.RecentSearchListResponseDto;
 import mars.tripplanappbackend.search.dto.response.SearchCategoryListResponseDto;
@@ -28,13 +30,13 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/api/v1/search")
 @RequiredArgsConstructor
-@Tag(name = "Search", description = "검색 엔드포인트")
+@Tag(name = "Search", description = "검색 관련 API")
 public class SearchController {
 
     private final SearchService searchService;
 
     /**
-     * 검색 페이지 상단에 고정 노출할 카테고리 목록을 조회합니다.
+     * 검색 페이지 상단에 고정 노출되는 카테고리 목록을 조회합니다.
      *
      * @return 공통 응답 형식으로 감싼 검색 카테고리 목록 응답
      */
@@ -70,7 +72,7 @@ public class SearchController {
     }
 
     /**
-     * 검색 페이지 최근 검색어 목록에서 선택한 항목 하나를 삭제합니다.
+     * 검색 페이지 최근 검색어 목록에서 선택한 항목 한 건을 삭제합니다.
      *
      * @param recentSearchId 삭제할 최근 검색어 PK
      * @param userPrincipal 커스텀 어노테이션으로 주입된 현재 로그인 사용자 정보
@@ -85,7 +87,7 @@ public class SearchController {
     })
     @Operation(
             summary = "최근 검색어 삭제",
-            description = "검색 페이지 최근 검색어 목록에서 선택한 항목 하나를 삭제합니다."
+            description = "검색 페이지 최근 검색어 목록에서 선택한 항목 한 건을 삭제합니다."
     )
     public ApiResponse<DeleteRecentSearchResponseDto> deleteRecentSearch(
             @Parameter(description = "삭제할 최근 검색어 PK", example = "12")
@@ -98,5 +100,30 @@ public class SearchController {
                 userPrincipal.getUsersId()
         );
         return ApiResponse.ok(searchService.deleteRecentSearch(requestDto));
+    }
+
+    /**
+     * 검색 페이지 최근 검색어 목록에 남아 있는 항목을 전체 삭제합니다.
+     *
+     * @param userPrincipal 커스텀 어노테이션으로 주입된 현재 로그인 사용자 정보
+     * @return 공통 응답 형식으로 감싼 최근 검색어 전체 삭제 응답
+     */
+    @DeleteMapping("/recent-searches")
+    @ApiErrorExceptions({
+            ErrorCode.UNAUTHORIZED,
+            ErrorCode.USER_NOT_FOUND,
+            ErrorCode.INTERNAL_ERROR
+    })
+    @Operation(
+            summary = "최근 검색어 전체 삭제",
+            description = "검색 페이지 최근 검색어 목록에 남아 있는 항목을 현재 로그인 사용자 기준으로 전체 삭제합니다."
+    )
+    public ApiResponse<DeleteAllRecentSearchResponseDto> deleteAllRecentSearches(
+            @Parameter(hidden = true)
+            @CurrentUser UserPrincipal userPrincipal
+    ) {
+        DeleteAllRecentSearchRequestDto requestDto =
+                DeleteAllRecentSearchRequestDto.of(userPrincipal.getUsersId());
+        return ApiResponse.ok(searchService.deleteAllRecentSearches(requestDto));
     }
 }
