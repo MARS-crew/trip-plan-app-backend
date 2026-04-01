@@ -11,10 +11,12 @@ import mars.tripplanappbackend.global.dto.ApiResponse;
 import mars.tripplanappbackend.global.enums.ErrorCode;
 import mars.tripplanappbackend.search.dto.request.DeleteAllRecentSearchRequestDto;
 import mars.tripplanappbackend.search.dto.request.DeleteRecentSearchRequestDto;
+import mars.tripplanappbackend.search.dto.request.PopularSearchListRequestDto;
 import mars.tripplanappbackend.search.dto.request.RecentSearchListRequestDto;
 import mars.tripplanappbackend.search.dto.request.SearchCategoryRequestDto;
 import mars.tripplanappbackend.search.dto.response.DeleteAllRecentSearchResponseDto;
 import mars.tripplanappbackend.search.dto.response.DeleteRecentSearchResponseDto;
+import mars.tripplanappbackend.search.dto.response.PopularSearchListResponseDto;
 import mars.tripplanappbackend.search.dto.response.RecentSearchListResponseDto;
 import mars.tripplanappbackend.search.dto.response.SearchCategoryListResponseDto;
 import mars.tripplanappbackend.search.service.SearchService;
@@ -49,6 +51,22 @@ public class SearchController {
     public ApiResponse<SearchCategoryListResponseDto> getSearchCategories() {
         SearchCategoryRequestDto requestDto = SearchCategoryRequestDto.create();
         return ApiResponse.ok(searchService.getSearchCategories(requestDto));
+    }
+
+    /**
+     * 검색 페이지 하단에 노출할 인기 검색어 상위 5건을 조회합니다.
+     *
+     * @return 공통 응답 형식으로 감싼 인기 검색어 목록 응답
+     */
+    @GetMapping("/popular-searches")
+    @ApiErrorExceptions({ErrorCode.INTERNAL_ERROR})
+    @Operation(
+            summary = "인기 검색어 조회",
+            description = "검색 페이지 하단에 노출할 인기 검색어 상위 5건을 조회합니다."
+    )
+    public ApiResponse<PopularSearchListResponseDto> getPopularSearches() {
+        PopularSearchListRequestDto requestDto = PopularSearchListRequestDto.create();
+        return ApiResponse.ok(searchService.getPopularSearches(requestDto));
     }
 
     /**

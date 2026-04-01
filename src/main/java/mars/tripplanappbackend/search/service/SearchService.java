@@ -7,15 +7,19 @@ import mars.tripplanappbackend.mypage.repository.MyPageRepository;
 import mars.tripplanappbackend.search.domain.RecentSearch;
 import mars.tripplanappbackend.search.dto.request.DeleteAllRecentSearchRequestDto;
 import mars.tripplanappbackend.search.dto.request.DeleteRecentSearchRequestDto;
+import mars.tripplanappbackend.search.dto.request.PopularSearchListRequestDto;
 import mars.tripplanappbackend.search.dto.request.RecentSearchListRequestDto;
 import mars.tripplanappbackend.search.dto.request.SearchCategoryRequestDto;
 import mars.tripplanappbackend.search.dto.response.DeleteAllRecentSearchResponseDto;
 import mars.tripplanappbackend.search.dto.response.DeleteRecentSearchResponseDto;
+import mars.tripplanappbackend.search.dto.response.PopularSearchListResponseDto;
+import mars.tripplanappbackend.search.dto.response.PopularSearchResponseDto;
 import mars.tripplanappbackend.search.dto.response.RecentSearchListResponseDto;
 import mars.tripplanappbackend.search.dto.response.RecentSearchResponseDto;
 import mars.tripplanappbackend.search.dto.response.SearchCategoryListResponseDto;
 import mars.tripplanappbackend.search.dto.response.SearchCategoryResponseDto;
 import mars.tripplanappbackend.search.enums.SearchCategory;
+import mars.tripplanappbackend.search.repository.PopularSearchKeywordProjection;
 import mars.tripplanappbackend.search.repository.RecentSearchRepository;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
@@ -24,9 +28,10 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.Arrays;
 import java.util.Comparator;
 import java.util.List;
+import java.util.stream.IntStream;
 
 /**
- * 검색 페이지에서 사용하는 카테고리, 최근 검색어 관련 비즈니스 로직을 처리하는 서비스입니다.
+ * 검색 페이지에서 사용하는 카테고리, 인기 검색어, 최근 검색어 관련 비즈니스 로직을 처리하는 서비스입니다.
  */
 @Service
 @RequiredArgsConstructor
@@ -49,6 +54,32 @@ public class SearchService {
                 .toList();
 
         return SearchCategoryListResponseDto.of(categories);
+    }
+
+    /**
+     * 최근 검색 데이터 기준으로 가장 많이 검색된 키워드 상위 5건을 조회합니다.
+     * 동일 검색 횟수일 경우 최근에 다시 검색된 키워드를 우선 노출합니다.
+     *
+     * @param requestDto 인기 검색어 조회 요청 DTO
+     * @return 인기 검색어 목록 응답 DTO
+     */
+    public PopularSearchListResponseDto getPopularSearches(PopularSearchListRequestDto requestDto) {
+        List<PopularSearchKeywordProjection> popularKeywords = recentSearchRepository.findPopularSearchKeywords(
+                PageRequest.of(0, requestDto.getLimit())
+        );
+
+        List<PopularSearchResponseDto> popularSearches = IntStream.range(0, popularKeywords.size())
+                .mapToObj(index -> {
+                    PopularSearchKeywordProjection projection = popularKeywords.get(index);
+                    return PopularSearchResponseDto.of(
+                            index + 1,
+                            projection.getKeyword(),
+                            projection.getSearchCount()
+                    );
+                })
+                .toList();
+
+        return PopularSearchListResponseDto.of(popularSearches);
     }
 
     /**
