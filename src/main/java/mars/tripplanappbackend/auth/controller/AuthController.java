@@ -12,6 +12,8 @@ import mars.tripplanappbackend.auth.dto.response.SignupResponseDto;
 import mars.tripplanappbackend.auth.dto.response.TokenReissueResponseDto;
 import mars.tripplanappbackend.auth.service.AuthService;
 import mars.tripplanappbackend.auth.service.SocialLoginService;
+import mars.tripplanappbackend.global.config.auth.CurrentUser;
+import mars.tripplanappbackend.global.config.auth.UserPrincipal;
 import mars.tripplanappbackend.global.config.swagger.ApiErrorExceptions;
 import mars.tripplanappbackend.global.dto.ApiResponse;
 import mars.tripplanappbackend.global.enums.ErrorCode;
@@ -116,6 +118,30 @@ public class AuthController {
     public ApiResponse<EmailVerifyResponseDto> findId(@Valid @RequestBody EmailVerifyRequestDto requestDto){
         EmailVerifyResponseDto response = authService.verifyEmailCode(requestDto);
         return ApiResponse.ok(response);
+    }
+
+    @PostMapping("/logout")
+    @ApiErrorExceptions({ErrorCode.USER_NOT_FOUND, ErrorCode.INTERNAL_ERROR})
+    @Operation(summary = "로그아웃",
+            description = "로그아웃 api")
+    public ApiResponse<Void> logout(
+            @CurrentUser UserPrincipal userPrincipal) {
+        authService.logout(userPrincipal.getUsersId());
+        return ApiResponse.ok(null);
+    }
+
+    @DeleteMapping("/withdraw")
+    @Operation(summary = "회원탈퇴", description = "회원탈퇴 api\n\n" +
+            "reasonType (탈퇴 유형)\n" +
+            "NOT_ENOUGH_ACCESS : 앱에 잘 접속하지 않아요\n" +
+            "LOW_REVIEW_TRUST : 리뷰의 신뢰성이 떨어져요\n" +
+            "INAPPROPRIATE_TRIP : 여행지 추천이 적당하지 않아요\n" +
+            "OTHER : 기타 (reasonText 필수)\n\n" +
+            "reasonText(기타 탈퇴 사유): OTHER 선택 시에만 입력")
+    public ApiResponse<Void> withdraw(@CurrentUser UserPrincipal userPrincipal,
+                                      @RequestBody WithdrawRequestDto requestDto) {
+        authService.withdraw(userPrincipal.getUsersId(), requestDto);
+        return ApiResponse.ok(null);
     }
 
 }

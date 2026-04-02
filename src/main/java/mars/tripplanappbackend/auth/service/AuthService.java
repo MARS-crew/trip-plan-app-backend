@@ -6,6 +6,7 @@ import mars.tripplanappbackend.auth.dto.response.CheckIdResponseDto;
 import mars.tripplanappbackend.auth.dto.response.LoginResponseDto;
 import mars.tripplanappbackend.auth.dto.response.SignupResponseDto;
 import mars.tripplanappbackend.auth.dto.response.TokenReissueResponseDto;
+import mars.tripplanappbackend.auth.enums.WithdrawalReasonType;
 import mars.tripplanappbackend.global.config.auth.JwtProvider;
 import mars.tripplanappbackend.global.enums.ErrorCode;
 import mars.tripplanappbackend.global.enums.UseYnEnum;
@@ -267,5 +268,41 @@ public class AuthService {
         myPageRepository.save(user);
 
         return new EmailVerifyResponseDto(requestDto.getEmail(), UseYnEnum.Y);
+    }
+
+    /**
+     *
+     * @param usersId JWT 토큰에서 추출된 사용자 식별자
+     * refreshToken을 null로 업데이트하여 로그아웃 처리
+     */
+    @Transactional
+    public void logout(String usersId) {
+        User user = myPageRepository.findByUsersId(usersId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
+        user.updateRefreshToken(null, null);
+    }
+
+    /**
+     *
+     * @param usersId JWT 토큰에서 추출된 사용자 식별자
+     * @param requestDto 탈퇴 유형, 기타 탈퇴 사유
+     */
+    @Transactional
+    public void withdraw(String usersId, WithdrawRequestDto requestDto) {
+        User user = myPageRepository.findByUsersId(usersId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
+
+        // 기타 선택 시 텍스트 필수
+        if (requestDto.getReasonType() == WithdrawalReasonType.OTHER
+                && (requestDto.getReasonText() == null || requestDto.getReasonText().isBlank())) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT);
+        }
+
+        // 기타가 아닌 경우 reasonText는 null 처리
+        String reasonText = requestDto.getReasonType() == WithdrawalReasonType.OTHER
+                ? requestDto.getReasonText()
+                : null;
+
+        user.withdraw(requestDto.getReasonType().name(), reasonText);
     }
 }
