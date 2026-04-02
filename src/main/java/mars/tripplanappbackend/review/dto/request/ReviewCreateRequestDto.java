@@ -25,10 +25,6 @@ public class ReviewCreateRequestDto {
     @NotNull(message = "필수 입력값입니다.")
     private Long visitedPlaceId;
 
-    @Schema(description = "방문 날짜", example = "2026-04-01")
-    @NotNull(message = "필수 입력값입니다.")
-    private LocalDate visitedDate;
-
     @Schema(description = "별점 (1~5)", example = "5")
     @NotNull(message = "필수 입력값입니다.")
     @Min(value = 1, message = "최소 1점 이상이어야 합니다.")
@@ -39,15 +35,5 @@ public class ReviewCreateRequestDto {
     @NotBlank(message = "필수 입력값입니다.")
     @Size(max = 500, message = "500자 이하로 입력해주세요.")
     private String content;
-
-    public Review toEntity(User user, Place place, VisitedPlace visitedPlace) {
-        return Review.builder()
-                .user(user)
-                .place(place)
-                .visitedPlace(visitedPlace)
-                .visitedDate(this.visitedDate)
-                .rating(this.rating)
-                .content(this.content)
-                .build();
-    }
+    
 }

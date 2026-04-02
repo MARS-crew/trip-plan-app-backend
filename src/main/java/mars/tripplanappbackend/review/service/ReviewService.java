@@ -17,6 +17,8 @@ import mars.tripplanappbackend.trip.repository.VisitedPlaceRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDate;
+
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
@@ -58,7 +60,14 @@ public class ReviewService {
             throw new BusinessException(ErrorCode.INVALID_INPUT);
         }
 
-        Review review = requestDto.toEntity(user, place, visitedPlace);
+        Review review = Review.builder()
+                .user(user)
+                .place(place)
+                .visitedPlace(visitedPlace)
+                .visitedDate(visitedPlace.getVisitedAt().toLocalDate())
+                .rating(requestDto.getRating())
+                .content(requestDto.getContent())
+                .build();
 
         reviewRepository.save(review);
 
