@@ -3,13 +3,19 @@ package mars.tripplanappbackend.search.service;
 import lombok.RequiredArgsConstructor;
 import mars.tripplanappbackend.global.enums.ErrorCode;
 import mars.tripplanappbackend.global.exception.BusinessException;
+import mars.tripplanappbackend.mypage.domain.User;
 import mars.tripplanappbackend.mypage.repository.MyPageRepository;
+import mars.tripplanappbackend.place.domain.Place;
+import mars.tripplanappbackend.place.domain.PlaceTagMap;
+import mars.tripplanappbackend.place.repository.PlaceRepository;
+import mars.tripplanappbackend.place.repository.PlaceTagMapRepository;
 import mars.tripplanappbackend.search.domain.RecentSearch;
 import mars.tripplanappbackend.search.dto.request.DeleteAllRecentSearchRequestDto;
 import mars.tripplanappbackend.search.dto.request.DeleteRecentSearchRequestDto;
 import mars.tripplanappbackend.search.dto.request.PopularSearchListRequestDto;
 import mars.tripplanappbackend.search.dto.request.RecentSearchListRequestDto;
 import mars.tripplanappbackend.search.dto.request.SearchCategoryRequestDto;
+import mars.tripplanappbackend.search.dto.request.SearchResultListRequestDto;
 import mars.tripplanappbackend.search.dto.response.DeleteAllRecentSearchResponseDto;
 import mars.tripplanappbackend.search.dto.response.DeleteRecentSearchResponseDto;
 import mars.tripplanappbackend.search.dto.response.PopularSearchListResponseDto;
@@ -18,6 +24,8 @@ import mars.tripplanappbackend.search.dto.response.RecentSearchListResponseDto;
 import mars.tripplanappbackend.search.dto.response.RecentSearchResponseDto;
 import mars.tripplanappbackend.search.dto.response.SearchCategoryListResponseDto;
 import mars.tripplanappbackend.search.dto.response.SearchCategoryResponseDto;
+import mars.tripplanappbackend.search.dto.response.SearchResultListResponseDto;
+import mars.tripplanappbackend.search.dto.response.SearchResultResponseDto;
 import mars.tripplanappbackend.search.enums.SearchCategory;
 import mars.tripplanappbackend.search.repository.PopularSearchKeywordProjection;
 import mars.tripplanappbackend.search.repository.RecentSearchRepository;
@@ -28,17 +36,24 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.Arrays;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 /**
- * 검색 페이지에서 사용하는 카테고리, 인기 검색어, 최근 검색어 관련 비즈니스 로직을 처리하는 서비스입니다.
+ * 검색 페이지에서 사용하는 카테고리, 검색 결과, 인기 검색어, 최근 검색어 관련 비즈니스 로직을 처리하는 서비스입니다.
  */
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
 public class SearchService {
 
+    private static final int MAX_TAG_COUNT = 3;
+    private static final int MAX_RECENT_SEARCH_COUNT = 5;
+
     private final MyPageRepository myPageRepository;
+    private final PlaceRepository placeRepository;
+    private final PlaceTagMapRepository placeTagMapRepository;
     private final RecentSearchRepository recentSearchRepository;
 
     /**
@@ -54,6 +69,32 @@ public class SearchService {
                 .toList();
 
         return SearchCategoryListResponseDto.of(categories);
+    }
+
+    /**
+     * 검색어를 기준으로 장소명, 지역명, 주소, 태그가 일치하는 검색 결과 리스트를 조회합니다.
+     * 인증 사용자가 검색한 경우에는 최근 검색어 목록도 함께 갱신합니다.
+     *
+     * @param requestDto 검색 결과 리스트 조회 요청 DTO
+     * @return 검색 결과 리스트 응답 DTO
+     */
+    @Transactional
+    public SearchResultListResponseDto getSearchResults(SearchResultListRequestDto requestDto) {
+        String keyword = normalizeKeyword(requestDto.getKeyword());
+
+        List<Place> places = placeRepository.searchByKeyword(keyword);
+        Map<Long, List<String>> tagsByPlaceId = getTagsByPlaceId(places);
+
+        List<SearchResultResponseDto> searchResults = places.stream()
+                .map(place -> SearchResultResponseDto.from(
+                        place,
+                        tagsByPlaceId.getOrDefault(place.getPlaceId(), List.of())
+                ))
+                .toList();
+
+        saveRecentSearchIfAuthenticated(requestDto.getUsersId(), keyword);
+
+        return SearchResultListResponseDto.of(keyword, searchResults);
     }
 
     /**
@@ -143,6 +184,84 @@ public class SearchService {
     }
 
     /**
+     * 검색 결과 목록에 사용할 태그를 장소 PK 기준으로 묶어 반환합니다.
+     *
+     * @param places 검색된 장소 엔티티 목록
+     * @return 장소 PK를 키로 가지는 태그 목록 맵
+     */
+    private Map<Long, List<String>> getTagsByPlaceId(List<Place> places) {
+        if (places.isEmpty()) {
+            return Map.of();
+        }
+
+        List<Long> placeIds = places.stream()
+                .map(Place::getPlaceId)
+                .toList();
+
+        List<PlaceTagMap> placeTagMaps = placeTagMapRepository.findAllByPlace_PlaceIdInAndIsDeletedFalse(placeIds);
+
+        return placeTagMaps.stream()
+                .collect(Collectors.groupingBy(
+                        placeTagMap -> placeTagMap.getPlace().getPlaceId(),
+                        Collectors.mapping(
+                                placeTagMap -> placeTagMap.getPlaceTag().getTagName(),
+                                Collectors.collectingAndThen(
+                                        Collectors.toList(),
+                                        tags -> tags.stream()
+                                                .distinct()
+                                                .limit(MAX_TAG_COUNT)
+                                                .toList()
+                                )
+                        )
+                ));
+    }
+
+    /**
+     * 로그인 사용자가 검색한 경우 최근 검색어를 저장하고, 기존 중복 검색어와 5개 초과 데이터는 soft delete 처리합니다.
+     *
+     * @param usersId 현재 로그인한 사용자 아이디
+     * @param keyword 저장할 검색어
+     */
+    private void saveRecentSearchIfAuthenticated(String usersId, String keyword) {
+        User authenticatedUser = findAuthenticatedUser(usersId);
+        if (authenticatedUser == null) {
+            return;
+        }
+
+        List<RecentSearch> duplicatedSearches =
+                recentSearchRepository.findAllByUser_UsersIdAndKeywordAndIsDeletedFalse(usersId, keyword);
+        duplicatedSearches.forEach(RecentSearch::markDeleted);
+
+        recentSearchRepository.save(RecentSearch.create(authenticatedUser, keyword));
+
+        List<RecentSearch> recentSearches =
+                recentSearchRepository.findAllByUser_UsersIdAndIsDeletedFalseOrderByCreatedAtDesc(usersId);
+
+        if (recentSearches.size() <= MAX_RECENT_SEARCH_COUNT) {
+            return;
+        }
+
+        recentSearches.stream()
+                .skip(MAX_RECENT_SEARCH_COUNT)
+                .forEach(RecentSearch::markDeleted);
+    }
+
+    /**
+     * 현재 인증된 사용자 아이디가 있으면 사용자 엔티티를 조회하고, 없으면 null을 반환합니다.
+     * 공개 검색 API에서는 비로그인 상태도 허용하므로 예외를 발생시키지 않습니다.
+     *
+     * @param usersId 현재 로그인한 사용자 아이디
+     * @return 조회된 사용자 엔티티, 없으면 null
+     */
+    private User findAuthenticatedUser(String usersId) {
+        if (usersId == null || usersId.isBlank()) {
+            return null;
+        }
+
+        return myPageRepository.findByUsersId(usersId).orElse(null);
+    }
+
+    /**
      * 현재 인증된 사용자 아이디가 실제 사용자 테이블에 존재하는지 검증합니다.
      *
      * @param usersId 현재 로그인한 사용자 아이디
@@ -154,5 +273,19 @@ public class SearchService {
 
         myPageRepository.findByUsersId(usersId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
+    }
+
+    /**
+     * 검색어 입력값을 검증하고 앞뒤 공백을 제거한 값을 반환합니다.
+     *
+     * @param keyword 검색어 입력값
+     * @return 공백 정리된 검색어
+     */
+    private String normalizeKeyword(String keyword) {
+        if (keyword == null || keyword.isBlank()) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT);
+        }
+
+        return keyword.trim();
     }
 }
