@@ -63,7 +63,11 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/swagger-ui/**", "/swagger-ui.html", "/api-docs/**", "/v3/api-docs/**").permitAll()
                         .requestMatchers("/api/v1/auth/**").permitAll()
-                        .requestMatchers("/api/v1/search/categories", "/api/v1/search/popular-searches").permitAll()
+                        .requestMatchers(
+                                "/api/v1/search/categories",
+                                "/api/v1/search/popular-searches",
+                                "/api/v1/search/results"
+                        ).permitAll()
                         .anyRequest().authenticated()
                 )
           

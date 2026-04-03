@@ -14,16 +14,19 @@ import mars.tripplanappbackend.search.dto.request.DeleteRecentSearchRequestDto;
 import mars.tripplanappbackend.search.dto.request.PopularSearchListRequestDto;
 import mars.tripplanappbackend.search.dto.request.RecentSearchListRequestDto;
 import mars.tripplanappbackend.search.dto.request.SearchCategoryRequestDto;
+import mars.tripplanappbackend.search.dto.request.SearchResultListRequestDto;
 import mars.tripplanappbackend.search.dto.response.DeleteAllRecentSearchResponseDto;
 import mars.tripplanappbackend.search.dto.response.DeleteRecentSearchResponseDto;
 import mars.tripplanappbackend.search.dto.response.PopularSearchListResponseDto;
 import mars.tripplanappbackend.search.dto.response.RecentSearchListResponseDto;
 import mars.tripplanappbackend.search.dto.response.SearchCategoryListResponseDto;
+import mars.tripplanappbackend.search.dto.response.SearchResultListResponseDto;
 import mars.tripplanappbackend.search.service.SearchService;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
@@ -51,6 +54,33 @@ public class SearchController {
     public ApiResponse<SearchCategoryListResponseDto> getSearchCategories() {
         SearchCategoryRequestDto requestDto = SearchCategoryRequestDto.create();
         return ApiResponse.ok(searchService.getSearchCategories(requestDto));
+    }
+
+    /**
+     * 검색 완료 페이지에 노출할 검색 결과 리스트를 조회합니다.
+     * 인증 사용자가 검색한 경우에는 최근 검색어 목록에도 검색어를 반영합니다.
+     *
+     * @param keyword 검색어
+     * @param userPrincipal 커스텀 어노테이션으로 주입된 현재 로그인 사용자 정보
+     * @return 공통 응답 형식으로 감싼 검색 결과 리스트 응답
+     */
+    @GetMapping("/results")
+    @ApiErrorExceptions({ErrorCode.INVALID_INPUT, ErrorCode.INTERNAL_ERROR})
+    @Operation(
+            summary = "검색 결과 리스트 조회",
+            description = "검색 완료 페이지에 노출할 검색 결과 리스트와 검색 결과 개수를 조회합니다."
+    )
+    public ApiResponse<SearchResultListResponseDto> getSearchResults(
+            @Parameter(description = "검색어", example = "삿포로")
+            @RequestParam("keyword") String keyword,
+            @Parameter(hidden = true)
+            @CurrentUser UserPrincipal userPrincipal
+    ) {
+        SearchResultListRequestDto requestDto = SearchResultListRequestDto.of(
+                keyword,
+                userPrincipal != null ? userPrincipal.getUsersId() : null
+        );
+        return ApiResponse.ok(searchService.getSearchResults(requestDto));
     }
 
     /**
