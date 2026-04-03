@@ -13,6 +13,8 @@ import java.util.Optional;
 public interface TripRepository extends JpaRepository<Trip, Long> {
     List<Trip> findAllByUser_UserIdAndIsDeletedFalse(Long userId);
 
+    List<Trip> findAllByUser_UsersIdAndIsDeletedFalse(String usersId);
+
     Optional<Trip> findFirstByUser_UserIdAndIsDeletedFalseAndStartDateLessThanEqualAndEndDateGreaterThanEqualOrderByStartDateAsc(
             Long userId,
             java.time.LocalDate startDate,
