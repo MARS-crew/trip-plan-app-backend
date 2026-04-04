@@ -41,16 +41,20 @@ public class SwaggerConfig {
                 .bearerFormat("JWT")
         );
 
-        // 로컬 개발 환경의 포트와 주소를 명시하여 Swagger Try it out 실행 시 실제 서버로 요청이 전달되게 함
+        // 로컬 개발 환경과 배포 환경을 분리해 사용
         Server localServer = new Server();
         localServer.setUrl("http://localhost:8080");
         localServer.setDescription("로컬 테스트 서버");
+
+        Server prodServer = new Server();
+        prodServer.setUrl("https://mars-pli.kro.kr:26443");
+        prodServer.setDescription("배포 서버");
 
         return new OpenAPI()
                 .info(apiInfo())
                 .addSecurityItem(securityRequirement)
                 .components(components)
-                .servers(List.of(localServer));
+                .servers(List.of(localServer, prodServer));
     }
 
     private Info apiInfo() {
