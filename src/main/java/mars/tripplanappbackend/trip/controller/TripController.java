@@ -10,15 +10,18 @@ import mars.tripplanappbackend.global.config.auth.UserPrincipal;
 import mars.tripplanappbackend.global.config.swagger.ApiErrorExceptions;
 import mars.tripplanappbackend.global.dto.ApiResponse;
 import mars.tripplanappbackend.global.enums.ErrorCode;
+import mars.tripplanappbackend.trip.dto.request.MyTripFilterRequestDto;
 import mars.tripplanappbackend.trip.dto.request.MyTripListRequestDto;
 import mars.tripplanappbackend.trip.dto.request.NearbyTripScheduleRequestDto;
 import mars.tripplanappbackend.trip.dto.response.MyTripListResponseDto;
 import mars.tripplanappbackend.trip.dto.response.NearbyTripScheduleResponseDto;
+import mars.tripplanappbackend.trip.enums.MyTripFilterType;
 import mars.tripplanappbackend.trip.service.TripService;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
@@ -36,7 +39,7 @@ public class TripController {
      * 내 여행 페이지 전체 탭에서 사용하는 여행 카드 목록을 조회합니다.
      *
      * @param userPrincipal 커스텀 어노테이션으로 주입된 현재 로그인 사용자 정보
-     * @return 공통 응답 형식으로 감싼 내 여행 카드 목록 응답
+     * @return 공통 응답 형식으로 감싼 전체 여행 카드 목록 응답
      */
     @GetMapping
     @ApiErrorExceptions({ErrorCode.USER_NOT_FOUND, ErrorCode.INTERNAL_ERROR})
@@ -50,6 +53,31 @@ public class TripController {
     ) {
         MyTripListRequestDto requestDto = MyTripListRequestDto.of(userPrincipal.getUsersId());
         return ApiResponse.ok(tripService.getMyTrips(requestDto));
+    }
+
+    /**
+     * 내 여행 페이지 상단 필터 탭에서 선택한 유형에 따라 여행 카드 목록을 조회합니다.
+     * 전체 탭은 모든 여행을 반환하고, 예정된 여행 탭은 여행 예정과 여행 중 상태를 함께 반환하며,
+     * 지난 여행 탭은 여행 종료 상태의 카드만 반환합니다.
+     *
+     * @param filterType 화면에서 선택한 내 여행 필터 유형
+     * @param userPrincipal 커스텀 어노테이션으로 주입된 현재 로그인 사용자 정보
+     * @return 공통 응답 형식으로 감싼 필터별 여행 카드 목록 응답
+     */
+    @GetMapping("/filter")
+    @ApiErrorExceptions({ErrorCode.USER_NOT_FOUND, ErrorCode.INTERNAL_ERROR})
+    @Operation(
+            summary = "내 여행 필터별 조회",
+            description = "내 여행 페이지의 전체, 예정된 여행, 지난 여행 탭에 맞는 여행 카드 목록을 조회합니다."
+    )
+    public ApiResponse<MyTripListResponseDto> getMyTripsByFilter(
+            @Parameter(description = "내 여행 필터 유형", example = "UPCOMING")
+            @RequestParam(name = "filterType", defaultValue = "ALL") MyTripFilterType filterType,
+            @Parameter(hidden = true)
+            @CurrentUser UserPrincipal userPrincipal
+    ) {
+        MyTripFilterRequestDto requestDto = MyTripFilterRequestDto.of(userPrincipal.getUsersId(), filterType);
+        return ApiResponse.ok(tripService.getMyTripsByFilter(requestDto));
     }
 
     /**

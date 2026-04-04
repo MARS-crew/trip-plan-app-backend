@@ -6,12 +6,14 @@ import mars.tripplanappbackend.global.exception.BusinessException;
 import mars.tripplanappbackend.mypage.repository.MyPageRepository;
 import mars.tripplanappbackend.trip.domain.Trip;
 import mars.tripplanappbackend.trip.domain.TripSchedule;
+import mars.tripplanappbackend.trip.dto.request.MyTripFilterRequestDto;
 import mars.tripplanappbackend.trip.dto.request.MyTripListRequestDto;
 import mars.tripplanappbackend.trip.dto.request.NearbyTripScheduleRequestDto;
 import mars.tripplanappbackend.trip.dto.response.MyTripListResponseDto;
 import mars.tripplanappbackend.trip.dto.response.MyTripSummaryResponseDto;
 import mars.tripplanappbackend.trip.dto.response.NearbyTripScheduleItemResponseDto;
 import mars.tripplanappbackend.trip.dto.response.NearbyTripScheduleResponseDto;
+import mars.tripplanappbackend.trip.enums.MyTripFilterType;
 import mars.tripplanappbackend.trip.enums.TripStatus;
 import mars.tripplanappbackend.trip.repository.TripRepository;
 import mars.tripplanappbackend.trip.repository.TripScheduleRepository;
@@ -39,33 +41,24 @@ public class TripService {
 
     /**
      * 내 여행 페이지 전체 탭에서 사용하는 여행 카드 목록을 조회합니다.
-     * 여행 상태는 현재 날짜를 기준으로 동적으로 계산하고,
-     * 카드 하단에 필요한 일정 개수와 여행 일수를 함께 반환합니다.
      *
      * @param requestDto 인증 사용자 아이디를 담은 내 여행 전체 리스트 조회 요청 DTO
-     * @return 내 여행 카드 목록 응답 DTO
+     * @return 전체 여행 카드 목록 응답 DTO
      */
     public MyTripListResponseDto getMyTrips(MyTripListRequestDto requestDto) {
-        validateUserExistsByUsersId(requestDto.getUsersId());
+        return getMyTripListResponse(requestDto.getUsersId(), MyTripFilterType.ALL);
+    }
 
-        List<Trip> trips = tripRepository.findAllByUser_UsersIdAndIsDeletedFalse(requestDto.getUsersId());
-        if (trips.isEmpty()) {
-            return MyTripListResponseDto.of(List.of());
-        }
-
-        Map<Long, Integer> scheduleCountMap = createScheduleCountMap(trips);
-        LocalDate today = LocalDate.now();
-
-        List<MyTripSummaryResponseDto> tripResponses = trips.stream()
-                .sorted(buildMyTripComparator(today))
-                .map(trip -> MyTripSummaryResponseDto.of(
-                        trip,
-                        resolveTripStatus(trip, today),
-                        scheduleCountMap.getOrDefault(trip.getTripId(), 0)
-                ))
-                .toList();
-
-        return MyTripListResponseDto.of(tripResponses);
+    /**
+     * 내 여행 페이지 상단 탭에서 선택한 필터 기준으로 여행 카드 목록을 조회합니다.
+     * 예정된 여행 탭은 여행 예정과 여행 중 상태를 함께 반환하고,
+     * 지난 여행 탭은 여행 종료 상태의 카드만 반환합니다.
+     *
+     * @param requestDto 인증 사용자와 필터 유형을 담은 내 여행 필터별 조회 요청 DTO
+     * @return 필터 조건이 반영된 여행 카드 목록 응답 DTO
+     */
+    public MyTripListResponseDto getMyTripsByFilter(MyTripFilterRequestDto requestDto) {
+        return getMyTripListResponse(requestDto.getUsersId(), requestDto.getFilterType());
     }
 
     /**
@@ -98,7 +91,7 @@ public class TripService {
     }
 
     /**
-     * 인증 사용자 아이디가 실제 사용자 테이블에 존재하는지 검증합니다.
+     * 인증된 사용자 아이디가 실제 사용자 테이블에 존재하는지 검증합니다.
      *
      * @param usersId 인증된 사용자 아이디
      */
@@ -117,6 +110,38 @@ public class TripService {
         if (!myPageRepository.existsById(userId)) {
             throw new BusinessException(ErrorCode.USER_NOT_FOUND);
         }
+    }
+
+    /**
+     * 내 여행 페이지 카드 목록 응답을 공통 규칙으로 생성합니다.
+     * 여행 상태를 현재 날짜 기준으로 계산한 뒤 필터 조건에 맞는 카드만 반환합니다.
+     *
+     * @param usersId 인증된 사용자 아이디
+     * @param filterType 적용할 내 여행 필터 유형
+     * @return 필터 조건이 반영된 여행 카드 목록 응답 DTO
+     */
+    private MyTripListResponseDto getMyTripListResponse(String usersId, MyTripFilterType filterType) {
+        validateUserExistsByUsersId(usersId);
+
+        List<Trip> trips = tripRepository.findAllByUser_UsersIdAndIsDeletedFalse(usersId);
+        if (trips.isEmpty()) {
+            return MyTripListResponseDto.of(List.of());
+        }
+
+        Map<Long, Integer> scheduleCountMap = createScheduleCountMap(trips);
+        LocalDate today = LocalDate.now();
+
+        List<MyTripSummaryResponseDto> tripResponses = trips.stream()
+                .map(trip -> MyTripSummaryResponseDto.of(
+                        trip,
+                        resolveTripStatus(trip, today),
+                        scheduleCountMap.getOrDefault(trip.getTripId(), 0)
+                ))
+                .filter(tripResponse -> matchesTripFilter(tripResponse.getTripStatus(), filterType))
+                .sorted(buildMyTripSummaryComparator())
+                .toList();
+
+        return MyTripListResponseDto.of(tripResponses);
     }
 
     /**
@@ -139,7 +164,22 @@ public class TripService {
     }
 
     /**
-     * 여행 엔티티를 메인 카드 응답 DTO로 변환합니다.
+     * 계산된 여행 상태가 화면에서 선택한 필터 조건에 포함되는지 확인합니다.
+     *
+     * @param tripStatus 현재 날짜 기준으로 계산된 여행 상태
+     * @param filterType 내 여행 화면에서 선택한 필터 유형
+     * @return 필터 조건에 포함되면 true, 아니면 false
+     */
+    private boolean matchesTripFilter(TripStatus tripStatus, MyTripFilterType filterType) {
+        return switch (filterType) {
+            case ALL -> true;
+            case UPCOMING -> tripStatus == TripStatus.PLANNED || tripStatus == TripStatus.ONGOING;
+            case PAST -> tripStatus == TripStatus.COMPLETED;
+        };
+    }
+
+    /**
+     * 가까운 여행 일정 응답 DTO를 생성합니다.
      *
      * @param trip 가까운 여행으로 선택된 여행 엔티티
      * @param today 서비스 기준 현재 날짜
@@ -165,7 +205,7 @@ public class TripService {
      *
      * @param trip 여행 엔티티
      * @param today 서비스 기준 현재 날짜
-     * @return 예정, 여행 중, 종료 중 하나의 여행 상태
+     * @return 여행 예정, 여행 중, 여행 종료 중 하나의 여행 상태
      */
     private TripStatus resolveTripStatus(Trip trip, LocalDate today) {
         if (today.isBefore(trip.getStartDate())) {
@@ -178,25 +218,23 @@ public class TripService {
     }
 
     /**
-     * 내 여행 전체 리스트 화면에서 카드 정렬에 사용할 비교 규칙을 생성합니다.
-     * 여행 중, 예정, 종료 순으로 우선 정렬하고,
-     * 같은 상태 안에서는 예정/진행 중은 시작일이 빠른 순,
-     * 종료는 종료일이 최근인 순으로 정렬합니다.
+     * 내 여행 카드 응답을 화면 정렬 규칙에 맞춰 정렬하는 비교기를 생성합니다.
+     * 여행 중, 여행 예정, 여행 종료 순으로 우선 정렬하고,
+     * 상태가 같으면 일정이 가까운 순 또는 최근 종료 순으로 정렬합니다.
      *
-     * @param today 서비스 기준 현재 날짜
-     * @return 내 여행 카드 정렬 비교기
+     * @return 내 여행 카드 응답 정렬 비교기
      */
-    private Comparator<Trip> buildMyTripComparator(LocalDate today) {
+    private Comparator<MyTripSummaryResponseDto> buildMyTripSummaryComparator() {
         return (first, second) -> {
-            TripStatus firstStatus = resolveTripStatus(first, today);
-            TripStatus secondStatus = resolveTripStatus(second, today);
-
-            int compareStatus = Integer.compare(getTripStatusPriority(firstStatus), getTripStatusPriority(secondStatus));
+            int compareStatus = Integer.compare(
+                    getTripStatusPriority(first.getTripStatus()),
+                    getTripStatusPriority(second.getTripStatus())
+            );
             if (compareStatus != 0) {
                 return compareStatus;
             }
 
-            if (firstStatus == TripStatus.COMPLETED) {
+            if (first.getTripStatus() == TripStatus.COMPLETED) {
                 int compareEndDate = second.getEndDate().compareTo(first.getEndDate());
                 if (compareEndDate != 0) {
                     return compareEndDate;
@@ -213,7 +251,7 @@ public class TripService {
     }
 
     /**
-     * 여행 상태별 화면 노출 우선순위를 숫자로 변환합니다.
+     * 여행 상태별 화면 정렬 우선순위를 숫자로 변환합니다.
      *
      * @param tripStatus 현재 여행 상태
      * @return 정렬 우선순위 값
