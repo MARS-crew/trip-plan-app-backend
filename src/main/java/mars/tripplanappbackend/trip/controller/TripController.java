@@ -10,10 +10,12 @@ import mars.tripplanappbackend.global.config.auth.UserPrincipal;
 import mars.tripplanappbackend.global.config.swagger.ApiErrorExceptions;
 import mars.tripplanappbackend.global.dto.ApiResponse;
 import mars.tripplanappbackend.global.enums.ErrorCode;
+import mars.tripplanappbackend.trip.dto.request.CreateTripRequestDto;
 import mars.tripplanappbackend.trip.dto.request.MyTripFilterRequestDto;
 import mars.tripplanappbackend.trip.dto.request.MyTripListRequestDto;
 import mars.tripplanappbackend.trip.dto.request.MyTripScheduleByDateRequestDto;
 import mars.tripplanappbackend.trip.dto.request.NearbyTripScheduleRequestDto;
+import mars.tripplanappbackend.trip.dto.response.CreateTripResponseDto;
 import mars.tripplanappbackend.trip.dto.response.MyTripListResponseDto;
 import mars.tripplanappbackend.trip.dto.response.MyTripScheduleByDateResponseDto;
 import mars.tripplanappbackend.trip.dto.response.NearbyTripScheduleResponseDto;
@@ -31,7 +33,7 @@ import org.springframework.web.bind.annotation.RestController;
 import java.time.LocalDate;
 
 /**
- * 메인 페이지와 내 여행 페이지에서 사용하는 여행 조회 API를 제공하는 컨트롤러입니다.
+ * 내 여행 페이지와 홈 화면 상단 카드에서 사용하는 여행 관련 API를 제공하는 컨트롤러입니다.
  */
 @RestController
 @RequestMapping("/api/v1/trips")
@@ -40,6 +42,28 @@ import java.time.LocalDate;
 public class TripController {
 
     private final TripService tripService;
+
+    /**
+     * 내 여행 추가 화면에서 여행 이미지, 제목, 여행 기간을 입력받아 새 여행을 생성합니다.
+     *
+     * @param requestDto 여행 생성에 필요한 본문 요청 DTO
+     * @param userPrincipal 커스텀 어노테이션으로 주입된 현재 로그인 사용자 정보
+     * @return 공통 응답 형식으로 감싼 여행 추가 결과 응답
+     */
+    @PostMapping("/create")
+    @ApiErrorExceptions({ErrorCode.INVALID_INPUT, ErrorCode.USER_NOT_FOUND, ErrorCode.INTERNAL_ERROR})
+    @Operation(
+            summary = "여행 추가",
+            description = "내 여행 추가 화면에서 여행 이미지, 여행 제목, 여행 시작일, 여행 종료일을 입력받아 새 여행을 생성합니다."
+    )
+    public ApiResponse<CreateTripResponseDto> createTrip(
+            @Valid @RequestBody CreateTripRequestDto requestDto,
+            @Parameter(hidden = true)
+            @CurrentUser UserPrincipal userPrincipal
+    ) {
+        CreateTripRequestDto serviceRequestDto = CreateTripRequestDto.of(userPrincipal.getUsersId(), requestDto);
+        return ApiResponse.ok(tripService.createTrip(serviceRequestDto));
+    }
 
     /**
      * 내 여행 페이지 전체 탭에서 사용하는 여행 카드 목록을 조회합니다.
@@ -62,11 +86,9 @@ public class TripController {
     }
 
     /**
-     * 내 여행 페이지 상단 필터 탭에서 선택한 유형에 따라 여행 카드 목록을 조회합니다.
-     * 전체 탭은 모든 여행을 반환하고, 예정된 여행 탭은 여행 예정과 여행 중 상태를 함께 반환하며,
-     * 지난 여행 탭은 여행 종료 상태의 카드만 반환합니다.
+     * 내 여행 페이지 상단 필터 탭에서 선택한 유형에 맞는 여행 카드 목록을 조회합니다.
      *
-     * @param filterType 화면에서 선택한 내 여행 필터 유형
+     * @param filterType 화면에서 선택한 여행 필터 유형
      * @param userPrincipal 커스텀 어노테이션으로 주입된 현재 로그인 사용자 정보
      * @return 공통 응답 형식으로 감싼 필터별 여행 카드 목록 응답
      */
@@ -74,10 +96,10 @@ public class TripController {
     @ApiErrorExceptions({ErrorCode.USER_NOT_FOUND, ErrorCode.INTERNAL_ERROR})
     @Operation(
             summary = "내 여행 필터별 조회",
-            description = "내 여행 페이지의 전체, 예정된 여행, 지난 여행 탭에 맞는 여행 카드 목록을 조회합니다."
+            description = "내 여행 페이지에서 전체, 예정된 여행, 지난 여행 탭에 맞는 여행 카드 목록을 조회합니다."
     )
     public ApiResponse<MyTripListResponseDto> getMyTripsByFilter(
-            @Parameter(description = "내 여행 필터 유형", example = "UPCOMING")
+            @Parameter(description = "여행 필터 유형", example = "UPCOMING")
             @RequestParam(name = "filterType", defaultValue = "ALL") MyTripFilterType filterType,
             @Parameter(hidden = true)
             @CurrentUser UserPrincipal userPrincipal
@@ -87,8 +109,7 @@ public class TripController {
     }
 
     /**
-     * 내 여행 페이지에서 선택한 날짜 기준으로 일정 목록을 조회합니다.
-     * 조회 날짜를 전달하지 않으면 여행 시작일을 기본 조회 날짜로 사용합니다.
+     * 내 여행 페이지에서 선택한 날짜 기준으로 일정 드롭다운 정보와 일정 목록을 조회합니다.
      *
      * @param tripId 조회할 여행 PK
      * @param targetDate 조회할 일정 날짜
