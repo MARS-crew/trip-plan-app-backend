@@ -12,17 +12,23 @@ import mars.tripplanappbackend.global.dto.ApiResponse;
 import mars.tripplanappbackend.global.enums.ErrorCode;
 import mars.tripplanappbackend.trip.dto.request.MyTripFilterRequestDto;
 import mars.tripplanappbackend.trip.dto.request.MyTripListRequestDto;
+import mars.tripplanappbackend.trip.dto.request.MyTripScheduleByDateRequestDto;
 import mars.tripplanappbackend.trip.dto.request.NearbyTripScheduleRequestDto;
 import mars.tripplanappbackend.trip.dto.response.MyTripListResponseDto;
+import mars.tripplanappbackend.trip.dto.response.MyTripScheduleByDateResponseDto;
 import mars.tripplanappbackend.trip.dto.response.NearbyTripScheduleResponseDto;
 import mars.tripplanappbackend.trip.enums.MyTripFilterType;
 import mars.tripplanappbackend.trip.service.TripService;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+
+import java.time.LocalDate;
 
 /**
  * 메인 페이지와 내 여행 페이지에서 사용하는 여행 조회 API를 제공하는 컨트롤러입니다.
@@ -78,6 +84,35 @@ public class TripController {
     ) {
         MyTripFilterRequestDto requestDto = MyTripFilterRequestDto.of(userPrincipal.getUsersId(), filterType);
         return ApiResponse.ok(tripService.getMyTripsByFilter(requestDto));
+    }
+
+    /**
+     * 내 여행 페이지에서 선택한 날짜 기준으로 일정 목록을 조회합니다.
+     * 조회 날짜를 전달하지 않으면 여행 시작일을 기본 조회 날짜로 사용합니다.
+     *
+     * @param tripId 조회할 여행 PK
+     * @param targetDate 조회할 일정 날짜
+     * @param userPrincipal 커스텀 어노테이션으로 주입된 현재 로그인 사용자 정보
+     * @return 공통 응답 형식으로 감싼 날짜별 일정 목록 응답
+     */
+    @GetMapping("/{tripId}/schedules/by-date")
+    @ApiErrorExceptions({ErrorCode.INVALID_INPUT, ErrorCode.USER_NOT_FOUND, ErrorCode.INTERNAL_ERROR})
+    @Operation(
+            summary = "내 일정 날짜별 조회",
+            description = "내 여행 페이지에서 선택한 날짜 기준으로 일정 드롭다운 정보와 해당 날짜 일정 목록을 조회합니다."
+    )
+    public ApiResponse<MyTripScheduleByDateResponseDto> getMyTripSchedulesByDate(
+            @Parameter(description = "조회할 여행 PK", example = "7")
+            @PathVariable("tripId") Long tripId,
+            @Parameter(description = "조회할 일정 날짜", example = "2026-02-15")
+            @RequestParam(name = "targetDate", required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate targetDate,
+            @Parameter(hidden = true)
+            @CurrentUser UserPrincipal userPrincipal
+    ) {
+        MyTripScheduleByDateRequestDto requestDto =
+                MyTripScheduleByDateRequestDto.of(tripId, userPrincipal.getUsersId(), targetDate);
+        return ApiResponse.ok(tripService.getMyTripSchedulesByDate(requestDto));
     }
 
     /**
