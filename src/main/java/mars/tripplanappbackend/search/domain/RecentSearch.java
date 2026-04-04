@@ -50,6 +50,20 @@ public class RecentSearch extends BaseEntity {
     private User user;
 
     /**
+     * 사용자와 검색어를 기반으로 최근 검색어 엔티티를 생성합니다.
+     *
+     * @param user 최근 검색어를 저장할 사용자
+     * @param keyword 저장할 검색어
+     * @return 최근 검색어 엔티티
+     */
+    public static RecentSearch create(User user, String keyword) {
+        return RecentSearch.builder()
+                .user(user)
+                .keyword(keyword)
+                .build();
+    }
+
+    /**
      * 최근 검색어를 삭제 상태로 변경합니다.
      */
     public void markDeleted() {

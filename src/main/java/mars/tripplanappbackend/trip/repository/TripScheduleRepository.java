@@ -8,4 +8,11 @@ import java.util.List;
 @Repository
 public interface TripScheduleRepository extends JpaRepository<TripSchedule, Long> {
     List<TripSchedule> findAllByTrip_TripIdAndIsDeletedFalseOrderByScheduleDateAscStartTimeAsc(Long tripId);
+
+    List<TripSchedule> findAllByTrip_TripIdInAndIsDeletedFalse(List<Long> tripIds);
+
+    List<TripSchedule> findAllByTrip_TripIdAndScheduleDateAndIsDeletedFalseOrderByStartTimeAsc(
+            Long tripId,
+            java.time.LocalDate scheduleDate
+    );
 }
