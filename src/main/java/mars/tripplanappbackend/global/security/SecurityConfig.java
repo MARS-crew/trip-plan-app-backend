@@ -62,6 +62,7 @@ public class SecurityConfig {
                 // swagger 및 인증 API는 공개하고 나머지 요청은 인증 필수
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/swagger-ui/**", "/swagger-ui.html", "/api-docs/**", "/v3/api-docs/**").permitAll()
+                        .requestMatchers("/uploads/**").permitAll()
                         .requestMatchers("/api/v1/auth/**").permitAll()
                         .requestMatchers(
                                 "/api/v1/search/categories",

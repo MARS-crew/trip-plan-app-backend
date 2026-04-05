@@ -53,3 +53,7 @@ springdoc:
   api-docs:
     path: /api-docs
   packages-to-scan: mars.tripplanappbackend
+
+app:
+  upload:
+    root-dir: uploads

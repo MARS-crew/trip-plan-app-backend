@@ -12,6 +12,7 @@ import mars.tripplanappbackend.trip.dto.request.MyTripFilterRequestDto;
 import mars.tripplanappbackend.trip.dto.request.MyTripListRequestDto;
 import mars.tripplanappbackend.trip.dto.request.MyTripScheduleByDateRequestDto;
 import mars.tripplanappbackend.trip.dto.request.NearbyTripScheduleRequestDto;
+import mars.tripplanappbackend.trip.dto.request.UploadTripImageRequestDto;
 import mars.tripplanappbackend.trip.dto.response.CreateTripResponseDto;
 import mars.tripplanappbackend.trip.dto.response.MyTripListResponseDto;
 import mars.tripplanappbackend.trip.dto.response.MyTripScheduleByDateResponseDto;
@@ -20,19 +21,29 @@ import mars.tripplanappbackend.trip.dto.response.MyTripScheduleItemResponseDto;
 import mars.tripplanappbackend.trip.dto.response.MyTripSummaryResponseDto;
 import mars.tripplanappbackend.trip.dto.response.NearbyTripScheduleItemResponseDto;
 import mars.tripplanappbackend.trip.dto.response.NearbyTripScheduleResponseDto;
+import mars.tripplanappbackend.trip.dto.response.UploadTripImageResponseDto;
 import mars.tripplanappbackend.trip.enums.MyTripFilterType;
 import mars.tripplanappbackend.trip.enums.TripStatus;
 import mars.tripplanappbackend.trip.repository.TripRepository;
 import mars.tripplanappbackend.trip.repository.TripScheduleRepository;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.temporal.ChronoUnit;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 /**
@@ -43,12 +54,18 @@ import java.util.stream.Collectors;
 @Transactional(readOnly = true)
 public class TripService {
 
+    private static final String TRIP_IMAGE_URL_PREFIX = "/uploads/trips/";
+    private static final Set<String> ALLOWED_TRIP_IMAGE_EXTENSIONS = Set.of("jpg", "jpeg", "png", "webp");
+
     private final MyPageRepository myPageRepository;
     private final TripRepository tripRepository;
     private final TripScheduleRepository tripScheduleRepository;
 
+    @Value("${app.upload.root-dir:uploads}")
+    private String uploadRootDir;
+
     /**
-     * 내 여행 페이지 전체 탭에서 사용하는 여행 카드 목록을 조회합니다.
+     * 내 여행 페이지 전체 탭에 사용하는 여행 카드 목록을 조회합니다.
      *
      * @param requestDto 인증 사용자 아이디를 담은 전체 리스트 조회 요청 DTO
      * @return 전체 여행 카드 목록 응답 DTO
@@ -70,7 +87,7 @@ public class TripService {
     }
 
     /**
-     * 내 여행 추가 화면에서 전달한 이미지, 제목, 여행 기간 정보로 새 여행을 생성합니다.
+     * 여행 추가 화면에서 전달한 이미지, 제목, 여행 기간 정보로 새 여행을 생성합니다.
      *
      * @param requestDto 인증 사용자 아이디와 여행 생성 본문 정보를 담은 요청 DTO
      * @return 생성된 여행 카드 정보를 담은 응답 DTO
@@ -93,6 +110,35 @@ public class TripService {
         TripStatus tripStatus = resolveTripStatus(savedTrip, LocalDate.now());
 
         return CreateTripResponseDto.from(savedTrip, tripStatus);
+    }
+
+    /**
+     * 여행 추가 화면에서 선택한 대표 이미지를 로컬 업로드 디렉터리에 저장하고 접근 가능한 URL을 반환합니다.
+     *
+     * @param requestDto 인증 사용자 아이디와 업로드 파일을 담은 요청 DTO
+     * @return 업로드된 이미지 URL을 담은 응답 DTO
+     */
+    @Transactional
+    public UploadTripImageResponseDto uploadTripImage(UploadTripImageRequestDto requestDto) {
+        validateUserExistsByUsersId(requestDto.getUsersId());
+
+        MultipartFile imageFile = requestDto.getImageFile();
+        validateTripImageFile(imageFile);
+
+        String originalFileName = StringUtils.cleanPath(imageFile.getOriginalFilename());
+        String extension = extractTripImageExtension(originalFileName);
+        String storedFileName = UUID.randomUUID() + "." + extension;
+        Path tripImageDirectory = resolveTripImageDirectory();
+        Path targetPath = tripImageDirectory.resolve(storedFileName).normalize();
+
+        try {
+            Files.createDirectories(tripImageDirectory);
+            imageFile.transferTo(targetPath);
+        } catch (IOException e) {
+            throw new BusinessException(ErrorCode.FILE_UPLOAD_FAIL);
+        }
+
+        return UploadTripImageResponseDto.of(TRIP_IMAGE_URL_PREFIX + storedFileName, originalFileName);
     }
 
     /**
@@ -139,7 +185,7 @@ public class TripService {
     }
 
     /**
-     * 홈 화면 상단 카드에서 사용자 기준 가장 가까운 여행 일정 정보를 조회합니다.
+     * 메인 화면 상단 카드에서 사용할 기준 가장 가까운 여행 일정 정보를 조회합니다.
      * 진행 중인 여행이 있으면 해당 여행을 우선 조회하고,
      * 없으면 가장 가까운 예정 여행을 조회합니다.
      *
@@ -216,7 +262,56 @@ public class TripService {
     }
 
     /**
-     * 빈 문자열로 들어온 이미지 URL을 null로 정규화합니다.
+     * 업로드 요청에 포함된 파일이 비어 있지 않고 허용된 이미지 형식인지 검증합니다.
+     *
+     * @param imageFile 업로드할 여행 대표 이미지 파일
+     */
+    private void validateTripImageFile(MultipartFile imageFile) {
+        if (imageFile == null || imageFile.isEmpty()) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT);
+        }
+
+        String originalFileName = imageFile.getOriginalFilename();
+        String contentType = imageFile.getContentType();
+
+        if (!StringUtils.hasText(originalFileName)
+                || originalFileName.contains("..")
+                || !StringUtils.hasText(contentType)
+                || !contentType.startsWith("image/")) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT);
+        }
+
+        String extension = extractTripImageExtension(originalFileName);
+        if (!ALLOWED_TRIP_IMAGE_EXTENSIONS.contains(extension)) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT);
+        }
+    }
+
+    /**
+     * 업로드 루트 디렉터리 아래 여행 이미지 저장 전용 경로를 생성합니다.
+     *
+     * @return 여행 이미지 저장 디렉터리 경로
+     */
+    private Path resolveTripImageDirectory() {
+        return Paths.get(uploadRootDir, "trips").toAbsolutePath().normalize();
+    }
+
+    /**
+     * 원본 파일명에서 소문자 확장자를 추출합니다.
+     *
+     * @param originalFileName 사용자가 업로드한 원본 파일명
+     * @return 저장 정책 검증에 사용할 소문자 파일 확장자
+     */
+    private String extractTripImageExtension(String originalFileName) {
+        if (!StringUtils.hasText(originalFileName) || !originalFileName.contains(".")) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT);
+        }
+
+        return originalFileName.substring(originalFileName.lastIndexOf('.') + 1).toLowerCase();
+    }
+
+    /**
+     * 빈 문자열로 들어온 이미지 URL은 null로 정규화합니다.
      *
      * @param imageUrl 화면에서 전달한 여행 이미지 URL
      * @return 저장 가능한 여행 이미지 URL
@@ -263,7 +358,7 @@ public class TripService {
     /**
      * 여행 카드 목록에 필요한 일정 개수를 여행 PK 기준으로 집계합니다.
      *
-     * @param trips 조회할 여행 엔티티 목록
+     * @param trips 조회한 여행 엔티티 목록
      * @return 여행 PK를 키로 가지는 일정 개수 맵
      */
     private Map<Long, Integer> createScheduleCountMap(List<Trip> trips) {
@@ -312,7 +407,7 @@ public class TripService {
     /**
      * 계산된 여행 상태가 화면에서 선택한 필터 조건에 포함되는지 확인합니다.
      *
-     * @param tripStatus 현재 날짜 기준으로 계산한 여행 상태
+     * @param tripStatus 현재 날짜 기준으로 계산된 여행 상태
      * @param filterType 내 여행 화면에서 선택한 필터 유형
      * @return 필터 조건에 포함되면 true, 아니면 false
      */

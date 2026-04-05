@@ -15,25 +15,30 @@ import mars.tripplanappbackend.trip.dto.request.MyTripFilterRequestDto;
 import mars.tripplanappbackend.trip.dto.request.MyTripListRequestDto;
 import mars.tripplanappbackend.trip.dto.request.MyTripScheduleByDateRequestDto;
 import mars.tripplanappbackend.trip.dto.request.NearbyTripScheduleRequestDto;
+import mars.tripplanappbackend.trip.dto.request.UploadTripImageRequestDto;
 import mars.tripplanappbackend.trip.dto.response.CreateTripResponseDto;
 import mars.tripplanappbackend.trip.dto.response.MyTripListResponseDto;
 import mars.tripplanappbackend.trip.dto.response.MyTripScheduleByDateResponseDto;
 import mars.tripplanappbackend.trip.dto.response.NearbyTripScheduleResponseDto;
+import mars.tripplanappbackend.trip.dto.response.UploadTripImageResponseDto;
 import mars.tripplanappbackend.trip.enums.MyTripFilterType;
 import mars.tripplanappbackend.trip.service.TripService;
 import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.time.LocalDate;
 
 /**
- * 내 여행 페이지와 홈 화면 상단 카드에서 사용하는 여행 관련 API를 제공하는 컨트롤러입니다.
+ * 메인 화면 상단 카드와 내 여행 페이지에서 사용하는 여행 관련 API를 제공하는 컨트롤러입니다.
  */
 @RestController
 @RequestMapping("/api/v1/trips")
@@ -44,7 +49,7 @@ public class TripController {
     private final TripService tripService;
 
     /**
-     * 내 여행 추가 화면에서 여행 이미지, 제목, 여행 기간을 입력받아 새 여행을 생성합니다.
+     * 여행 추가 화면에서 여행 대표 이미지, 여행 제목, 여행 기간을 입력받아 새 여행을 생성합니다.
      *
      * @param requestDto 여행 생성에 필요한 본문 요청 DTO
      * @param userPrincipal 커스텀 어노테이션으로 주입된 현재 로그인 사용자 정보
@@ -54,7 +59,7 @@ public class TripController {
     @ApiErrorExceptions({ErrorCode.INVALID_INPUT, ErrorCode.USER_NOT_FOUND, ErrorCode.INTERNAL_ERROR})
     @Operation(
             summary = "여행 추가",
-            description = "내 여행 추가 화면에서 여행 이미지, 여행 제목, 여행 시작일, 여행 종료일을 입력받아 새 여행을 생성합니다."
+            description = "내 여행 추가 화면에서 여행 대표 이미지, 여행 제목, 여행 시작일과 여행 종료일을 입력받아 새 여행을 생성합니다."
     )
     public ApiResponse<CreateTripResponseDto> createTrip(
             @Valid @RequestBody CreateTripRequestDto requestDto,
@@ -66,7 +71,30 @@ public class TripController {
     }
 
     /**
-     * 내 여행 페이지 전체 탭에서 사용하는 여행 카드 목록을 조회합니다.
+     * 여행 추가 화면에서 선택한 대표 이미지를 업로드하고, 이후 여행 생성 요청에 사용할 이미지 URL을 반환합니다.
+     *
+     * @param imageFile 업로드할 여행 대표 이미지 파일
+     * @param userPrincipal 커스텀 어노테이션으로 주입된 현재 로그인 사용자 정보
+     * @return 공통 응답 형식으로 감싼 여행 이미지 업로드 결과 응답
+     */
+    @PostMapping(value = "/images/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @ApiErrorExceptions({ErrorCode.INVALID_INPUT, ErrorCode.USER_NOT_FOUND, ErrorCode.FILE_UPLOAD_FAIL, ErrorCode.INTERNAL_ERROR})
+    @Operation(
+            summary = "여행 이미지 업로드",
+            description = "여행 추가 화면에서 사용할 대표 이미지를 업로드하고, 여행 생성 API에 바로 전달할 수 있는 이미지 URL을 반환합니다."
+    )
+    public ApiResponse<UploadTripImageResponseDto> uploadTripImage(
+            @Parameter(description = "업로드할 여행 대표 이미지 파일")
+            @RequestPart("imageFile") MultipartFile imageFile,
+            @Parameter(hidden = true)
+            @CurrentUser UserPrincipal userPrincipal
+    ) {
+        UploadTripImageRequestDto requestDto = UploadTripImageRequestDto.of(userPrincipal.getUsersId(), imageFile);
+        return ApiResponse.ok(tripService.uploadTripImage(requestDto));
+    }
+
+    /**
+     * 내 여행 페이지 전체 탭에 사용하는 여행 카드 목록을 조회합니다.
      *
      * @param userPrincipal 커스텀 어노테이션으로 주입된 현재 로그인 사용자 정보
      * @return 공통 응답 형식으로 감싼 전체 여행 카드 목록 응답
@@ -137,7 +165,7 @@ public class TripController {
     }
 
     /**
-     * 홈 화면 상단 카드에 노출할 가까운 여행 일정 정보를 조회합니다.
+     * 홈 화면 상단 카드에 노출할 가장 가까운 여행 일정 정보를 조회합니다.
      *
      * @param requestDto 조회 대상 사용자 PK를 담은 요청 DTO
      * @return 공통 응답 형식으로 감싼 가까운 여행 일정 응답
@@ -146,7 +174,7 @@ public class TripController {
     @ApiErrorExceptions({ErrorCode.INVALID_INPUT, ErrorCode.USER_NOT_FOUND, ErrorCode.INTERNAL_ERROR})
     @Operation(
             summary = "가까운 여행 일정 조회",
-            description = "홈 화면 상단 카드에 노출할 가까운 여행 일정 정보를 조회합니다."
+            description = "홈 화면 상단 카드에 노출할 가장 가까운 여행 일정 정보를 조회합니다."
     )
     public ApiResponse<NearbyTripScheduleResponseDto> getNearbyTripSchedule(
             @Valid @RequestBody NearbyTripScheduleRequestDto requestDto
