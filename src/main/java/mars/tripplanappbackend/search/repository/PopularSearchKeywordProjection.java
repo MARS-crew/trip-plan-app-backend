@@ -1,7 +1,7 @@
 package mars.tripplanappbackend.search.repository;
 
 /**
- * 인기 검색어 집계 결과를 조회하기 위한 projection 인터페이스입니다.
+ * 최근 검색어 테이블에서 인기 검색어 집계 결과를 조회하기 위한 projection 인터페이스입니다.
  */
 public interface PopularSearchKeywordProjection {
 
