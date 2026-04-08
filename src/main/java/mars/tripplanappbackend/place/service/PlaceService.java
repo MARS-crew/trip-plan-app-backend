@@ -3,18 +3,22 @@ package mars.tripplanappbackend.place.service;
 import lombok.RequiredArgsConstructor;
 import mars.tripplanappbackend.global.enums.ErrorCode;
 import mars.tripplanappbackend.global.exception.BusinessException;
+import mars.tripplanappbackend.mypage.domain.SavedPlace;
+import mars.tripplanappbackend.mypage.domain.User;
 import mars.tripplanappbackend.mypage.repository.MyPageRepository;
 import mars.tripplanappbackend.mypage.repository.SavedPlaceRepository;
 import mars.tripplanappbackend.place.domain.Place;
 import mars.tripplanappbackend.place.domain.PlaceTagMap;
 import mars.tripplanappbackend.place.dto.request.NearbyRecommendedPlaceRequestDto;
 import mars.tripplanappbackend.place.dto.request.RecommendedPlaceRequestDto;
+import mars.tripplanappbackend.place.dto.request.SavePlaceRequestDto;
 import mars.tripplanappbackend.place.dto.response.NearbyRecommendedPlaceListResponseDto;
 import mars.tripplanappbackend.place.dto.response.NearbyRecommendedPlaceResponseDto;
 import mars.tripplanappbackend.place.dto.response.PlaceDetailResponseDto;
 import mars.tripplanappbackend.place.dto.response.PlaceReviewPreviewResponseDto;
 import mars.tripplanappbackend.place.dto.response.RecommendedPlaceListResponseDto;
 import mars.tripplanappbackend.place.dto.response.RecommendedPlaceResponseDto;
+import mars.tripplanappbackend.place.dto.response.SavePlaceResponseDto;
 import mars.tripplanappbackend.place.repository.PlaceRepository;
 import mars.tripplanappbackend.place.repository.PlaceTagMapRepository;
 import mars.tripplanappbackend.review.domain.Review;
@@ -72,6 +76,37 @@ public class PlaceService {
                 .toList();
 
         return RecommendedPlaceListResponseDto.of(recommendedPlaces);
+    }
+
+    /**
+     * 여행지 상세 페이지에서 선택한 장소를 저장 목록에 추가합니다.
+     * 사용자와 장소 존재 여부를 검증한 뒤, 이미 저장된 장소가 아니면 저장 항목을 생성합니다.
+     *
+     * @param requestDto 저장 항목 추가 요청 DTO
+     * @return 저장 항목 추가 응답 DTO
+     */
+    @Transactional
+    public SavePlaceResponseDto savePlace(SavePlaceRequestDto requestDto) {
+        validateSavePlaceRequest(requestDto);
+
+        User user = findUser(requestDto.getUsersId());
+        Place place = findPlace(requestDto.getPlaceId());
+
+        if (savedPlaceRepository.existsByUser_UsersIdAndPlace_PlaceIdAndIsDeletedFalse(
+                requestDto.getUsersId(),
+                requestDto.getPlaceId()
+        )) {
+            throw new BusinessException(ErrorCode.SAVED_PLACE_ALREADY_EXISTS);
+        }
+
+        SavedPlace savedPlace = savedPlaceRepository.save(
+                SavedPlace.builder()
+                        .user(user)
+                        .place(place)
+                        .build()
+        );
+
+        return SavePlaceResponseDto.from(savedPlace);
     }
 
     /**
@@ -177,6 +212,39 @@ public class PlaceService {
 
         myPageRepository.findByUsersId(usersId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
+    }
+
+    /**
+     * 저장 요청 파라미터가 유효한지 확인합니다.
+     *
+     * @param requestDto 저장 요청 DTO
+     */
+    private void validateSavePlaceRequest(SavePlaceRequestDto requestDto) {
+        if (requestDto.getPlaceId() == null || requestDto.getPlaceId() < 1 || requestDto.getUsersId() == null) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT);
+        }
+    }
+
+    /**
+     * 사용자 아이디로 활성 사용자 정보를 조회합니다.
+     *
+     * @param usersId JWT에서 추출한 사용자 아이디
+     * @return 사용자 엔티티
+     */
+    private User findUser(String usersId) {
+        return myPageRepository.findByUsersId(usersId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
+    }
+
+    /**
+     * 장소 PK로 삭제되지 않은 장소 정보를 조회합니다.
+     *
+     * @param placeId 장소 PK
+     * @return 장소 엔티티
+     */
+    private Place findPlace(Long placeId) {
+        return placeRepository.findByPlaceIdAndIsDeletedFalse(placeId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.PLACE_NOT_FOUND));
     }
 
     /**
