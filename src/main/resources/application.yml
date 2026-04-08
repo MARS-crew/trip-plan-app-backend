@@ -47,6 +47,14 @@ spring:
       host: localhost
       port: 6379
 
+  firebase:
+    service-account:
+      path: "config/service-account.json"
+
+openweather:
+  api:
+    key: ${OPENWEATHER_API_KEY}
+
 springdoc:
   swagger-ui:
     path: /swagger-ui.html

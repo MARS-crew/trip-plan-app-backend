@@ -40,3 +40,5 @@ out/
 bootrun-*.log
 bootrun-*.err
 bootrun-*.err.log
+
+config/
