@@ -12,6 +12,7 @@ import mars.tripplanappbackend.place.domain.PlaceTagMap;
 import mars.tripplanappbackend.place.dto.request.NearbyRecommendedPlaceRequestDto;
 import mars.tripplanappbackend.place.dto.request.RecommendedPlaceRequestDto;
 import mars.tripplanappbackend.place.dto.request.SavePlaceRequestDto;
+import mars.tripplanappbackend.place.dto.request.SharePlaceRequestDto;
 import mars.tripplanappbackend.place.dto.response.NearbyRecommendedPlaceListResponseDto;
 import mars.tripplanappbackend.place.dto.response.NearbyRecommendedPlaceResponseDto;
 import mars.tripplanappbackend.place.dto.response.PlaceDetailResponseDto;
@@ -19,6 +20,7 @@ import mars.tripplanappbackend.place.dto.response.PlaceReviewPreviewResponseDto;
 import mars.tripplanappbackend.place.dto.response.RecommendedPlaceListResponseDto;
 import mars.tripplanappbackend.place.dto.response.RecommendedPlaceResponseDto;
 import mars.tripplanappbackend.place.dto.response.SavePlaceResponseDto;
+import mars.tripplanappbackend.place.dto.response.SharePlaceResponseDto;
 import mars.tripplanappbackend.place.repository.PlaceRepository;
 import mars.tripplanappbackend.place.repository.PlaceTagMapRepository;
 import mars.tripplanappbackend.review.domain.Review;
@@ -47,6 +49,9 @@ public class PlaceService {
     private static final int MAX_TAG_COUNT = 3;
     private static final int MAX_NEARBY_RECOMMENDED_PLACE_COUNT = 3;
     private static final long MAX_NEARBY_DISTANCE_METERS = 1_000L;
+    private static final String SHARE_URL_TEMPLATE = "https://lets-trip.com/places/%d";
+    private static final String SHARE_TITLE_TEMPLATE = "Let's Trip에서 %s을(를) 확인해보세요.";
+    private static final String SHARE_DESCRIPTION_TEMPLATE = "%s에 위치한 %s의 상세 정보를 공유합니다.";
 
     private final MyPageRepository myPageRepository;
     private final SavedPlaceRepository savedPlaceRepository;
@@ -107,6 +112,27 @@ public class PlaceService {
         );
 
         return SavePlaceResponseDto.from(savedPlace);
+    }
+
+    /**
+     * 여행지 상세 페이지에서 공유 시트에 필요한 공유 메타데이터를 생성합니다.
+     * 사용자 인증과 장소 존재 여부를 검증한 뒤, 공유 제목/설명/링크를 조합해 반환합니다.
+     *
+     * @param requestDto 공유 요청 DTO
+     * @return 여행지 공유 응답 DTO
+     */
+    public SharePlaceResponseDto sharePlace(SharePlaceRequestDto requestDto) {
+        validateSharePlaceRequest(requestDto);
+
+        findUser(requestDto.getUsersId());
+        Place place = findPlace(requestDto.getPlaceId());
+
+        return SharePlaceResponseDto.from(
+                place,
+                createShareTitle(place),
+                createShareDescription(place),
+                createShareUrl(place.getPlaceId())
+        );
     }
 
     /**
@@ -226,6 +252,17 @@ public class PlaceService {
     }
 
     /**
+     * 공유 요청에 필요한 장소 PK와 사용자 아이디가 모두 유효한지 검증합니다.
+     *
+     * @param requestDto 공유 요청 DTO
+     */
+    private void validateSharePlaceRequest(SharePlaceRequestDto requestDto) {
+        if (requestDto.getPlaceId() == null || requestDto.getPlaceId() < 1 || requestDto.getUsersId() == null) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT);
+        }
+    }
+
+    /**
      * 사용자 아이디로 활성 사용자 정보를 조회합니다.
      *
      * @param usersId JWT에서 추출한 사용자 아이디
@@ -245,6 +282,40 @@ public class PlaceService {
     private Place findPlace(Long placeId) {
         return placeRepository.findByPlaceIdAndIsDeletedFalse(placeId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.PLACE_NOT_FOUND));
+    }
+
+    /**
+     * 장소명을 이용해 공유 시트 제목을 생성합니다.
+     *
+     * @param place 공유 대상 장소 엔티티
+     * @return 공유 제목
+     */
+    private String createShareTitle(Place place) {
+        return SHARE_TITLE_TEMPLATE.formatted(place.getName());
+    }
+
+    /**
+     * 국가/도시 정보와 장소명을 조합해 공유 시트 설명을 생성합니다.
+     *
+     * @param place 공유 대상 장소 엔티티
+     * @return 공유 설명
+     */
+    private String createShareDescription(Place place) {
+        String location = hasText(place.getCityName())
+                ? place.getCountryName() + " " + place.getCityName()
+                : place.getCountryName();
+
+        return SHARE_DESCRIPTION_TEMPLATE.formatted(location, place.getName());
+    }
+
+    /**
+     * 장소 PK를 기준으로 공유 링크를 생성합니다.
+     *
+     * @param placeId 공유 대상 장소 PK
+     * @return 공유 링크
+     */
+    private String createShareUrl(Long placeId) {
+        return SHARE_URL_TEMPLATE.formatted(placeId);
     }
 
     /**
