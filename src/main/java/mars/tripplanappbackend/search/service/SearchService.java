@@ -72,11 +72,11 @@ public class SearchService {
     }
 
     /**
-     * 검색어를 기준으로 장소명, 지역명, 주소, 태그가 일치하는 검색 결과 리스트를 조회합니다.
-     * 인증 사용자가 검색한 경우에는 최근 검색어 목록도 함께 갱신합니다.
+     * 검색어를 기준으로 장소명, 지역명, 주소, 태그가 일치하는 검색 결과 목록을 조회합니다.
+     * 로그인 사용자인 경우에는 최근 검색어와 검색 횟수를 함께 갱신합니다.
      *
-     * @param requestDto 검색 결과 리스트 조회 요청 DTO
-     * @return 검색 결과 리스트 응답 DTO
+     * @param requestDto 검색 결과 목록 조회 요청 DTO
+     * @return 검색 결과 목록 응답 DTO
      */
     @Transactional
     public SearchResultListResponseDto getSearchResults(SearchResultListRequestDto requestDto) {
@@ -98,8 +98,8 @@ public class SearchService {
     }
 
     /**
-     * 최근 검색 데이터 기준으로 가장 많이 검색된 키워드 상위 5건을 조회합니다.
-     * 동일 검색 횟수일 경우 최근에 다시 검색된 키워드를 우선 노출합니다.
+     * 최근 검색어 테이블의 누적 검색 횟수를 기준으로 인기 검색어 상위 목록을 조회합니다.
+     * 최근 검색어가 삭제되어도 searchCount 값은 유지되므로 인기 검색어 집계에서 제외되지 않습니다.
      *
      * @param requestDto 인기 검색어 조회 요청 DTO
      * @return 인기 검색어 목록 응답 DTO
@@ -133,7 +133,7 @@ public class SearchService {
         validateAuthenticatedUser(requestDto.getUsersId());
 
         List<RecentSearch> recentSearches = recentSearchRepository
-                .findAllByUser_UsersIdAndIsDeletedFalseOrderByCreatedAtDesc(
+                .findAllByUser_UsersIdAndIsDeletedFalseOrderByUpdatedAtDesc(
                         requestDto.getUsersId(),
                         PageRequest.of(0, requestDto.getLimit())
                 );
@@ -146,7 +146,8 @@ public class SearchService {
     }
 
     /**
-     * 검색 페이지 최근 검색어 목록에서 선택한 항목 한 건을 soft delete 처리합니다.
+     * 최근 검색어 목록에서 선택한 항목 한 건을 soft delete 처리합니다.
+     * 이때 누적 검색 횟수는 유지되므로 인기 검색어 집계에는 계속 반영됩니다.
      *
      * @param requestDto 최근 검색어 삭제 요청 DTO
      * @return 최근 검색어 삭제 응답 DTO
@@ -167,7 +168,8 @@ public class SearchService {
     }
 
     /**
-     * 검색 페이지 최근 검색어 목록에 남아 있는 항목을 현재 로그인 사용자 기준으로 전체 삭제합니다.
+     * 현재 로그인한 사용자의 최근 검색어 목록 전체를 soft delete 처리합니다.
+     * 최근 검색어 노출만 사라질 뿐, 누적 검색 횟수는 유지됩니다.
      *
      * @param requestDto 최근 검색어 전체 삭제 요청 DTO
      * @return 최근 검색어 전체 삭제 응답 DTO
@@ -184,7 +186,7 @@ public class SearchService {
     }
 
     /**
-     * 검색 결과 목록에 사용할 태그를 장소 PK 기준으로 묶어 반환합니다.
+     * 검색 결과 목록에 포함된 장소들의 태그를 장소 PK 기준으로 묶어서 반환합니다.
      *
      * @param places 검색된 장소 엔티티 목록
      * @return 장소 PK를 키로 가지는 태그 목록 맵
@@ -217,7 +219,10 @@ public class SearchService {
     }
 
     /**
-     * 로그인 사용자가 검색한 경우 최근 검색어를 저장하고, 기존 중복 검색어와 5개 초과 데이터는 soft delete 처리합니다.
+     * 로그인 사용자의 최근 검색어를 저장하거나 갱신합니다.
+     * 같은 사용자가 같은 검색어를 다시 검색하면 기존 row의 searchCount를 증가시키고,
+     * 삭제 상태였다면 다시 활성화합니다.
+     * 이후 최근 검색어 활성 목록이 5건을 초과하면 오래된 항목부터 soft delete 처리합니다.
      *
      * @param usersId 현재 로그인한 사용자 아이디
      * @param keyword 저장할 검색어
@@ -228,14 +233,23 @@ public class SearchService {
             return;
         }
 
-        List<RecentSearch> duplicatedSearches =
-                recentSearchRepository.findAllByUser_UsersIdAndKeywordAndIsDeletedFalse(usersId, keyword);
-        duplicatedSearches.forEach(RecentSearch::markDeleted);
+        List<RecentSearch> searchedKeywords =
+                recentSearchRepository.findAllByUser_UsersIdAndKeywordOrderByUpdatedAtDesc(usersId, keyword);
 
-        recentSearchRepository.save(RecentSearch.create(authenticatedUser, keyword));
+        if (searchedKeywords.isEmpty()) {
+            recentSearchRepository.save(RecentSearch.create(authenticatedUser, keyword));
+        } else {
+            RecentSearch latestSearch = searchedKeywords.get(0);
+            latestSearch.increaseSearchCount();
+
+            searchedKeywords.stream()
+                    .skip(1)
+                    .filter(recentSearch -> !recentSearch.getIsDeleted())
+                    .forEach(RecentSearch::markDeleted);
+        }
 
         List<RecentSearch> recentSearches =
-                recentSearchRepository.findAllByUser_UsersIdAndIsDeletedFalseOrderByCreatedAtDesc(usersId);
+                recentSearchRepository.findAllByUser_UsersIdAndIsDeletedFalseOrderByUpdatedAtDesc(usersId);
 
         if (recentSearches.size() <= MAX_RECENT_SEARCH_COUNT) {
             return;
@@ -276,10 +290,10 @@ public class SearchService {
     }
 
     /**
-     * 검색어 입력값을 검증하고 앞뒤 공백을 제거한 값을 반환합니다.
+     * 검색어 입력값이 비어 있지 않은지 검증하고 앞뒤 공백을 제거한 값을 반환합니다.
      *
      * @param keyword 검색어 입력값
-     * @return 공백 정리된 검색어
+     * @return 공백이 정리된 검색어
      */
     private String normalizeKeyword(String keyword) {
         if (keyword == null || keyword.isBlank()) {
