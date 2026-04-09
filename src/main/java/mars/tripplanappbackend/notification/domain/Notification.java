@@ -83,4 +83,9 @@ public class Notification extends BaseEntity {
     @ManyToOne(fetch = FetchType.LAZY, optional = true)
     @JoinColumn(name = "trip_schedule_id", nullable = true)
     private TripSchedule tripSchedule;
+
+    public void markAsRead() {
+        this.isRead = UseYnEnum.Y;
+        this.readAt = LocalDateTime.now();
+    }
 }

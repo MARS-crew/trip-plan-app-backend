@@ -4,6 +4,7 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import mars.tripplanappbackend.global.enums.UseYnEnum;
 import mars.tripplanappbackend.notification.domain.Notification;
 
 import java.time.LocalDateTime;
@@ -21,9 +22,17 @@ public class NotificationResponse {
     @Schema(description = "fcm에서 보낸 시간", example = "2026-04-09T01:41:01.447Z")
     private LocalDateTime sendAt;
 
+    @Schema(description = "읽음 여부", example = "Y")
+    private UseYnEnum isRead;
+
+    @Schema(description = "알림 조회 시간", example = "2026-04-09T01:41:01.447Z")
+    private LocalDateTime readAt;
+
     public NotificationResponse(Notification notification) {
         this.title = notification.getTitle();
         this.content = notification.getContent();
         this.sendAt = notification.getSendAt();
+        this.isRead = notification.getIsRead();
+        this.readAt = notification.getReadAt();
     }
 }

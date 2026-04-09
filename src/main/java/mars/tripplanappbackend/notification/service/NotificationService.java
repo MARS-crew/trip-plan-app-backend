@@ -133,18 +133,22 @@ public class NotificationService {
     }
 
     /**
-     * 알림 조회
+     * 알림 조회 + 읽음 여부 처리
      *
      * @param usersId JWT에서 추출한 사용자 ID
      * @return 알림 목록
      */
-    @Transactional(readOnly = true)
+    @Transactional
     public List<NotificationResponse> getNotifications(String usersId) {
         User user = myPageRepository.findByUsersId(usersId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
 
-        return notificationRepository.findByUserAndIsDeletedFalseOrderBySendAtDesc(user)
-                .stream()
+        List<Notification> notifications = notificationRepository
+                .findByUserAndIsDeletedFalseOrderBySendAtDesc(user);
+
+        notifications.forEach(Notification::markAsRead);
+
+        return notifications.stream()
                 .map(NotificationResponse::new)
                 .toList();
     }
