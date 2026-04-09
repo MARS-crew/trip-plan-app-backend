@@ -13,12 +13,14 @@ import mars.tripplanappbackend.global.config.swagger.ApiErrorExceptions;
 import mars.tripplanappbackend.global.dto.ApiResponse;
 import mars.tripplanappbackend.global.enums.ErrorCode;
 import mars.tripplanappbackend.trip.dto.request.CreateTripRequestDto;
+import mars.tripplanappbackend.trip.dto.request.DeleteTripRequestDto;
 import mars.tripplanappbackend.trip.dto.request.MyTripFilterRequestDto;
 import mars.tripplanappbackend.trip.dto.request.MyTripListRequestDto;
 import mars.tripplanappbackend.trip.dto.request.MyTripScheduleByDateRequestDto;
 import mars.tripplanappbackend.trip.dto.request.NearbyTripScheduleRequestDto;
 import mars.tripplanappbackend.trip.dto.request.UpdateTripRequestDto;
 import mars.tripplanappbackend.trip.dto.response.CreateTripResponseDto;
+import mars.tripplanappbackend.trip.dto.response.DeleteTripResponseDto;
 import mars.tripplanappbackend.trip.dto.response.MyTripListResponseDto;
 import mars.tripplanappbackend.trip.dto.response.MyTripScheduleByDateResponseDto;
 import mars.tripplanappbackend.trip.dto.response.NearbyTripScheduleResponseDto;
@@ -26,6 +28,7 @@ import mars.tripplanappbackend.trip.dto.response.UpdateTripResponseDto;
 import mars.tripplanappbackend.trip.enums.MyTripFilterType;
 import mars.tripplanappbackend.trip.service.TripService;
 import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -111,9 +114,34 @@ public class TripController {
             @Parameter(hidden = true)
             @CurrentUser UserPrincipal userPrincipal
     ) {
-        UpdateTripRequestDto serviceRequestDto =
+UpdateTripRequestDto serviceRequestDto =
                 UpdateTripRequestDto.of(tripId, userPrincipal.getUsersId(), requestDto);
         return ApiResponse.ok(tripService.updateTrip(serviceRequestDto));
+    }
+
+    /**
+     * 내 여행 상세 화면 상단 더보기 메뉴에서 선택한 여행을 삭제합니다.
+     * 삭제는 별도 확인 화면이 아니라 상세 화면의 메뉴 액션으로 연결되는 흐름이므로,
+     * 경로 변수의 여행 PK와 현재 로그인 사용자 정보를 조합해 서비스 계층으로 전달합니다.
+     *
+     * @param tripId 삭제할 여행 PK
+     * @param userPrincipal 커스텀 애노테이션으로 주입된 현재 로그인 사용자 정보
+     * @return 공통 응답 형식으로 감싼 여행 삭제 결과 응답
+     */
+    @DeleteMapping("/{tripId}")
+    @ApiErrorExceptions({ErrorCode.INVALID_INPUT, ErrorCode.USER_NOT_FOUND, ErrorCode.INTERNAL_ERROR})
+    @Operation(
+            summary = "내 여행 삭제",
+            description = "내 여행 상세 화면 상단 더보기 메뉴에서 현재 선택한 여행을 삭제합니다."
+    )
+    public ApiResponse<DeleteTripResponseDto> deleteTrip(
+            @Parameter(description = "삭제할 여행 PK", example = "1")
+            @PathVariable("tripId") Long tripId,
+            @Parameter(hidden = true)
+            @CurrentUser UserPrincipal userPrincipal
+    ) {
+        DeleteTripRequestDto requestDto = DeleteTripRequestDto.of(tripId, userPrincipal.getUsersId());
+        return ApiResponse.ok(tripService.deleteTrip(requestDto));
     }
 
     /**

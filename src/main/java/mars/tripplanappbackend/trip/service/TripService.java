@@ -7,13 +7,17 @@ import mars.tripplanappbackend.mypage.domain.User;
 import mars.tripplanappbackend.mypage.repository.MyPageRepository;
 import mars.tripplanappbackend.trip.domain.Trip;
 import mars.tripplanappbackend.trip.domain.TripSchedule;
+import mars.tripplanappbackend.trip.domain.VisitedPlace;
+import mars.tripplanappbackend.trip.domain.WishlistPlace;
 import mars.tripplanappbackend.trip.dto.request.CreateTripRequestDto;
+import mars.tripplanappbackend.trip.dto.request.DeleteTripRequestDto;
 import mars.tripplanappbackend.trip.dto.request.MyTripFilterRequestDto;
 import mars.tripplanappbackend.trip.dto.request.MyTripListRequestDto;
 import mars.tripplanappbackend.trip.dto.request.MyTripScheduleByDateRequestDto;
 import mars.tripplanappbackend.trip.dto.request.NearbyTripScheduleRequestDto;
 import mars.tripplanappbackend.trip.dto.request.UpdateTripRequestDto;
 import mars.tripplanappbackend.trip.dto.response.CreateTripResponseDto;
+import mars.tripplanappbackend.trip.dto.response.DeleteTripResponseDto;
 import mars.tripplanappbackend.trip.dto.response.MyTripListResponseDto;
 import mars.tripplanappbackend.trip.dto.response.MyTripScheduleByDateResponseDto;
 import mars.tripplanappbackend.trip.dto.response.MyTripScheduleDateOptionResponseDto;
@@ -26,6 +30,8 @@ import mars.tripplanappbackend.trip.enums.MyTripFilterType;
 import mars.tripplanappbackend.trip.enums.TripStatus;
 import mars.tripplanappbackend.trip.repository.TripRepository;
 import mars.tripplanappbackend.trip.repository.TripScheduleRepository;
+import mars.tripplanappbackend.trip.repository.VisitedPlaceRepository;
+import mars.tripplanappbackend.trip.repository.WishlistPlaceRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -48,6 +54,8 @@ public class TripService {
     private final MyPageRepository myPageRepository;
     private final TripRepository tripRepository;
     private final TripScheduleRepository tripScheduleRepository;
+    private final WishlistPlaceRepository wishlistPlaceRepository;
+    private final VisitedPlaceRepository visitedPlaceRepository;
 
     /**
      * 내 여행 페이지 전체 탭에서 사용하는 여행 카드 목록을 조회합니다.
@@ -95,7 +103,40 @@ public class TripService {
 
         refreshTripScheduleDayNumbers(schedules, requestDto.getStartDate());
 
-        return UpdateTripResponseDto.from(trip, tripStatus, schedules.size());
+return UpdateTripResponseDto.from(trip, tripStatus, schedules.size());
+    }
+
+    /**
+     * 내 여행 상세 화면 더보기 메뉴에서 선택한 여행을 삭제합니다.
+     * 여행만 숨기면 연결된 일정과 후보 장소 데이터가 남아 이후 조회 흐름과 충돌할 수 있으므로,
+     * 현재 여행에 연결된 일정, 찜 후보 장소, 방문 장소까지 같은 트랜잭션에서 함께 soft delete 처리합니다.
+     *
+     * @param requestDto 삭제 대상 여행 PK와 현재 로그인 사용자 아이디를 담은 요청 DTO
+     * @return 삭제 처리된 여행 정보를 담은 응답 DTO
+     */
+    @Transactional
+    public DeleteTripResponseDto deleteTrip(DeleteTripRequestDto requestDto) {
+        validateUserExistsByUsersId(requestDto.getUsersId());
+
+        Trip trip = tripRepository.findByTripIdAndUser_UsersIdAndIsDeletedFalse(
+                        requestDto.getTripId(),
+                        requestDto.getUsersId()
+                )
+                .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_INPUT));
+
+        List<TripSchedule> schedules =
+                tripScheduleRepository.findAllByTrip_TripIdAndIsDeletedFalseOrderByScheduleDateAscStartTimeAsc(trip.getTripId());
+        List<WishlistPlace> wishlistPlaces =
+                wishlistPlaceRepository.findAllByTrip_TripIdAndIsDeletedFalse(trip.getTripId());
+        List<VisitedPlace> visitedPlaces =
+                visitedPlaceRepository.findAllByTrip_TripIdAndIsDeletedFalse(trip.getTripId());
+
+        trip.markDeleted();
+        schedules.forEach(TripSchedule::markDeleted);
+        wishlistPlaces.forEach(WishlistPlace::markDeleted);
+        visitedPlaces.forEach(VisitedPlace::markDeleted);
+
+        return DeleteTripResponseDto.from(trip, schedules.size());
     }
 
     /**
