@@ -87,4 +87,13 @@ public class Trip extends BaseEntity {
         this.imageUrl = imageUrl;
         this.tripStatus = tripStatus;
     }
+
+    /**
+     * 여행 삭제 요청이 들어오면 여행 카드를 soft delete 상태로 전환합니다.
+     * 상세 화면에서 삭제된 여행은 목록과 상세 조회에서 제외되어야 하므로 삭제 여부와 삭제 시점을 함께 기록합니다.
+     */
+    public void markDeleted() {
+        this.isDeleted = true;
+        this.deletedDate = LocalDateTime.now();
+    }
 }
