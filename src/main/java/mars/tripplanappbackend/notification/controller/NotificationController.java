@@ -46,4 +46,13 @@ public class NotificationController {
     ) {
         return ApiResponse.ok(notificationService.getNotifications(userPrincipal.getUsersId()));
     }
+
+    @GetMapping("/unread")
+    @ApiErrorExceptions({ErrorCode.USER_NOT_FOUND, ErrorCode.INTERNAL_ERROR})
+    @Operation(summary = "안 읽은 알림 존재 여부 조회", description = "안 읽은 알림이 하나라도 있으면 false 반환")
+    public ApiResponse<Boolean> hasUnreadNotification(
+            @CurrentUser UserPrincipal userPrincipal
+    ) {
+        return ApiResponse.ok(notificationService.hasUnreadNotification(userPrincipal.getUsersId()));
+    }
 }

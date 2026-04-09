@@ -152,4 +152,16 @@ public class NotificationService {
                 .map(NotificationResponse::new)
                 .toList();
     }
+
+    /**
+     *
+     * @param usersId JWT에서 추출한 사용자 ID
+     * @return 사용자가 읽지 않은 알림이 하나라도 존재하면 false, 없으면 true 반환
+     */
+    @Transactional(readOnly = true)
+    public boolean hasUnreadNotification(String usersId) {
+        User user = myPageRepository.findByUsersId(usersId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
+        return !notificationRepository.existsByUserAndIsReadAndIsDeletedFalse(user, UseYnEnum.N);
+    }
 }
