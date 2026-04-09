@@ -12,6 +12,7 @@ import mars.tripplanappbackend.trip.dto.request.MyTripFilterRequestDto;
 import mars.tripplanappbackend.trip.dto.request.MyTripListRequestDto;
 import mars.tripplanappbackend.trip.dto.request.MyTripScheduleByDateRequestDto;
 import mars.tripplanappbackend.trip.dto.request.NearbyTripScheduleRequestDto;
+import mars.tripplanappbackend.trip.dto.request.UpdateTripRequestDto;
 import mars.tripplanappbackend.trip.dto.response.CreateTripResponseDto;
 import mars.tripplanappbackend.trip.dto.response.MyTripListResponseDto;
 import mars.tripplanappbackend.trip.dto.response.MyTripScheduleByDateResponseDto;
@@ -20,6 +21,7 @@ import mars.tripplanappbackend.trip.dto.response.MyTripScheduleItemResponseDto;
 import mars.tripplanappbackend.trip.dto.response.MyTripSummaryResponseDto;
 import mars.tripplanappbackend.trip.dto.response.NearbyTripScheduleItemResponseDto;
 import mars.tripplanappbackend.trip.dto.response.NearbyTripScheduleResponseDto;
+import mars.tripplanappbackend.trip.dto.response.UpdateTripResponseDto;
 import mars.tripplanappbackend.trip.enums.MyTripFilterType;
 import mars.tripplanappbackend.trip.enums.TripStatus;
 import mars.tripplanappbackend.trip.repository.TripRepository;
@@ -55,6 +57,45 @@ public class TripService {
      */
     public MyTripListResponseDto getMyTrips(MyTripListRequestDto requestDto) {
         return getMyTripListResponse(requestDto.getUsersId(), MyTripFilterType.ALL);
+    }
+
+    /**
+     * 내 여행 상세 화면에서 선택한 여행의 기본 정보를 수정합니다.
+     * 여행 추가 화면과 동일한 입력 구조를 사용하므로 제목, 대표 이미지, 여행 기간을 한 번에 갱신하며,
+     * 다른 사용자의 여행이거나 기존 일정이 수정된 여행 기간을 벗어나는 경우에는 잘못된 요청으로 처리합니다.
+     *
+     * @param requestDto 수정 대상 여행 PK, 로그인 사용자 아이디, 수정할 여행 정보를 담은 요청 DTO
+     * @return 수정된 여행 카드 정보를 담은 응답 DTO
+     */
+    @Transactional
+    public UpdateTripResponseDto updateTrip(UpdateTripRequestDto requestDto) {
+        validateUserExistsByUsersId(requestDto.getUsersId());
+        validateUpdateTripDates(requestDto.getStartDate(), requestDto.getEndDate());
+
+        Trip trip = tripRepository.findByTripIdAndUser_UsersIdAndIsDeletedFalse(
+                        requestDto.getTripId(),
+                        requestDto.getUsersId()
+                )
+                .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_INPUT));
+
+        List<TripSchedule> schedules = tripScheduleRepository
+                .findAllByTrip_TripIdAndIsDeletedFalseOrderByScheduleDateAscStartTimeAsc(trip.getTripId());
+
+        validateScheduleDatesWithinTripRange(schedules, requestDto.getStartDate(), requestDto.getEndDate());
+
+        TripStatus tripStatus = resolveTripStatus(requestDto.getStartDate(), requestDto.getEndDate(), LocalDate.now());
+
+        trip.updateTrip(
+                requestDto.getTitle().trim(),
+                requestDto.getStartDate(),
+                requestDto.getEndDate(),
+                normalizeImageUrl(requestDto.getImageUrl()),
+                tripStatus
+        );
+
+        refreshTripScheduleDayNumbers(schedules, requestDto.getStartDate());
+
+        return UpdateTripResponseDto.from(trip, tripStatus, schedules.size());
     }
 
     /**
@@ -213,6 +254,47 @@ public class TripService {
         if (startDate.isBefore(today) || endDate.isBefore(startDate)) {
             throw new BusinessException(ErrorCode.INVALID_INPUT);
         }
+    }
+
+    /**
+     * 여행 수정 시에는 이미 시작된 여행도 제목이나 기간을 조정할 수 있으므로,
+     * 생성과 달리 과거 시작일 자체는 허용하고 시작일과 종료일의 선후 관계만 검증합니다.
+     *
+     * @param startDate 수정할 여행 시작일
+     * @param endDate 수정할 여행 종료일
+     */
+    private void validateUpdateTripDates(LocalDate startDate, LocalDate endDate) {
+        if (endDate.isBefore(startDate)) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT);
+        }
+    }
+
+    /**
+     * 여행에 포함된 일정이 수정하려는 여행 기간 안에 모두 포함되는지 확인합니다.
+     * 이미 저장된 일정이 새 여행 범위를 벗어나면 상세 화면의 일정 목록과 여행 기간이 어긋나므로 수정을 차단합니다.
+     *
+     * @param schedules 수정 대상 여행에 연결된 전체 일정 목록
+     * @param startDate 수정할 여행 시작일
+     * @param endDate 수정할 여행 종료일
+     */
+    private void validateScheduleDatesWithinTripRange(List<TripSchedule> schedules, LocalDate startDate, LocalDate endDate) {
+        boolean hasScheduleOutsideRange = schedules.stream()
+                .anyMatch(schedule -> schedule.getScheduleDate().isBefore(startDate)
+                        || schedule.getScheduleDate().isAfter(endDate));
+
+        if (hasScheduleOutsideRange) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT);
+        }
+    }
+
+    /**
+     * 여행 시작일이 바뀐 뒤에도 일정 상세 화면에서 일차 정보가 올바르게 보이도록 모든 일정의 dayNo를 다시 계산합니다.
+     *
+     * @param schedules 수정 대상 여행에 연결된 일정 목록
+     * @param tripStartDate 수정된 여행 시작일
+     */
+    private void refreshTripScheduleDayNumbers(List<TripSchedule> schedules, LocalDate tripStartDate) {
+        schedules.forEach(schedule -> schedule.updateDayNo(calculateDayNo(tripStartDate, schedule.getScheduleDate())));
     }
 
     /**
