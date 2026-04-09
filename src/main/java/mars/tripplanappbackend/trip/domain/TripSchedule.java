@@ -74,4 +74,13 @@ public class TripSchedule extends BaseEntity {
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "place_id", nullable = true)
     private Place place;
+
+    /**
+     * 여행 시작일이 변경되었을 때 일정의 일차 번호를 다시 계산해 반영합니다.
+     *
+     * @param dayNo 일정 날짜가 변경된 여행 기준으로 몇 일차인지 나타내는 값
+     */
+    public void updateDayNo(int dayNo) {
+        this.dayNo = dayNo;
+    }
 }
