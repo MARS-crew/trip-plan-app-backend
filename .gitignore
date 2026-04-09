@@ -41,4 +41,4 @@ bootrun-*.log
 bootrun-*.err
 bootrun-*.err.log
 
-config/
+src/main/resources/config/
