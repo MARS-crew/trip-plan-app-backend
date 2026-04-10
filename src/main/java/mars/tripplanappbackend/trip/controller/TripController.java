@@ -14,6 +14,7 @@ import mars.tripplanappbackend.global.dto.ApiResponse;
 import mars.tripplanappbackend.global.enums.ErrorCode;
 import mars.tripplanappbackend.trip.dto.request.CreateTripRequestDto;
 import mars.tripplanappbackend.trip.dto.request.DeleteTripRequestDto;
+import mars.tripplanappbackend.trip.dto.request.DeleteTripScheduleRequestDto;
 import mars.tripplanappbackend.trip.dto.request.MyTripFilterRequestDto;
 import mars.tripplanappbackend.trip.dto.request.MyTripListRequestDto;
 import mars.tripplanappbackend.trip.dto.request.MyTripScheduleByDateRequestDto;
@@ -23,6 +24,7 @@ import mars.tripplanappbackend.trip.dto.request.ShareTripRequestDto;
 import mars.tripplanappbackend.trip.dto.request.UpdateTripRequestDto;
 import mars.tripplanappbackend.trip.dto.response.CreateTripResponseDto;
 import mars.tripplanappbackend.trip.dto.response.DeleteTripResponseDto;
+import mars.tripplanappbackend.trip.dto.response.DeleteTripScheduleResponseDto;
 import mars.tripplanappbackend.trip.dto.response.MyTripListResponseDto;
 import mars.tripplanappbackend.trip.dto.response.MyTripScheduleByDateResponseDto;
 import mars.tripplanappbackend.trip.dto.response.MyTripScheduleListResponseDto;
@@ -60,7 +62,7 @@ public class TripController {
      *
      * @param requestDto 여행 생성에 필요한 본문 요청 DTO
      * @param userPrincipal 커스텀 어노테이션으로 주입된 현재 로그인 사용자 정보
-     * @return 공통 응답 형식으로 감싼 여행 추가 결과 응답
+     * @return 공통 응답 형식으로 감싼 여행 생성 결과 응답
      */
     @PostMapping("/create")
     @ApiErrorExceptions({ErrorCode.INVALID_INPUT, ErrorCode.USER_NOT_FOUND, ErrorCode.INTERNAL_ERROR})
@@ -79,7 +81,6 @@ public class TripController {
 
     /**
      * 내 여행 상세 화면에서 여행 대표 이미지, 제목, 여행 기간을 수정합니다.
-     * 기획상 편집 후 여행 추가 페이지와 동일한 입력 폼에서 저장하는 흐름을 반영한 API입니다.
      *
      * @param tripId 수정할 여행 PK
      * @param requestDto 수정할 여행 기본 정보를 담은 본문 요청 DTO
@@ -123,7 +124,7 @@ public class TripController {
     }
 
     /**
-     * 내 여행 상세 화면 상단 더보기 메뉴에서 선택한 여행을 삭제합니다.
+     * 내 여행 상세 화면 상단 더보기 메뉴에서 현재 선택한 여행을 삭제합니다.
      *
      * @param tripId 삭제할 여행 PK
      * @param userPrincipal 커스텀 어노테이션으로 주입된 현재 로그인 사용자 정보
@@ -146,7 +147,7 @@ public class TripController {
     }
 
     /**
-     * 내 여행 상세 화면 상단 더보기 메뉴에서 사용하는 여행 공유 정보를 조회합니다.
+     * 내 여행 상세 화면 상단 더보기 메뉴에서 사용할 여행 공유 정보를 조회합니다.
      *
      * @param tripId 공유할 여행 PK
      * @param userPrincipal 커스텀 어노테이션으로 주입된 현재 로그인 사용자 정보
@@ -169,7 +170,7 @@ public class TripController {
     }
 
     /**
-     * 내 여행 페이지 전체 탭에서 사용하는 여행 카드 목록을 조회합니다.
+     * 내 여행 페이지 전체 탭에 노출되는 여행 카드 목록을 조회합니다.
      *
      * @param userPrincipal 커스텀 어노테이션으로 주입된 현재 로그인 사용자 정보
      * @return 공통 응답 형식으로 감싼 전체 여행 카드 목록 응답
@@ -212,7 +213,7 @@ public class TripController {
     }
 
     /**
-     * 내 여행 상세 화면에서 선택한 날짜 기준으로 드롭다운 날짜 목록과 해당 날짜의 일정 목록을 조회합니다.
+     * 내 여행 페이지에서 선택한 날짜 기준으로 일정 드롭다운 정보와 해당 날짜 일정 목록을 조회합니다.
      *
      * @param tripId 조회할 여행 PK
      * @param targetDate 조회할 일정 날짜
@@ -241,7 +242,7 @@ public class TripController {
 
     /**
      * 내 여행 상세 화면 본문에서 여행 기간 전체를 기준으로 일차별 일정 리스트를 조회합니다.
-     * 일정이 없는 날짜도 포함해 화면에서 1일차, 2일차 섹션을 그대로 구성할 수 있도록 응답합니다.
+     * 일정이 없는 날짜도 포함해 화면의 일차 섹션을 그대로 구성할 수 있도록 응답합니다.
      *
      * @param tripId 조회할 여행 PK
      * @param userPrincipal 커스텀 어노테이션으로 주입된 현재 로그인 사용자 정보
@@ -254,7 +255,7 @@ public class TripController {
             description = "내 여행 상세 화면에서 여행 기간 전체를 기준으로 일차별 일정 리스트를 조회합니다."
     )
     public ApiResponse<MyTripScheduleListResponseDto> getMyTripScheduleList(
-            @Parameter(description = "조회할 여행 PK", example = "7")
+            @Parameter(description = "조회할 여행 PK", example = "5")
             @PathVariable("tripId") Long tripId,
             @Parameter(hidden = true)
             @CurrentUser UserPrincipal userPrincipal
@@ -262,6 +263,33 @@ public class TripController {
         MyTripScheduleListRequestDto requestDto =
                 MyTripScheduleListRequestDto.of(tripId, userPrincipal.getUsersId());
         return ApiResponse.ok(tripService.getMyTripScheduleList(requestDto));
+    }
+
+    /**
+     * 내 여행 상세 화면의 일정 리스트에서 개별 일정 메뉴를 통해 선택한 일정을 삭제합니다.
+     *
+     * @param tripId 일정이 속한 여행 PK
+     * @param tripScheduleId 삭제할 개별 일정 PK
+     * @param userPrincipal 커스텀 어노테이션으로 주입된 현재 로그인 사용자 정보
+     * @return 공통 응답 형식으로 감싼 일정 삭제 결과 응답
+     */
+    @DeleteMapping("/{tripId}/schedules/{tripScheduleId}")
+    @ApiErrorExceptions({ErrorCode.INVALID_INPUT, ErrorCode.USER_NOT_FOUND, ErrorCode.INTERNAL_ERROR})
+    @Operation(
+            summary = "일정 삭제",
+            description = "내 여행 상세 화면의 일정 리스트에서 개별 일정 메뉴를 통해 선택한 일정을 삭제합니다."
+    )
+    public ApiResponse<DeleteTripScheduleResponseDto> deleteTripSchedule(
+            @Parameter(description = "일정이 속한 여행 PK", example = "7")
+            @PathVariable("tripId") Long tripId,
+            @Parameter(description = "삭제할 개별 일정 PK", example = "21")
+            @PathVariable("tripScheduleId") Long tripScheduleId,
+            @Parameter(hidden = true)
+            @CurrentUser UserPrincipal userPrincipal
+    ) {
+        DeleteTripScheduleRequestDto requestDto =
+                DeleteTripScheduleRequestDto.of(tripId, tripScheduleId, userPrincipal.getUsersId());
+        return ApiResponse.ok(tripService.deleteTripSchedule(requestDto));
     }
 
     /**
