@@ -23,7 +23,6 @@ public enum ErrorCode {
     INVALID_EMAIL_CODE(HttpStatus.BAD_REQUEST, "INVALID_EMAIL_CODE", "인증 코드가 올바르지 않습니다."),
     EMAIL_CODE_EXPIRED(HttpStatus.BAD_REQUEST, "EMAIL_CODE_EXPIRED", "인증 코드가 만료되었습니다."),
     INVALID_EMAIL_REQUEST(HttpStatus.BAD_REQUEST, "INVALID_EMAIL_REQUEST", "이메일 요청이 유효하지 않습니다."),
-    EMAIL_CODE_EXPIRED(HttpStatus.BAD_REQUEST, "EMAIL_CODE_EXPIRED", "인증 코드가 만료되었습니다."),
     FCM_SEND_FAIL(HttpStatus.INTERNAL_SERVER_ERROR, "FCM_SEND_FAIL", "푸시 알림 전송에 실패했습니다."),
     INVALID_FCM_TOKEN(HttpStatus.BAD_REQUEST, "INVALID_FCM_TOKEN", "유효하지 않은 FCM 토큰입니다.");
 

@@ -9,6 +9,7 @@ import mars.tripplanappbackend.mypage.domain.User;
 import mars.tripplanappbackend.mypage.repository.MyPageRepository;
 import mars.tripplanappbackend.notification.domain.Notification;
 import mars.tripplanappbackend.notification.dto.response.NotificationResponse;
+import mars.tripplanappbackend.notification.dto.response.UnreadNotificationResponse;
 import mars.tripplanappbackend.notification.enums.NotificationType;
 import mars.tripplanappbackend.notification.repository.NotificationRepository;
 import mars.tripplanappbackend.notification.repository.UserFcmTokenRepository;
