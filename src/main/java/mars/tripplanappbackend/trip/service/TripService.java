@@ -13,16 +13,19 @@ import mars.tripplanappbackend.trip.dto.request.CreateTripRequestDto;
 import mars.tripplanappbackend.trip.dto.request.DeleteTripRequestDto;
 import mars.tripplanappbackend.trip.dto.request.MyTripFilterRequestDto;
 import mars.tripplanappbackend.trip.dto.request.MyTripListRequestDto;
+import mars.tripplanappbackend.trip.dto.request.MyTripScheduleListRequestDto;
 import mars.tripplanappbackend.trip.dto.request.MyTripScheduleByDateRequestDto;
 import mars.tripplanappbackend.trip.dto.request.NearbyTripScheduleRequestDto;
 import mars.tripplanappbackend.trip.dto.request.ShareTripRequestDto;
 import mars.tripplanappbackend.trip.dto.request.UpdateTripRequestDto;
 import mars.tripplanappbackend.trip.dto.response.CreateTripResponseDto;
 import mars.tripplanappbackend.trip.dto.response.DeleteTripResponseDto;
+import mars.tripplanappbackend.trip.dto.response.MyTripDailyScheduleResponseDto;
 import mars.tripplanappbackend.trip.dto.response.MyTripListResponseDto;
 import mars.tripplanappbackend.trip.dto.response.MyTripScheduleByDateResponseDto;
 import mars.tripplanappbackend.trip.dto.response.MyTripScheduleDateOptionResponseDto;
 import mars.tripplanappbackend.trip.dto.response.MyTripScheduleItemResponseDto;
+import mars.tripplanappbackend.trip.dto.response.MyTripScheduleListResponseDto;
 import mars.tripplanappbackend.trip.dto.response.MyTripSummaryResponseDto;
 import mars.tripplanappbackend.trip.dto.response.NearbyTripScheduleItemResponseDto;
 import mars.tripplanappbackend.trip.dto.response.NearbyTripScheduleResponseDto;
@@ -42,10 +45,12 @@ import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 /**
  * 홈 화면과 내 여행 페이지에서 사용하는 여행 관련 비즈니스 로직을 처리하는 서비스입니다.
@@ -259,6 +264,49 @@ return UpdateTripResponseDto.from(trip, tripStatus, schedules.size());
     }
 
     /**
+     * 내 여행 상세 화면 본문 전체를 구성하기 위해 여행 기간 전체의 일차별 일정 리스트를 조회합니다.
+     * 특정 날짜만 내려주는 날짜별 조회와 달리, 여행 시작일부터 종료일까지 모든 날짜를 순회하면서
+     * 일정이 없는 날짜도 빈 리스트로 포함해 프론트에서 일차 섹션을 그대로 그릴 수 있도록 응답합니다.
+     *
+     * @param requestDto 조회 대상 여행 PK와 로그인 사용자 아이디를 담은 요청 DTO
+     * @return 여행 기본 정보와 일차별 일정 섹션 목록을 담은 응답 DTO
+     */
+    public MyTripScheduleListResponseDto getMyTripScheduleList(MyTripScheduleListRequestDto requestDto) {
+        validateTripScheduleListRequest(requestDto);
+        validateUserExistsByUsersId(requestDto.getUsersId());
+
+        Trip trip = tripRepository.findByTripIdAndUser_UsersIdAndIsDeletedFalse(
+                        requestDto.getTripId(),
+                        requestDto.getUsersId()
+                )
+                .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_INPUT));
+
+        List<TripSchedule> tripSchedules = tripScheduleRepository
+                .findAllByTrip_TripIdAndIsDeletedFalseOrderByScheduleDateAscStartTimeAsc(trip.getTripId());
+
+        Map<LocalDate, List<MyTripScheduleItemResponseDto>> schedulesByDate = tripSchedules.stream()
+                .collect(Collectors.groupingBy(
+                        TripSchedule::getScheduleDate,
+                        LinkedHashMap::new,
+                        Collectors.mapping(MyTripScheduleItemResponseDto::from, Collectors.toList())
+                ));
+
+        long tripDayCount = ChronoUnit.DAYS.between(trip.getStartDate(), trip.getEndDate()) + 1;
+        List<MyTripDailyScheduleResponseDto> dailySchedules =
+                buildDailyScheduleSections(trip, schedulesByDate, tripDayCount);
+
+        return MyTripScheduleListResponseDto.of(
+                trip.getTripId(),
+                trip.getTitle(),
+                trip.getStartDate(),
+                trip.getEndDate(),
+                tripDayCount,
+                tripSchedules.size(),
+                dailySchedules
+        );
+    }
+
+    /**
      * 홈 화면 상단 카드에서 사용자 기준 가장 가까운 여행 일정 정보를 조회합니다.
      * 진행 중인 여행이 있으면 해당 여행을 우선 조회하고,
      * 없으면 가장 가까운 예정 여행을 조회합니다.
@@ -295,6 +343,17 @@ return UpdateTripResponseDto.from(trip, tripStatus, schedules.size());
     private void validateUserExistsByUsersId(String usersId) {
         if (!myPageRepository.existsByUsersId(usersId)) {
             throw new BusinessException(ErrorCode.USER_NOT_FOUND);
+        }
+    }
+
+    /**
+     * 일정 리스트 조회 요청에 필요한 여행 PK와 로그인 사용자 아이디가 모두 존재하는지 검증합니다.
+     *
+     * @param requestDto 일정 리스트 조회 요청 DTO
+     */
+    private void validateTripScheduleListRequest(MyTripScheduleListRequestDto requestDto) {
+        if (requestDto.getTripId() == null || requestDto.getTripId() < 1 || requestDto.getUsersId() == null) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT);
         }
     }
 
@@ -449,6 +508,35 @@ return UpdateTripResponseDto.from(trip, tripStatus, schedules.size());
                         tripSchedule -> tripSchedule.getTrip().getTripId(),
                         Collectors.collectingAndThen(Collectors.counting(), Long::intValue)
                 ));
+    }
+
+    /**
+     * 여행 시작일부터 종료일까지 전 날짜를 순회하며 일차별 일정 섹션 목록을 생성합니다.
+     * 일정이 없는 날짜도 빈 리스트를 포함해 내려주어 상세 화면의 일차 영역이 빠지지 않도록 합니다.
+     *
+     * @param trip 조회 대상 여행 엔티티
+     * @param schedulesByDate 날짜별 일정 목록 맵
+     * @param tripDayCount 여행 총 일수
+     * @return 일차별 일정 섹션 응답 목록
+     */
+    private List<MyTripDailyScheduleResponseDto> buildDailyScheduleSections(
+            Trip trip,
+            Map<LocalDate, List<MyTripScheduleItemResponseDto>> schedulesByDate,
+            long tripDayCount
+    ) {
+        return IntStream.range(0, Math.toIntExact(tripDayCount))
+                .mapToObj(dayOffset -> {
+                    LocalDate scheduleDate = trip.getStartDate().plusDays(dayOffset);
+                    List<MyTripScheduleItemResponseDto> schedules =
+                            schedulesByDate.getOrDefault(scheduleDate, List.of());
+
+                    return MyTripDailyScheduleResponseDto.of(
+                            calculateDayNo(trip.getStartDate(), scheduleDate),
+                            scheduleDate,
+                            schedules
+                    );
+                })
+                .toList();
     }
 
     /**
