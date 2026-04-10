@@ -18,12 +18,14 @@ import mars.tripplanappbackend.trip.dto.request.MyTripFilterRequestDto;
 import mars.tripplanappbackend.trip.dto.request.MyTripListRequestDto;
 import mars.tripplanappbackend.trip.dto.request.MyTripScheduleByDateRequestDto;
 import mars.tripplanappbackend.trip.dto.request.NearbyTripScheduleRequestDto;
+import mars.tripplanappbackend.trip.dto.request.ShareTripRequestDto;
 import mars.tripplanappbackend.trip.dto.request.UpdateTripRequestDto;
 import mars.tripplanappbackend.trip.dto.response.CreateTripResponseDto;
 import mars.tripplanappbackend.trip.dto.response.DeleteTripResponseDto;
 import mars.tripplanappbackend.trip.dto.response.MyTripListResponseDto;
 import mars.tripplanappbackend.trip.dto.response.MyTripScheduleByDateResponseDto;
 import mars.tripplanappbackend.trip.dto.response.NearbyTripScheduleResponseDto;
+import mars.tripplanappbackend.trip.dto.response.ShareTripResponseDto;
 import mars.tripplanappbackend.trip.dto.response.UpdateTripResponseDto;
 import mars.tripplanappbackend.trip.enums.MyTripFilterType;
 import mars.tripplanappbackend.trip.service.TripService;
@@ -142,6 +144,30 @@ UpdateTripRequestDto serviceRequestDto =
     ) {
         DeleteTripRequestDto requestDto = DeleteTripRequestDto.of(tripId, userPrincipal.getUsersId());
         return ApiResponse.ok(tripService.deleteTrip(requestDto));
+    }
+
+    /**
+     * 내 여행 상세 화면 상단 더보기 메뉴에서 공유 시트에 필요한 여행 공유 정보를 조회합니다.
+     * 여행 제목, 공유 설명, 공유 링크, 대표 이미지를 함께 내려 공유 UI에서 바로 사용할 수 있도록 구성합니다.
+     *
+     * @param tripId 공유할 여행 PK
+     * @param userPrincipal 커스텀 어노테이션으로 주입된 현재 로그인 사용자 정보
+     * @return 공통 응답 형식으로 감싼 여행 공유 응답
+     */
+    @GetMapping("/{tripId}/share")
+    @ApiErrorExceptions({ErrorCode.INVALID_INPUT, ErrorCode.USER_NOT_FOUND, ErrorCode.INTERNAL_ERROR})
+    @Operation(
+            summary = "내 여행 공유",
+            description = "내 여행 상세 화면 상단 더보기 메뉴에서 사용한 공유 메타데이터를 조회합니다."
+    )
+    public ApiResponse<ShareTripResponseDto> shareTrip(
+            @Parameter(description = "공유할 여행 PK", example = "1")
+            @PathVariable("tripId") Long tripId,
+            @Parameter(hidden = true)
+            @CurrentUser UserPrincipal userPrincipal
+    ) {
+        ShareTripRequestDto requestDto = ShareTripRequestDto.of(tripId, userPrincipal.getUsersId());
+        return ApiResponse.ok(tripService.shareTrip(requestDto));
     }
 
     /**
