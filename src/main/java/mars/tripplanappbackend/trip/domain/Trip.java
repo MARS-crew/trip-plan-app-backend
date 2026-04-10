@@ -69,4 +69,31 @@ public class Trip extends BaseEntity {
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "user_id", nullable = false)
     private User user;
+
+    /**
+     * 내 여행 상세 화면에서 수정한 기본 여행 정보를 현재 엔티티에 반영합니다.
+     * 여행 추가 화면을 재사용하는 수정 흐름을 기준으로 제목, 이미지, 기간, 상태를 함께 갱신합니다.
+     *
+     * @param title 수정할 여행 제목
+     * @param startDate 수정할 여행 시작일
+     * @param endDate 수정할 여행 종료일
+     * @param imageUrl 수정할 대표 이미지 URL
+     * @param tripStatus 수정된 기간 기준으로 다시 계산한 여행 상태
+     */
+    public void updateTrip(String title, LocalDate startDate, LocalDate endDate, String imageUrl, TripStatus tripStatus) {
+        this.title = title;
+        this.startDate = startDate;
+        this.endDate = endDate;
+        this.imageUrl = imageUrl;
+        this.tripStatus = tripStatus;
+    }
+
+    /**
+     * 여행 삭제 요청이 들어오면 여행 카드를 soft delete 상태로 전환합니다.
+     * 상세 화면에서 삭제된 여행은 목록과 상세 조회에서 제외되어야 하므로 삭제 여부와 삭제 시점을 함께 기록합니다.
+     */
+    public void markDeleted() {
+        this.isDeleted = true;
+        this.deletedDate = LocalDateTime.now();
+    }
 }

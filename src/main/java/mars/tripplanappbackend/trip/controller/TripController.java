@@ -2,6 +2,8 @@ package mars.tripplanappbackend.trip.controller;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.ExampleObject;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -11,18 +13,24 @@ import mars.tripplanappbackend.global.config.swagger.ApiErrorExceptions;
 import mars.tripplanappbackend.global.dto.ApiResponse;
 import mars.tripplanappbackend.global.enums.ErrorCode;
 import mars.tripplanappbackend.trip.dto.request.CreateTripRequestDto;
+import mars.tripplanappbackend.trip.dto.request.DeleteTripRequestDto;
 import mars.tripplanappbackend.trip.dto.request.MyTripFilterRequestDto;
 import mars.tripplanappbackend.trip.dto.request.MyTripListRequestDto;
 import mars.tripplanappbackend.trip.dto.request.MyTripScheduleByDateRequestDto;
 import mars.tripplanappbackend.trip.dto.request.NearbyTripScheduleRequestDto;
+import mars.tripplanappbackend.trip.dto.request.UpdateTripRequestDto;
 import mars.tripplanappbackend.trip.dto.response.CreateTripResponseDto;
+import mars.tripplanappbackend.trip.dto.response.DeleteTripResponseDto;
 import mars.tripplanappbackend.trip.dto.response.MyTripListResponseDto;
 import mars.tripplanappbackend.trip.dto.response.MyTripScheduleByDateResponseDto;
 import mars.tripplanappbackend.trip.dto.response.NearbyTripScheduleResponseDto;
+import mars.tripplanappbackend.trip.dto.response.UpdateTripResponseDto;
 import mars.tripplanappbackend.trip.enums.MyTripFilterType;
 import mars.tripplanappbackend.trip.service.TripService;
 import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -63,6 +71,77 @@ public class TripController {
     ) {
         CreateTripRequestDto serviceRequestDto = CreateTripRequestDto.of(userPrincipal.getUsersId(), requestDto);
         return ApiResponse.ok(tripService.createTrip(serviceRequestDto));
+    }
+
+    /**
+     * 내 여행 상세 화면에서 여행 대표 이미지, 제목, 여행 기간을 수정합니다.
+     * 시안상 "편집 -> 여행 추가 페이지 -> 저장하기" 흐름을 그대로 반영해
+     * 여행 추가 화면과 동일한 필드 구조로 수정 요청을 받습니다.
+     *
+     * @param tripId 수정할 여행 PK
+     * @param requestDto 수정할 여행 정보를 담은 본문 요청 DTO
+     * @param userPrincipal 커스텀 애노테이션으로 주입된 현재 로그인 사용자 정보
+     * @return 공통 응답 형식으로 감싼 여행 수정 결과 응답
+     */
+    @PatchMapping("/{tripId}")
+    @ApiErrorExceptions({ErrorCode.INVALID_INPUT, ErrorCode.USER_NOT_FOUND, ErrorCode.INTERNAL_ERROR})
+    @Operation(
+            summary = "내 일정 수정",
+            description = "내 여행 상세 화면에서 여행 이미지, 여행 제목, 여행 시작일, 여행 종료일을 수정합니다."
+    )
+    public ApiResponse<UpdateTripResponseDto> updateTrip(
+            @Parameter(description = "수정할 여행 PK", example = "1")
+            @PathVariable("tripId") Long tripId,
+            @io.swagger.v3.oas.annotations.parameters.RequestBody(
+                    description = "여행 상세 화면에서 수정할 여행 기본 정보입니다.",
+                    required = true,
+                    content = @Content(
+                            mediaType = "application/json",
+                            examples = @ExampleObject(
+                                    name = "여행 수정 예시",
+                                    value = """
+                                            {
+                                              "title": "오사카 여행",
+                                              "imageUrl": "https://cdn.lets-trip.com/trips/osaka.jpg",
+                                              "startDate": "2026-04-06",
+                                              "endDate": "2026-04-14"
+                                            }
+                                            """
+                            )
+                    )
+            )
+            @Valid @RequestBody UpdateTripRequestDto requestDto,
+            @Parameter(hidden = true)
+            @CurrentUser UserPrincipal userPrincipal
+    ) {
+UpdateTripRequestDto serviceRequestDto =
+                UpdateTripRequestDto.of(tripId, userPrincipal.getUsersId(), requestDto);
+        return ApiResponse.ok(tripService.updateTrip(serviceRequestDto));
+    }
+
+    /**
+     * 내 여행 상세 화면 상단 더보기 메뉴에서 선택한 여행을 삭제합니다.
+     * 삭제는 별도 확인 화면이 아니라 상세 화면의 메뉴 액션으로 연결되는 흐름이므로,
+     * 경로 변수의 여행 PK와 현재 로그인 사용자 정보를 조합해 서비스 계층으로 전달합니다.
+     *
+     * @param tripId 삭제할 여행 PK
+     * @param userPrincipal 커스텀 애노테이션으로 주입된 현재 로그인 사용자 정보
+     * @return 공통 응답 형식으로 감싼 여행 삭제 결과 응답
+     */
+    @DeleteMapping("/{tripId}")
+    @ApiErrorExceptions({ErrorCode.INVALID_INPUT, ErrorCode.USER_NOT_FOUND, ErrorCode.INTERNAL_ERROR})
+    @Operation(
+            summary = "내 여행 삭제",
+            description = "내 여행 상세 화면 상단 더보기 메뉴에서 현재 선택한 여행을 삭제합니다."
+    )
+    public ApiResponse<DeleteTripResponseDto> deleteTrip(
+            @Parameter(description = "삭제할 여행 PK", example = "1")
+            @PathVariable("tripId") Long tripId,
+            @Parameter(hidden = true)
+            @CurrentUser UserPrincipal userPrincipal
+    ) {
+        DeleteTripRequestDto requestDto = DeleteTripRequestDto.of(tripId, userPrincipal.getUsersId());
+        return ApiResponse.ok(tripService.deleteTrip(requestDto));
     }
 
     /**

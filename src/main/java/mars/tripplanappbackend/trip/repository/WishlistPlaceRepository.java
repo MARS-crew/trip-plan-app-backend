@@ -6,4 +6,5 @@ import org.springframework.stereotype.Repository;
 
 @Repository
 public interface WishlistPlaceRepository extends JpaRepository<WishlistPlace, Long> {
+    java.util.List<WishlistPlace> findAllByTrip_TripIdAndIsDeletedFalse(Long tripId);
 }
