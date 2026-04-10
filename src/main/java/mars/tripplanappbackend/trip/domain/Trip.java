@@ -96,4 +96,13 @@ public class Trip extends BaseEntity {
         this.isDeleted = true;
         this.deletedDate = LocalDateTime.now();
     }
+
+    /**
+     * 공유 링크 생성 시 확정된 공유 코드를 현재 여행 엔티티에 반영합니다.
+     *
+     * @param shareCode 현재 여행에 저장할 공유 코드
+     */
+    public void updateShareCode(String shareCode) {
+        this.shareCode = shareCode;
+    }
 }

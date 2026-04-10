@@ -15,6 +15,7 @@ import mars.tripplanappbackend.trip.dto.request.MyTripFilterRequestDto;
 import mars.tripplanappbackend.trip.dto.request.MyTripListRequestDto;
 import mars.tripplanappbackend.trip.dto.request.MyTripScheduleByDateRequestDto;
 import mars.tripplanappbackend.trip.dto.request.NearbyTripScheduleRequestDto;
+import mars.tripplanappbackend.trip.dto.request.ShareTripRequestDto;
 import mars.tripplanappbackend.trip.dto.request.UpdateTripRequestDto;
 import mars.tripplanappbackend.trip.dto.response.CreateTripResponseDto;
 import mars.tripplanappbackend.trip.dto.response.DeleteTripResponseDto;
@@ -25,6 +26,7 @@ import mars.tripplanappbackend.trip.dto.response.MyTripScheduleItemResponseDto;
 import mars.tripplanappbackend.trip.dto.response.MyTripSummaryResponseDto;
 import mars.tripplanappbackend.trip.dto.response.NearbyTripScheduleItemResponseDto;
 import mars.tripplanappbackend.trip.dto.response.NearbyTripScheduleResponseDto;
+import mars.tripplanappbackend.trip.dto.response.ShareTripResponseDto;
 import mars.tripplanappbackend.trip.dto.response.UpdateTripResponseDto;
 import mars.tripplanappbackend.trip.enums.MyTripFilterType;
 import mars.tripplanappbackend.trip.enums.TripStatus;
@@ -37,10 +39,12 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.time.LocalTime;
+import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 /**
@@ -50,6 +54,11 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
 public class TripService {
+
+    private static final String TRIP_SHARE_URL_TEMPLATE = "https://lets-trip.com/trips/share/%s";
+    private static final String TRIP_SHARE_TITLE_TEMPLATE = "Let's Trip에서 %s 일정을 확인해보세요.";
+    private static final String TRIP_SHARE_DESCRIPTION_TEMPLATE = "%s부터 %s까지의 %s 일정을 공유합니다.";
+    private static final DateTimeFormatter SHARE_DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyy.MM.dd");
 
     private final MyPageRepository myPageRepository;
     private final TripRepository tripRepository;
@@ -137,6 +146,35 @@ return UpdateTripResponseDto.from(trip, tripStatus, schedules.size());
         visitedPlaces.forEach(VisitedPlace::markDeleted);
 
         return DeleteTripResponseDto.from(trip, schedules.size());
+    }
+
+    /**
+     * 내 여행 상세 화면 상단 더보기 메뉴의 공유 항목에서 사용하는 공유 메타데이터를 생성합니다.
+     * 본인 여행인지 검증한 뒤 공유 제목, 설명, 링크, 대표 이미지를 조합해 응답하며,
+     * 아직 공유 코드가 없는 여행은 최초 공유 시점에만 코드를 발급해 이후에도 같은 링크를 재사용합니다.
+     *
+     * @param requestDto 공유 대상 여행 PK와 현재 로그인 사용자 아이디를 담은 요청 DTO
+     * @return 내 여행 공유 응답 DTO
+     */
+    @Transactional
+    public ShareTripResponseDto shareTrip(ShareTripRequestDto requestDto) {
+        validateShareTripRequest(requestDto);
+        validateUserExistsByUsersId(requestDto.getUsersId());
+
+        Trip trip = tripRepository.findByTripIdAndUser_UsersIdAndIsDeletedFalse(
+                        requestDto.getTripId(),
+                        requestDto.getUsersId()
+                )
+                .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_INPUT));
+
+        String shareCode = issueUniqueTripShareCode(trip);
+
+        return ShareTripResponseDto.from(
+                trip,
+                createTripShareTitle(trip),
+                createTripShareDescription(trip),
+                createTripShareUrl(shareCode)
+        );
     }
 
     /**
@@ -306,6 +344,17 @@ return UpdateTripResponseDto.from(trip, tripStatus, schedules.size());
      */
     private void validateUpdateTripDates(LocalDate startDate, LocalDate endDate) {
         if (endDate.isBefore(startDate)) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT);
+        }
+    }
+
+    /**
+     * 여행 공유 요청에 필요한 여행 PK와 사용자 아이디가 모두 정상인지 검증합니다.
+     *
+     * @param requestDto 여행 공유 요청 DTO
+     */
+    private void validateShareTripRequest(ShareTripRequestDto requestDto) {
+        if (requestDto.getTripId() == null || requestDto.getTripId() < 1 || requestDto.getUsersId() == null) {
             throw new BusinessException(ErrorCode.INVALID_INPUT);
         }
     }
@@ -575,5 +624,62 @@ return UpdateTripResponseDto.from(trip, tripStatus, schedules.size());
                         || (schedule.getScheduleDate().isEqual(today)
                         && !schedule.getEndTime().isBefore(now)))
                 .toList();
+    }
+
+    /**
+     * 여행 엔티티에 공유 코드가 없으면 새 코드를 발급하고, 이미 있으면 기존 코드를 그대로 재사용합니다.
+     * 새 코드를 발급할 때는 active 여행과 충돌하지 않도록 간단한 중복 검사를 함께 수행합니다.
+     *
+     * @param trip 공유할 여행 엔티티
+     * @return 중복이 없는 여행 공유 코드
+     */
+    private String issueUniqueTripShareCode(Trip trip) {
+        String currentShareCode = trip.getShareCode();
+        if (currentShareCode != null && !currentShareCode.isBlank()) {
+            return currentShareCode;
+        }
+
+        String issuedShareCode;
+        do {
+            issuedShareCode = UUID.randomUUID().toString().replace("-", "");
+        } while (tripRepository.existsByShareCodeAndIsDeletedFalse(issuedShareCode));
+
+        trip.updateShareCode(issuedShareCode);
+        return issuedShareCode;
+    }
+
+    /**
+     * 여행 제목을 공유 시트 상단 제목 문구로 변환합니다.
+     *
+     * @param trip 공유할 여행 엔티티
+     * @return 공유 제목
+     */
+    private String createTripShareTitle(Trip trip) {
+        return String.format(TRIP_SHARE_TITLE_TEMPLATE, trip.getTitle());
+    }
+
+    /**
+     * 여행 기간과 제목을 조합해 공유 설명 문구를 생성합니다.
+     *
+     * @param trip 공유할 여행 엔티티
+     * @return 공유 설명
+     */
+    private String createTripShareDescription(Trip trip) {
+        return String.format(
+                TRIP_SHARE_DESCRIPTION_TEMPLATE,
+                trip.getStartDate().format(SHARE_DATE_FORMATTER),
+                trip.getEndDate().format(SHARE_DATE_FORMATTER),
+                trip.getTitle()
+        );
+    }
+
+    /**
+     * 발급된 공유 코드를 프런트 공유 링크 형식으로 변환합니다.
+     *
+     * @param shareCode 여행 공유 코드
+     * @return 공유 링크
+     */
+    private String createTripShareUrl(String shareCode) {
+        return String.format(TRIP_SHARE_URL_TEMPLATE, shareCode);
     }
 }
