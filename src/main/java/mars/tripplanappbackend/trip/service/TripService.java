@@ -8,6 +8,7 @@ import mars.tripplanappbackend.mypage.repository.MyPageRepository;
 import mars.tripplanappbackend.mypage.repository.SavedPlaceRepository;
 import mars.tripplanappbackend.place.domain.Place;
 import mars.tripplanappbackend.place.repository.PlaceRepository;
+import mars.tripplanappbackend.trip.dto.request.AddVisitedPlaceRequestDto;
 import mars.tripplanappbackend.trip.dto.request.AddWishlistPlaceRequestDto;
 import mars.tripplanappbackend.trip.domain.Trip;
 import mars.tripplanappbackend.trip.domain.TripSchedule;
@@ -25,6 +26,7 @@ import mars.tripplanappbackend.trip.dto.request.NearbyTripScheduleRequestDto;
 import mars.tripplanappbackend.trip.dto.request.ShareTripRequestDto;
 import mars.tripplanappbackend.trip.dto.request.TripPlaceSelectionRequestDto;
 import mars.tripplanappbackend.trip.dto.request.UpdateTripRequestDto;
+import mars.tripplanappbackend.trip.dto.response.AddVisitedPlaceResponseDto;
 import mars.tripplanappbackend.trip.dto.response.AddWishlistPlaceResponseDto;
 import mars.tripplanappbackend.trip.dto.response.CreateTripResponseDto;
 import mars.tripplanappbackend.trip.dto.response.DeleteTripResponseDto;
@@ -372,6 +374,60 @@ public class TripService {
     }
 
     /**
+     * 내 여행지 상세 화면에서 현재 장소를 방문 인증 기록으로 저장합니다.
+     * 저장 탭용 찜과는 별개의 개념으로 처리하며, 현재 여행과 연결된 일정 카드 문맥 안에서
+     * 실제 방문한 장소를 기록하는 용도로 사용합니다.
+     *
+     * @param requestDto 여행 PK, 일정 PK, 장소 PK, 로그인 사용자 아이디를 담은 요청 DTO
+     * @return 저장된 방문 기록 정보를 담은 응답 DTO
+     */
+    @Transactional
+    public AddVisitedPlaceResponseDto addVisitedPlace(AddVisitedPlaceRequestDto requestDto) {
+        validateAddVisitedPlaceRequest(requestDto);
+        validateUserExistsByUsersId(requestDto.getUsersId());
+
+        User user = findUserByUsersId(requestDto.getUsersId());
+        Trip trip = tripRepository.findByTripIdAndUser_UsersIdAndIsDeletedFalse(
+                        requestDto.getTripId(),
+                        requestDto.getUsersId()
+                )
+                .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_INPUT));
+
+        TripSchedule tripSchedule = tripScheduleRepository
+                .findByTripScheduleIdAndTrip_TripIdAndTrip_User_UsersIdAndIsDeletedFalse(
+                        requestDto.getTripScheduleId(),
+                        requestDto.getTripId(),
+                        requestDto.getUsersId()
+                )
+                .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_INPUT));
+
+        Place place = placeRepository.findByPlaceIdAndIsDeletedFalse(requestDto.getPlaceId())
+                .orElseThrow(() -> new BusinessException(ErrorCode.PLACE_NOT_FOUND));
+
+        if (tripSchedule.getPlace() != null && !tripSchedule.getPlace().getPlaceId().equals(place.getPlaceId())) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT);
+        }
+
+        if (visitedPlaceRepository.existsByTrip_TripIdAndPlace_PlaceIdAndIsDeletedFalse(
+                trip.getTripId(),
+                place.getPlaceId()
+        )) {
+            throw new BusinessException(ErrorCode.VISITED_PLACE_ALREADY_EXISTS);
+        }
+
+        VisitedPlace visitedPlace = visitedPlaceRepository.save(
+                VisitedPlace.builder()
+                        .user(user)
+                        .trip(trip)
+                        .tripSchedule(tripSchedule)
+                        .place(place)
+                        .build()
+        );
+
+        return AddVisitedPlaceResponseDto.from(visitedPlace);
+    }
+
+    /**
      * 내 여행 상세 화면의 날짜별 일정 카드에서 선택한 장소를 여행 위시리스트에 추가합니다.
      * 현재 저장 구조는 여행 단위 위시리스트이므로 선택한 날짜는 저장하지 않고,
      * 요청 유효성 검증과 응답 문맥 정보 계산에만 사용합니다.
@@ -542,6 +598,23 @@ public class TripService {
      *
      * @param requestDto 위시리스트 장소 추가 요청 DTO
      */
+    /**
+     * 방문 기록 저장 요청에 필요한 여행 PK, 일정 PK, 장소 PK, 사용자 아이디가 모두 존재하는지 검증합니다.
+     *
+     * @param requestDto 방문 기록 저장 요청 DTO
+     */
+    private void validateAddVisitedPlaceRequest(AddVisitedPlaceRequestDto requestDto) {
+        if (requestDto.getTripId() == null
+                || requestDto.getTripId() < 1
+                || requestDto.getTripScheduleId() == null
+                || requestDto.getTripScheduleId() < 1
+                || requestDto.getPlaceId() == null
+                || requestDto.getPlaceId() < 1
+                || requestDto.getUsersId() == null) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT);
+        }
+    }
+
     private void validateAddWishlistPlaceRequest(AddWishlistPlaceRequestDto requestDto) {
         if (requestDto.getTripId() == null
                 || requestDto.getTripId() < 1

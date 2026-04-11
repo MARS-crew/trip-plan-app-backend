@@ -12,6 +12,7 @@ import mars.tripplanappbackend.global.config.auth.UserPrincipal;
 import mars.tripplanappbackend.global.config.swagger.ApiErrorExceptions;
 import mars.tripplanappbackend.global.dto.ApiResponse;
 import mars.tripplanappbackend.global.enums.ErrorCode;
+import mars.tripplanappbackend.trip.dto.request.AddVisitedPlaceRequestDto;
 import mars.tripplanappbackend.trip.dto.request.AddWishlistPlaceRequestDto;
 import mars.tripplanappbackend.trip.dto.request.CreateTripRequestDto;
 import mars.tripplanappbackend.trip.dto.request.DeleteTripRequestDto;
@@ -25,6 +26,7 @@ import mars.tripplanappbackend.trip.dto.request.NearbyTripScheduleRequestDto;
 import mars.tripplanappbackend.trip.dto.request.ShareTripRequestDto;
 import mars.tripplanappbackend.trip.dto.request.TripPlaceSelectionRequestDto;
 import mars.tripplanappbackend.trip.dto.request.UpdateTripRequestDto;
+import mars.tripplanappbackend.trip.dto.response.AddVisitedPlaceResponseDto;
 import mars.tripplanappbackend.trip.dto.response.AddWishlistPlaceResponseDto;
 import mars.tripplanappbackend.trip.dto.response.CreateTripResponseDto;
 import mars.tripplanappbackend.trip.dto.response.DeleteTripResponseDto;
@@ -293,6 +295,56 @@ public class TripController {
         MyTripScheduleListRequestDto requestDto =
                 MyTripScheduleListRequestDto.of(tripId, userPrincipal.getUsersId());
         return ApiResponse.ok(tripService.getMyTripScheduleList(requestDto));
+    }
+
+    /**
+     * 내 여행지 상세 화면에서 현재 장소를 방문 인증 기록으로 저장합니다.
+     * 단순 저장 탭용 찜이 아니라 여행 중 실제로 방문한 장소를 기록하는 용도이며,
+     * 여행 PK, 일정 PK, 장소 PK, 로그인 사용자 정보가 모두 맞을 때만 저장합니다.
+     *
+     * @param tripId 방문 기록을 저장할 여행 PK
+     * @param requestDto 방문한 장소 PK와 연결할 일정 PK를 담은 요청 본문 DTO
+     * @param userPrincipal 커스텀 어노테이션으로 주입된 현재 로그인 사용자 정보
+     * @return 공통 응답 형식으로 감싼 방문 기록 저장 결과
+     */
+    @PostMapping("/{tripId}/visited-places")
+    @ApiErrorExceptions({
+            ErrorCode.INVALID_INPUT,
+            ErrorCode.USER_NOT_FOUND,
+            ErrorCode.PLACE_NOT_FOUND,
+            ErrorCode.VISITED_PLACE_ALREADY_EXISTS,
+            ErrorCode.INTERNAL_ERROR
+    })
+    @Operation(
+            summary = "방문 기록 저장",
+            description = "내 여행지 상세 화면에서 현재 장소를 방문 인증 기록으로 저장합니다."
+    )
+    public ApiResponse<AddVisitedPlaceResponseDto> addVisitedPlace(
+            @Parameter(description = "방문 기록을 저장할 여행 PK", example = "5")
+            @PathVariable("tripId") Long tripId,
+            @io.swagger.v3.oas.annotations.parameters.RequestBody(
+                    description = "방문한 장소 PK와 연결할 일정 PK를 담은 요청 본문입니다.",
+                    required = true,
+                    content = @Content(
+                            mediaType = "application/json",
+                            examples = @ExampleObject(
+                                    name = "방문 기록 저장 예시",
+                                    value = """
+                                            {
+                                              "placeId": 7,
+                                              "tripScheduleId": 21
+                                            }
+                                            """
+                            )
+                    )
+            )
+            @Valid @RequestBody AddVisitedPlaceRequestDto requestDto,
+            @Parameter(hidden = true)
+            @CurrentUser UserPrincipal userPrincipal
+    ) {
+        AddVisitedPlaceRequestDto serviceRequestDto =
+                AddVisitedPlaceRequestDto.of(tripId, userPrincipal.getUsersId(), requestDto);
+        return ApiResponse.ok(tripService.addVisitedPlace(serviceRequestDto));
     }
 
     /**
