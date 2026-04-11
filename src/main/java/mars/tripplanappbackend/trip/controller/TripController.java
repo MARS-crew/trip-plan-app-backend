@@ -260,9 +260,9 @@ public class TripController {
             description = "내 여행 페이지에서 선택한 날짜 기준으로 일정 드롭다운 정보와 해당 날짜 일정 목록을 조회합니다."
     )
     public ApiResponse<MyTripScheduleByDateResponseDto> getMyTripSchedulesByDate(
-            @Parameter(description = "조회할 여행 PK", example = "7")
+            @Parameter(description = "조회할 여행 PK", example = "5")
             @PathVariable("tripId") Long tripId,
-            @Parameter(description = "조회할 일정 날짜", example = "2026-02-15")
+            @Parameter(description = "조회할 일정 날짜", example = "2026-04-20")
             @RequestParam(name = "targetDate", required = false)
             @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate targetDate,
             @Parameter(hidden = true)
