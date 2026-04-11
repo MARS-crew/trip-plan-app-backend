@@ -5,6 +5,9 @@ import mars.tripplanappbackend.global.enums.ErrorCode;
 import mars.tripplanappbackend.global.exception.BusinessException;
 import mars.tripplanappbackend.mypage.domain.User;
 import mars.tripplanappbackend.mypage.repository.MyPageRepository;
+import mars.tripplanappbackend.place.domain.Place;
+import mars.tripplanappbackend.place.repository.PlaceRepository;
+import mars.tripplanappbackend.trip.dto.request.AddWishlistPlaceRequestDto;
 import mars.tripplanappbackend.trip.domain.Trip;
 import mars.tripplanappbackend.trip.domain.TripSchedule;
 import mars.tripplanappbackend.trip.domain.VisitedPlace;
@@ -19,6 +22,7 @@ import mars.tripplanappbackend.trip.dto.request.MyTripScheduleListRequestDto;
 import mars.tripplanappbackend.trip.dto.request.NearbyTripScheduleRequestDto;
 import mars.tripplanappbackend.trip.dto.request.ShareTripRequestDto;
 import mars.tripplanappbackend.trip.dto.request.UpdateTripRequestDto;
+import mars.tripplanappbackend.trip.dto.response.AddWishlistPlaceResponseDto;
 import mars.tripplanappbackend.trip.dto.response.CreateTripResponseDto;
 import mars.tripplanappbackend.trip.dto.response.DeleteTripResponseDto;
 import mars.tripplanappbackend.trip.dto.response.DeleteTripScheduleResponseDto;
@@ -35,6 +39,7 @@ import mars.tripplanappbackend.trip.dto.response.ShareTripResponseDto;
 import mars.tripplanappbackend.trip.dto.response.UpdateTripResponseDto;
 import mars.tripplanappbackend.trip.enums.MyTripFilterType;
 import mars.tripplanappbackend.trip.enums.TripStatus;
+import mars.tripplanappbackend.trip.enums.WishlistSourceType;
 import mars.tripplanappbackend.trip.repository.TripRepository;
 import mars.tripplanappbackend.trip.repository.TripScheduleRepository;
 import mars.tripplanappbackend.trip.repository.VisitedPlaceRepository;
@@ -68,6 +73,7 @@ public class TripService {
     private static final DateTimeFormatter SHARE_DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyy.MM.dd");
 
     private final MyPageRepository myPageRepository;
+    private final PlaceRepository placeRepository;
     private final TripRepository tripRepository;
     private final TripScheduleRepository tripScheduleRepository;
     private final WishlistPlaceRepository wishlistPlaceRepository;
@@ -334,6 +340,53 @@ public class TripService {
     }
 
     /**
+     * 내 여행 상세 화면의 날짜별 일정 카드에서 선택한 장소를 여행 위시리스트에 추가합니다.
+     * 현재 저장 구조는 여행 단위 위시리스트이므로 선택한 날짜는 저장하지 않고,
+     * 요청 유효성 검증과 응답 문맥 정보 계산에만 사용합니다.
+     *
+     * @param requestDto 여행 PK, 장소 PK, 선택 날짜, 로그인 사용자 아이디를 담은 요청 DTO
+     * @return 위시리스트에 추가된 장소 정보를 담은 응답 DTO
+     */
+    @Transactional
+    public AddWishlistPlaceResponseDto addWishlistPlace(AddWishlistPlaceRequestDto requestDto) {
+        validateAddWishlistPlaceRequest(requestDto);
+        validateUserExistsByUsersId(requestDto.getUsersId());
+
+        Trip trip = tripRepository.findByTripIdAndUser_UsersIdAndIsDeletedFalse(
+                        requestDto.getTripId(),
+                        requestDto.getUsersId()
+                )
+                .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_INPUT));
+
+        if (requestDto.getScheduleDate().isBefore(trip.getStartDate())
+                || requestDto.getScheduleDate().isAfter(trip.getEndDate())) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT);
+        }
+
+        Place place = placeRepository.findByPlaceIdAndIsDeletedFalse(requestDto.getPlaceId())
+                .orElseThrow(() -> new BusinessException(ErrorCode.PLACE_NOT_FOUND));
+
+        if (wishlistPlaceRepository.existsByTrip_TripIdAndPlace_PlaceIdAndIsDeletedFalse(
+                trip.getTripId(),
+                place.getPlaceId()
+        )) {
+            throw new BusinessException(ErrorCode.WISHLIST_PLACE_ALREADY_EXISTS);
+        }
+
+        WishlistPlace wishlistPlace = wishlistPlaceRepository.save(
+                WishlistPlace.builder()
+                        .trip(trip)
+                        .place(place)
+                        .sourceType(WishlistSourceType.RECOMMEND)
+                        .build()
+        );
+
+        int dayNo = calculateDayNo(trip.getStartDate(), requestDto.getScheduleDate());
+
+        return AddWishlistPlaceResponseDto.from(wishlistPlace, requestDto.getScheduleDate(), dayNo);
+    }
+
+    /**
      * 홈 화면 상단 카드에서 사용할 기준상 가장 가까운 여행 일정 정보를 조회합니다.
      * 진행 중인 여행이 있으면 해당 여행을 우선 조회하고,
      * 없으면 가장 가까운 예정 여행을 조회합니다.
@@ -395,6 +448,22 @@ public class TripService {
      */
     private void validateTripScheduleListRequest(MyTripScheduleListRequestDto requestDto) {
         if (requestDto.getTripId() == null || requestDto.getTripId() < 1 || requestDto.getUsersId() == null) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT);
+        }
+    }
+
+    /**
+     * 위시리스트 장소 추가 요청에 필요한 여행 PK, 장소 PK, 선택 날짜, 사용자 아이디 존재 여부를 검증합니다.
+     *
+     * @param requestDto 위시리스트 장소 추가 요청 DTO
+     */
+    private void validateAddWishlistPlaceRequest(AddWishlistPlaceRequestDto requestDto) {
+        if (requestDto.getTripId() == null
+                || requestDto.getTripId() < 1
+                || requestDto.getPlaceId() == null
+                || requestDto.getPlaceId() < 1
+                || requestDto.getScheduleDate() == null
+                || requestDto.getUsersId() == null) {
             throw new BusinessException(ErrorCode.INVALID_INPUT);
         }
     }
