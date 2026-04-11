@@ -38,7 +38,7 @@ public class AuthService {
 
     /**
      * 회원가입 처리
-     *
+     * <p>
      * 소셜 가입은 비밀번호 없이 진행되므로 loginType이 LOCAL인 경우에만 비밀번호를 검증한다.
      * 비밀번호는 평문 저장을 방지하기 위해 BCrypt로 암호화 후 저장한다.
      *
@@ -69,7 +69,7 @@ public class AuthService {
 
     /**
      * 로그인 처리
-     *
+     * <p>
      * 사용자의 ID로 계정을 조회하고, 저장된 해시 비밀번호와 입력 비밀번호를 비교한다.
      * 소셜 가입 회원이 일반 로그인 API를 호출하는 경우 예외를 던진다.
      * 로그인 성공 시 AccessToken + RefreshToken을 발급하며,
@@ -112,7 +112,7 @@ public class AuthService {
 
     /**
      * AccessToken 재발급
-     *
+     * <p>
      * 클라이언트가 RefreshToken을 전달하면
      * 해당 토큰이 DB에 저장된 값과 일치하는지 확인하고,
      * 만료 여부와 토큰 유효성을 검증한 뒤 새로운 토큰을 발급한다.
@@ -154,7 +154,7 @@ public class AuthService {
 
     /**
      * 아이디 중복 확인
-     *
+     * <p>
      * 회원가입 전 사용자가 입력한 아이디의 중복 여부를 확인한다.
      * 이미 존재하는 아이디인 경우 예외를 발생시켜
      * 클라이언트에 즉시 알린다.
@@ -171,7 +171,7 @@ public class AuthService {
 
     /**
      * 아이디 찾기
-     *
+     * <p>
      * 사용자가 입력한 닉네임과 이메일로 계정을 조회한다.
      * 일치하는 계정이 없을 경우 예외를 발생시킨다.
      *
@@ -188,7 +188,7 @@ public class AuthService {
     /**
      *
      * 이메일 전송
-     *
+     * <p>
      * 입력된 gmail로 인증 코드 6자리를 전송한다.
      * 전송에 실패할 경우 EMAIL_SEND_FAIL 에러를 발생시킨다.
      *
@@ -198,17 +198,27 @@ public class AuthService {
 
     @Transactional
     public EmailResponseDto sendEmail(EmailRequestDto requestDto) {
-        
+
         String email = requestDto.getEmail();
         String code = generateVerificationCode();
 
-        
-        //redis에 저장되는 내용 ex) email verify: email@gmail.com
+        String EMAIL_VERIFY_KEY = "email:verify:";
+        String EMAIL_REQUEST_KEY = "email:requested:";
+
+
+        //redis에 저장되는 내용 ex) email:verify: email@gmail.com
         // 5분 뒤에 알아서 삭제됨
         redisTemplate.opsForValue().set(
-                "email verify:" + email,
+                EMAIL_VERIFY_KEY + email,
                 code,
                 5,
+                TimeUnit.MINUTES
+        );
+
+        redisTemplate.opsForValue().set(
+                EMAIL_REQUEST_KEY + email,
+                "true",
+                10,
                 TimeUnit.MINUTES
         );
 
@@ -245,29 +255,35 @@ public class AuthService {
      */
     @Transactional
     public EmailVerifyResponseDto verifyEmailCode(EmailVerifyRequestDto requestDto) {
-        String redisKey = "email verify:" + requestDto.getEmail();
-        String savedCode = redisTemplate.opsForValue().get(redisKey);
 
-        // 코드가 만료됐을 경우 (5분 이후)
+        String email = requestDto.getEmail();
+        String EMAIL_VERIFY_KEY = "email:verify:";
+        String EMAIL_REQUEST_KEY = "email:requested:";
+
+        Boolean isRequested = redisTemplate.hasKey(EMAIL_REQUEST_KEY + email);
+        if (!Boolean.TRUE.equals(isRequested)) {
+            throw new BusinessException(ErrorCode.INVALID_EMAIL_REQUEST);
+        }
+
+        String savedCode = redisTemplate.opsForValue().get(EMAIL_VERIFY_KEY + email);
+
         if (savedCode == null) {
             throw new BusinessException(ErrorCode.EMAIL_CODE_EXPIRED);
         }
 
-        // 코드가 일치하지 않을 경우
         if (!savedCode.equals(requestDto.getCode())) {
             throw new BusinessException(ErrorCode.INVALID_EMAIL_CODE);
         }
 
-        // 인증 성공 시 Redis에서 삭제
-        redisTemplate.delete(redisKey);
+        redisTemplate.delete(EMAIL_VERIFY_KEY + email);
+        redisTemplate.delete(EMAIL_REQUEST_KEY + email);
 
-        // DB에서 사용자 찾기 후 email_verified Y로 업데이트
-        User user = myPageRepository.findByEmail(requestDto.getEmail())
+        User user = myPageRepository.findByEmail(email)
                 .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
-        user.setEmailVerified(UseYnEnum.Y);
-        myPageRepository.save(user);
 
-        return new EmailVerifyResponseDto(requestDto.getEmail(), UseYnEnum.Y);
+        user.setEmailVerified(UseYnEnum.Y);
+
+        return new EmailVerifyResponseDto(email, UseYnEnum.Y);
     }
 
     /**

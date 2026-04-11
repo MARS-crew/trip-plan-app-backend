@@ -1,6 +1,5 @@
 package mars.tripplanappbackend.trip.repository;
 
-import mars.tripplanappbackend.trip.domain.Trip;
 import mars.tripplanappbackend.trip.domain.TripSchedule;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
@@ -24,4 +23,10 @@ public interface TripScheduleRepository extends JpaRepository<TripSchedule, Long
     List<TripSchedule> findAllByScheduleDateAndStartTime(LocalDate scheduleDate, LocalTime startTime);
 
     Optional<TripSchedule> findTop1ByTripAndScheduleDateOrderByStartTime(Trip trip, LocalDate scheduleDate);
+
+    Optional<TripSchedule> findByTripScheduleIdAndTrip_TripIdAndTrip_User_UsersIdAndIsDeletedFalse(
+            Long tripScheduleId,
+            Long tripId,
+            String usersId
+    );
 }

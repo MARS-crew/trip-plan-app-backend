@@ -57,4 +57,14 @@ public class WishlistPlace extends BaseEntity {
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "place_id", nullable = false)
     private Place place;
+
+    /**
+     * 연결된 여행이 삭제되면 여행에 담아두었던 장소 후보도 함께 soft delete 처리합니다.
+     * 삭제된 여행과 연결된 장소 후보가 이후 일정 생성이나 상세 조회에 다시 노출되지 않도록
+     * 삭제 여부와 삭제 시점을 함께 기록합니다.
+     */
+    public void markDeleted() {
+        this.isDeleted = true;
+        this.deletedDate = LocalDateTime.now();
+    }
 }
