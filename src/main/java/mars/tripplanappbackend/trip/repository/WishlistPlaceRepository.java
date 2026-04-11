@@ -9,4 +9,6 @@ public interface WishlistPlaceRepository extends JpaRepository<WishlistPlace, Lo
     java.util.List<WishlistPlace> findAllByTrip_TripIdAndIsDeletedFalse(Long tripId);
 
     boolean existsByTrip_TripIdAndPlace_PlaceIdAndIsDeletedFalse(Long tripId, Long placeId);
+
+    java.util.List<WishlistPlace> findAllByTrip_TripIdAndIsDeletedFalseAndPlace_IsDeletedFalseOrderByCreatedAtDesc(Long tripId);
 }

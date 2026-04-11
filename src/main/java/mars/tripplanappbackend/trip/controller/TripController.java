@@ -22,6 +22,7 @@ import mars.tripplanappbackend.trip.dto.request.MyTripScheduleByDateRequestDto;
 import mars.tripplanappbackend.trip.dto.request.MyTripScheduleListRequestDto;
 import mars.tripplanappbackend.trip.dto.request.NearbyTripScheduleRequestDto;
 import mars.tripplanappbackend.trip.dto.request.ShareTripRequestDto;
+import mars.tripplanappbackend.trip.dto.request.TripPlaceSelectionRequestDto;
 import mars.tripplanappbackend.trip.dto.request.UpdateTripRequestDto;
 import mars.tripplanappbackend.trip.dto.response.AddWishlistPlaceResponseDto;
 import mars.tripplanappbackend.trip.dto.response.CreateTripResponseDto;
@@ -32,6 +33,7 @@ import mars.tripplanappbackend.trip.dto.response.MyTripScheduleByDateResponseDto
 import mars.tripplanappbackend.trip.dto.response.MyTripScheduleListResponseDto;
 import mars.tripplanappbackend.trip.dto.response.NearbyTripScheduleResponseDto;
 import mars.tripplanappbackend.trip.dto.response.ShareTripResponseDto;
+import mars.tripplanappbackend.trip.dto.response.TripPlaceSelectionResponseDto;
 import mars.tripplanappbackend.trip.dto.response.UpdateTripResponseDto;
 import mars.tripplanappbackend.trip.enums.MyTripFilterType;
 import mars.tripplanappbackend.trip.service.TripService;
@@ -49,7 +51,7 @@ import org.springframework.web.bind.annotation.RestController;
 import java.time.LocalDate;
 
 /**
- * 여행 페이지와 여행 상세 화면에서 사용하는 여행 관련 API를 제공하는 컨트롤러입니다.
+ * 여행 페이지와 내 여행 상세 화면에서 사용하는 여행 관련 API를 제공합니다.
  */
 @RestController
 @RequestMapping("/api/v1/trips")
@@ -60,11 +62,11 @@ public class TripController {
     private final TripService tripService;
 
     /**
-     * 여행 추가 화면에서 여행 이미지, 여행 제목, 여행 기간을 입력받아 새 여행을 생성합니다.
+     * 여행 추가 화면에서 여행 이미지, 제목, 여행 시작일과 종료일을 입력받아 새 여행을 생성합니다.
      *
-     * @param requestDto 여행 생성에 필요한 본문 요청 DTO
-     * @param userPrincipal 커스텀 어노테이션으로 주입된 현재 로그인 사용자 정보
-     * @return 공통 응답 형식으로 감싼 여행 생성 결과 응답
+     * @param requestDto 여행 생성 요청 본문 DTO
+     * @param userPrincipal 커스텀 어노테이션으로 주입한 현재 로그인 사용자 정보
+     * @return 공통 응답 형식으로 감싼 여행 생성 결과
      */
     @PostMapping("/create")
     @ApiErrorExceptions({ErrorCode.INVALID_INPUT, ErrorCode.USER_NOT_FOUND, ErrorCode.INTERNAL_ERROR})
@@ -86,20 +88,20 @@ public class TripController {
      *
      * @param tripId 수정할 여행 PK
      * @param requestDto 수정할 여행 기본 정보를 담은 본문 요청 DTO
-     * @param userPrincipal 커스텀 어노테이션으로 주입된 현재 로그인 사용자 정보
-     * @return 공통 응답 형식으로 감싼 여행 수정 결과 응답
+     * @param userPrincipal 커스텀 어노테이션으로 주입한 현재 로그인 사용자 정보
+     * @return 공통 응답 형식으로 감싼 여행 수정 결과
      */
     @PatchMapping("/{tripId}")
     @ApiErrorExceptions({ErrorCode.INVALID_INPUT, ErrorCode.USER_NOT_FOUND, ErrorCode.INTERNAL_ERROR})
     @Operation(
             summary = "내 일정 수정",
-            description = "내 여행 상세 화면에서 여행 이미지, 여행 제목, 여행 시작일, 여행 종료일을 수정합니다."
+            description = "내 여행 상세 화면에서 여행 대표 이미지, 여행 제목, 여행 시작일, 여행 종료일을 수정합니다."
     )
     public ApiResponse<UpdateTripResponseDto> updateTrip(
             @Parameter(description = "수정할 여행 PK", example = "1")
             @PathVariable("tripId") Long tripId,
             @io.swagger.v3.oas.annotations.parameters.RequestBody(
-                    description = "여행 상세 화면에서 수정할 여행 기본 정보입니다.",
+                    description = "내 여행 상세 화면에서 수정할 여행 기본 정보입니다.",
                     required = true,
                     content = @Content(
                             mediaType = "application/json",
@@ -129,8 +131,8 @@ public class TripController {
      * 내 여행 상세 화면 상단 더보기 메뉴에서 현재 선택한 여행을 삭제합니다.
      *
      * @param tripId 삭제할 여행 PK
-     * @param userPrincipal 커스텀 어노테이션으로 주입된 현재 로그인 사용자 정보
-     * @return 공통 응답 형식으로 감싼 여행 삭제 결과 응답
+     * @param userPrincipal 커스텀 어노테이션으로 주입한 현재 로그인 사용자 정보
+     * @return 공통 응답 형식으로 감싼 여행 삭제 결과
      */
     @DeleteMapping("/{tripId}")
     @ApiErrorExceptions({ErrorCode.INVALID_INPUT, ErrorCode.USER_NOT_FOUND, ErrorCode.INTERNAL_ERROR})
@@ -152,7 +154,7 @@ public class TripController {
      * 내 여행 상세 화면 상단 더보기 메뉴에서 사용할 여행 공유 정보를 조회합니다.
      *
      * @param tripId 공유할 여행 PK
-     * @param userPrincipal 커스텀 어노테이션으로 주입된 현재 로그인 사용자 정보
+     * @param userPrincipal 커스텀 어노테이션으로 주입한 현재 로그인 사용자 정보
      * @return 공통 응답 형식으로 감싼 여행 공유 응답
      */
     @GetMapping("/{tripId}/share")
@@ -172,10 +174,35 @@ public class TripController {
     }
 
     /**
-     * 내 여행 페이지 전체 탭에 노출되는 여행 카드 목록을 조회합니다.
+     * 내 여행 상세의 날짜 카드에서 장소 추가하기 버튼을 눌렀을 때 표시할
+     * 저장한 장소와 위시리스트 목록을 함께 조회합니다.
      *
-     * @param userPrincipal 커스텀 어노테이션으로 주입된 현재 로그인 사용자 정보
-     * @return 공통 응답 형식으로 감싼 전체 여행 카드 목록 응답
+     * @param tripId 조회할 여행 PK
+     * @param userPrincipal 커스텀 어노테이션으로 주입한 현재 로그인 사용자 정보
+     * @return 공통 응답 형식으로 감싼 저장한 장소/위시리스트 조회 응답
+     */
+    @GetMapping("/{tripId}/place-selection")
+    @ApiErrorExceptions({ErrorCode.INVALID_INPUT, ErrorCode.USER_NOT_FOUND, ErrorCode.INTERNAL_ERROR})
+    @Operation(
+            summary = "저장한 장소/위시리스트 조회",
+            description = "내 여행 상세 화면에서 날짜 카드의 장소 추가하기 버튼을 눌렀을 때 표시할 저장한 장소와 위시리스트 목록을 함께 조회합니다."
+    )
+    public ApiResponse<TripPlaceSelectionResponseDto> getTripPlaceSelection(
+            @Parameter(description = "조회할 여행 PK", example = "5")
+            @PathVariable("tripId") Long tripId,
+            @Parameter(hidden = true)
+            @CurrentUser UserPrincipal userPrincipal
+    ) {
+        TripPlaceSelectionRequestDto requestDto =
+                TripPlaceSelectionRequestDto.of(tripId, userPrincipal.getUsersId());
+        return ApiResponse.ok(tripService.getTripPlaceSelection(requestDto));
+    }
+
+    /**
+     * 내 여행 페이지 전체 탭에서 노출되는 여행 카드 목록을 조회합니다.
+     *
+     * @param userPrincipal 커스텀 어노테이션으로 주입한 현재 로그인 사용자 정보
+     * @return 공통 응답 형식으로 감싼 내 여행 전체 목록
      */
     @GetMapping
     @ApiErrorExceptions({ErrorCode.USER_NOT_FOUND, ErrorCode.INTERNAL_ERROR})
@@ -195,8 +222,8 @@ public class TripController {
      * 내 여행 페이지 상단 필터에서 선택한 유형에 맞는 여행 카드 목록을 조회합니다.
      *
      * @param filterType 화면에서 선택한 여행 필터 유형
-     * @param userPrincipal 커스텀 어노테이션으로 주입된 현재 로그인 사용자 정보
-     * @return 공통 응답 형식으로 감싼 필터별 여행 카드 목록 응답
+     * @param userPrincipal 커스텀 어노테이션으로 주입한 현재 로그인 사용자 정보
+     * @return 공통 응답 형식으로 감싼 필터별 여행 목록
      */
     @GetMapping("/filter")
     @ApiErrorExceptions({ErrorCode.USER_NOT_FOUND, ErrorCode.INTERNAL_ERROR})
@@ -219,8 +246,8 @@ public class TripController {
      *
      * @param tripId 조회할 여행 PK
      * @param targetDate 조회할 일정 날짜
-     * @param userPrincipal 커스텀 어노테이션으로 주입된 현재 로그인 사용자 정보
-     * @return 공통 응답 형식으로 감싼 날짜별 일정 목록 응답
+     * @param userPrincipal 커스텀 어노테이션으로 주입한 현재 로그인 사용자 정보
+     * @return 공통 응답 형식으로 감싼 날짜별 일정 목록
      */
     @GetMapping("/{tripId}/schedules/by-date")
     @ApiErrorExceptions({ErrorCode.INVALID_INPUT, ErrorCode.USER_NOT_FOUND, ErrorCode.INTERNAL_ERROR})
@@ -243,18 +270,17 @@ public class TripController {
     }
 
     /**
-     * 내 여행 상세 화면 본문에서 여행 기간 전체를 기준으로 일차별 일정 리스트를 조회합니다.
-     * 일정이 없는 날짜도 포함해 화면의 일차 섹션을 그대로 구성할 수 있도록 응답합니다.
+     * 내 여행 상세 화면 본문에서 여행 기간 전체를 기준으로 일자별 일정 리스트를 조회합니다.
      *
      * @param tripId 조회할 여행 PK
-     * @param userPrincipal 커스텀 어노테이션으로 주입된 현재 로그인 사용자 정보
+     * @param userPrincipal 커스텀 어노테이션으로 주입한 현재 로그인 사용자 정보
      * @return 공통 응답 형식으로 감싼 일정 리스트 응답
      */
     @GetMapping("/{tripId}/schedules")
     @ApiErrorExceptions({ErrorCode.INVALID_INPUT, ErrorCode.USER_NOT_FOUND, ErrorCode.INTERNAL_ERROR})
     @Operation(
             summary = "일정 리스트 조회",
-            description = "내 여행 상세 화면에서 여행 기간 전체를 기준으로 일차별 일정 리스트를 조회합니다."
+            description = "내 여행 상세 화면에서 여행 기간 전체를 기준으로 일자별 일정 리스트를 조회합니다."
     )
     public ApiResponse<MyTripScheduleListResponseDto> getMyTripScheduleList(
             @Parameter(description = "조회할 여행 PK", example = "5")
@@ -268,12 +294,12 @@ public class TripController {
     }
 
     /**
-     * 내 여행 상세 화면에서 날짜별 일정 카드의 추가하기 버튼을 통해 선택한 장소를 위시리스트에 추가합니다.
+     * 내 여행 상세 화면에서 날짜별 일정 카드의 추가하기 버튼을 통해 선택한 장소를 해당 여행의 위시리스트에 추가합니다.
      *
      * @param tripId 위시리스트 장소를 추가할 여행 PK
      * @param requestDto 선택한 장소 PK와 날짜 카드 기준 일정 날짜를 담은 본문 DTO
-     * @param userPrincipal 커스텀 어노테이션으로 주입된 현재 로그인 사용자 정보
-     * @return 공통 응답 형식으로 감싼 위시리스트 장소 추가 결과 응답
+     * @param userPrincipal 커스텀 어노테이션으로 주입한 현재 로그인 사용자 정보
+     * @return 공통 응답 형식으로 감싼 위시리스트 장소 추가 결과
      */
     @PostMapping("/{tripId}/wishlist-places")
     @ApiErrorExceptions({
@@ -320,8 +346,8 @@ public class TripController {
      *
      * @param tripId 일정이 속한 여행 PK
      * @param tripScheduleId 삭제할 개별 일정 PK
-     * @param userPrincipal 커스텀 어노테이션으로 주입된 현재 로그인 사용자 정보
-     * @return 공통 응답 형식으로 감싼 일정 삭제 결과 응답
+     * @param userPrincipal 커스텀 어노테이션으로 주입한 현재 로그인 사용자 정보
+     * @return 공통 응답 형식으로 감싼 일정 삭제 결과
      */
     @DeleteMapping("/{tripId}/schedules/{tripScheduleId}")
     @ApiErrorExceptions({ErrorCode.INVALID_INPUT, ErrorCode.USER_NOT_FOUND, ErrorCode.INTERNAL_ERROR})
@@ -343,7 +369,7 @@ public class TripController {
     }
 
     /**
-     * 홈 화면 상단 카드에서 사용하는 가까운 여행 일정 정보를 조회합니다.
+     * 메인 화면 상단 카드에서 사용하는 가까운 여행 일정 정보를 조회합니다.
      *
      * @param requestDto 조회 대상 사용자 PK를 담은 요청 DTO
      * @return 공통 응답 형식으로 감싼 가까운 여행 일정 응답
@@ -352,7 +378,7 @@ public class TripController {
     @ApiErrorExceptions({ErrorCode.INVALID_INPUT, ErrorCode.USER_NOT_FOUND, ErrorCode.INTERNAL_ERROR})
     @Operation(
             summary = "가까운 여행일정 조회",
-            description = "홈 화면 상단 카드에 노출할 가까운 여행 일정 정보를 조회합니다."
+            description = "메인 화면 상단 카드에 노출할 가까운 여행 일정 정보를 조회합니다."
     )
     public ApiResponse<NearbyTripScheduleResponseDto> getNearbyTripSchedule(
             @Valid @RequestBody NearbyTripScheduleRequestDto requestDto
