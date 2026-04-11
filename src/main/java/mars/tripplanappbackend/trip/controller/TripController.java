@@ -16,6 +16,7 @@ import mars.tripplanappbackend.trip.dto.request.AddWishlistPlaceRequestDto;
 import mars.tripplanappbackend.trip.dto.request.CreateTripRequestDto;
 import mars.tripplanappbackend.trip.dto.request.DeleteTripRequestDto;
 import mars.tripplanappbackend.trip.dto.request.DeleteTripScheduleRequestDto;
+import mars.tripplanappbackend.trip.dto.request.DeleteWishlistPlaceRequestDto;
 import mars.tripplanappbackend.trip.dto.request.MyTripFilterRequestDto;
 import mars.tripplanappbackend.trip.dto.request.MyTripListRequestDto;
 import mars.tripplanappbackend.trip.dto.request.MyTripScheduleByDateRequestDto;
@@ -28,6 +29,7 @@ import mars.tripplanappbackend.trip.dto.response.AddWishlistPlaceResponseDto;
 import mars.tripplanappbackend.trip.dto.response.CreateTripResponseDto;
 import mars.tripplanappbackend.trip.dto.response.DeleteTripResponseDto;
 import mars.tripplanappbackend.trip.dto.response.DeleteTripScheduleResponseDto;
+import mars.tripplanappbackend.trip.dto.response.DeleteWishlistPlaceResponseDto;
 import mars.tripplanappbackend.trip.dto.response.MyTripListResponseDto;
 import mars.tripplanappbackend.trip.dto.response.MyTripScheduleByDateResponseDto;
 import mars.tripplanappbackend.trip.dto.response.MyTripScheduleListResponseDto;
@@ -339,6 +341,33 @@ public class TripController {
         AddWishlistPlaceRequestDto serviceRequestDto =
                 AddWishlistPlaceRequestDto.of(tripId, userPrincipal.getUsersId(), requestDto);
         return ApiResponse.ok(tripService.addWishlistPlace(serviceRequestDto));
+    }
+
+    /**
+     * 내 여행 상세 화면의 날짜 카드에 추가된 위시리스트 장소를 개별 메뉴를 통해 삭제합니다.
+     *
+     * @param tripId 위시리스트 장소가 속한 여행 PK
+     * @param wishlistPlaceId 삭제할 위시리스트 장소 PK
+     * @param userPrincipal 커스텀 어노테이션으로 주입한 현재 로그인 사용자 정보
+     * @return 공통 응답 형식으로 감싼 위시리스트 장소 삭제 결과
+     */
+    @DeleteMapping("/{tripId}/wishlist-places/{wishlistPlaceId}")
+    @ApiErrorExceptions({ErrorCode.INVALID_INPUT, ErrorCode.USER_NOT_FOUND, ErrorCode.INTERNAL_ERROR})
+    @Operation(
+            summary = "위시리스트 장소 삭제",
+            description = "내 여행 상세 화면의 날짜 카드에 추가된 위시리스트 장소를 개별 메뉴를 통해 삭제합니다."
+    )
+    public ApiResponse<DeleteWishlistPlaceResponseDto> deleteWishlistPlace(
+            @Parameter(description = "위시리스트 장소가 속한 여행 PK", example = "5")
+            @PathVariable("tripId") Long tripId,
+            @Parameter(description = "삭제할 위시리스트 장소 PK", example = "11")
+            @PathVariable("wishlistPlaceId") Long wishlistPlaceId,
+            @Parameter(hidden = true)
+            @CurrentUser UserPrincipal userPrincipal
+    ) {
+        DeleteWishlistPlaceRequestDto requestDto =
+                DeleteWishlistPlaceRequestDto.of(tripId, wishlistPlaceId, userPrincipal.getUsersId());
+        return ApiResponse.ok(tripService.deleteWishlistPlace(requestDto));
     }
 
     /**

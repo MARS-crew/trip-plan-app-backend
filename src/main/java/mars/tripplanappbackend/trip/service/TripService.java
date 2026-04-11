@@ -16,6 +16,7 @@ import mars.tripplanappbackend.trip.domain.WishlistPlace;
 import mars.tripplanappbackend.trip.dto.request.CreateTripRequestDto;
 import mars.tripplanappbackend.trip.dto.request.DeleteTripRequestDto;
 import mars.tripplanappbackend.trip.dto.request.DeleteTripScheduleRequestDto;
+import mars.tripplanappbackend.trip.dto.request.DeleteWishlistPlaceRequestDto;
 import mars.tripplanappbackend.trip.dto.request.MyTripFilterRequestDto;
 import mars.tripplanappbackend.trip.dto.request.MyTripListRequestDto;
 import mars.tripplanappbackend.trip.dto.request.MyTripScheduleByDateRequestDto;
@@ -28,6 +29,7 @@ import mars.tripplanappbackend.trip.dto.response.AddWishlistPlaceResponseDto;
 import mars.tripplanappbackend.trip.dto.response.CreateTripResponseDto;
 import mars.tripplanappbackend.trip.dto.response.DeleteTripResponseDto;
 import mars.tripplanappbackend.trip.dto.response.DeleteTripScheduleResponseDto;
+import mars.tripplanappbackend.trip.dto.response.DeleteWishlistPlaceResponseDto;
 import mars.tripplanappbackend.trip.dto.response.MyTripDailyScheduleResponseDto;
 import mars.tripplanappbackend.trip.dto.response.MyTripListResponseDto;
 import mars.tripplanappbackend.trip.dto.response.MyTripScheduleByDateResponseDto;
@@ -189,6 +191,31 @@ public class TripService {
         tripSchedule.markDeleted();
 
         return DeleteTripScheduleResponseDto.from(tripSchedule);
+    }
+
+    /**
+     * 내 여행 상세 화면에 노출된 위시리스트 장소 카드를 개별 메뉴를 통해 삭제합니다.
+     * 여행 PK, 위시리스트 PK, 로그인 사용자 아이디가 모두 일치하는 경우에만 삭제되도록 검증합니다.
+     *
+     * @param requestDto 여행 PK, 위시리스트 PK, 로그인 사용자 아이디를 담은 요청 DTO
+     * @return 삭제 처리된 위시리스트 장소 정보를 담은 응답 DTO
+     */
+    @Transactional
+    public DeleteWishlistPlaceResponseDto deleteWishlistPlace(DeleteWishlistPlaceRequestDto requestDto) {
+        validateDeleteWishlistPlaceRequest(requestDto);
+        validateUserExistsByUsersId(requestDto.getUsersId());
+
+        WishlistPlace wishlistPlace = wishlistPlaceRepository
+                .findByWishlistPlaceIdAndTrip_TripIdAndTrip_User_UsersIdAndIsDeletedFalse(
+                        requestDto.getWishlistPlaceId(),
+                        requestDto.getTripId(),
+                        requestDto.getUsersId()
+                )
+                .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_INPUT));
+
+        wishlistPlace.markDeleted();
+
+        return DeleteWishlistPlaceResponseDto.from(wishlistPlace);
     }
 
     /**
@@ -479,6 +506,21 @@ public class TripService {
                 || requestDto.getTripId() < 1
                 || requestDto.getTripScheduleId() == null
                 || requestDto.getTripScheduleId() < 1
+                || requestDto.getUsersId() == null) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT);
+        }
+    }
+
+    /**
+     * 위시리스트 장소 삭제 요청에 필요한 여행 PK, 위시리스트 PK, 로그인 사용자 아이디가 모두 존재하는지 검증합니다.
+     *
+     * @param requestDto 위시리스트 장소 삭제 요청 DTO
+     */
+    private void validateDeleteWishlistPlaceRequest(DeleteWishlistPlaceRequestDto requestDto) {
+        if (requestDto.getTripId() == null
+                || requestDto.getTripId() < 1
+                || requestDto.getWishlistPlaceId() == null
+                || requestDto.getWishlistPlaceId() < 1
                 || requestDto.getUsersId() == null) {
             throw new BusinessException(ErrorCode.INVALID_INPUT);
         }
