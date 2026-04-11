@@ -9,11 +9,15 @@ import mars.tripplanappbackend.global.config.auth.UserPrincipal;
 import mars.tripplanappbackend.global.config.swagger.ApiErrorExceptions;
 import mars.tripplanappbackend.global.dto.ApiResponse;
 import mars.tripplanappbackend.global.enums.ErrorCode;
+import mars.tripplanappbackend.mypage.dto.request.PapagoRequestDto;
 import mars.tripplanappbackend.mypage.dto.request.UpdateAgreeRequestDto;
 import mars.tripplanappbackend.mypage.dto.request.UpdateProfileRequestDto;
 import mars.tripplanappbackend.mypage.dto.resopnse.*;
 import mars.tripplanappbackend.mypage.service.MyPageService;
+import mars.tripplanappbackend.mypage.service.PapagoService;
 import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
 
 @RestController
 @RequestMapping("/api/v1/mypage")
@@ -22,6 +26,7 @@ import org.springframework.web.bind.annotation.*;
 public class MyPageController {
 
     private final MyPageService myPageService;
+    private final PapagoService papagoService;
 
     @GetMapping("/me")
     @ApiErrorExceptions({ErrorCode.FORBIDDEN, ErrorCode.INVALID_TOKEN, ErrorCode.EXPIRED_REFRESH_TOKEN,
@@ -90,6 +95,18 @@ public class MyPageController {
     ) {
         String usersId = userPrincipal.getUsersId();
         MyPageResponseDto response = myPageService.getMyPage(usersId);
+        return ApiResponse.ok(response);
+    }
+
+    @PostMapping("/papago")
+    @Operation(summary = "마이페이지 기본 어휘 번역", description = "기본 어휘 번역, en(영어), ja(일본어), zh-CN(중국어(간체)), zh-TW(중국어(번체)), vi(베트남어), " +
+            "\n th(태국어), id(인도네시아어), fr(프랑스어), es(스페인어), ru(러시아어), de(독일어), it(이탈리아어) 로만 넣어야 됨")
+    public ApiResponse<List<PapagoResponseDto>> translate(
+            @CurrentUser UserPrincipal userPrincipal, @RequestBody PapagoRequestDto requestDto
+    ) {
+        List<PapagoResponseDto> response = papagoService.translatePhrases(
+                userPrincipal.getUsersId(), requestDto.getTargetLang()
+        );
         return ApiResponse.ok(response);
     }
 }
