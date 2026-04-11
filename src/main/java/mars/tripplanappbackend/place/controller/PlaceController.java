@@ -13,17 +13,21 @@ import mars.tripplanappbackend.global.enums.ErrorCode;
 import mars.tripplanappbackend.place.dto.request.NearbyRecommendedPlaceRequestDto;
 import mars.tripplanappbackend.place.dto.request.RecommendedPlaceRequestDto;
 import mars.tripplanappbackend.place.dto.request.SavePlaceRequestDto;
+import mars.tripplanappbackend.place.dto.request.SavedPlaceListRequestDto;
 import mars.tripplanappbackend.place.dto.request.SharePlaceRequestDto;
 import mars.tripplanappbackend.place.dto.response.NearbyRecommendedPlaceListResponseDto;
 import mars.tripplanappbackend.place.dto.response.PlaceDetailResponseDto;
 import mars.tripplanappbackend.place.dto.response.RecommendedPlaceListResponseDto;
 import mars.tripplanappbackend.place.dto.response.SavePlaceResponseDto;
+import mars.tripplanappbackend.place.dto.response.SavedPlaceListResponseDto;
 import mars.tripplanappbackend.place.dto.response.SharePlaceResponseDto;
+import mars.tripplanappbackend.place.enums.SavedPlaceFilterType;
 import mars.tripplanappbackend.place.service.PlaceService;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
@@ -53,6 +57,29 @@ public class PlaceController {
             @Valid RecommendedPlaceRequestDto requestDto
     ) {
         return ApiResponse.ok(placeService.getRecommendedPlaces(requestDto));
+    }
+
+    /**
+     * 저장 탭과 여행 추가 바텀시트의 저장한 장소 탭에서 사용하는 저장한 장소 목록을 조회합니다.
+     *
+     * @param filterType 저장한 장소 목록 필터 유형
+     * @param userPrincipal 커스텀 어노테이션으로 주입한 인증 사용자 정보
+     * @return 공통 응답 형식으로 감싼 저장한 장소 목록 응답
+     */
+    @GetMapping("/saved-places")
+    @ApiErrorExceptions({ErrorCode.UNAUTHORIZED, ErrorCode.USER_NOT_FOUND, ErrorCode.INVALID_INPUT, ErrorCode.INTERNAL_ERROR})
+    @Operation(
+            summary = "저장된 장소 조회",
+            description = "저장 탭과 여행 추가 바텀시트의 저장한 장소 탭에서 사용할 저장한 장소 목록을 필터별로 조회합니다."
+    )
+    public ApiResponse<SavedPlaceListResponseDto> getSavedPlaces(
+            @Parameter(description = "저장한 장소 목록 필터 유형", example = "ALL")
+            @RequestParam(name = "filterType", defaultValue = "ALL") SavedPlaceFilterType filterType,
+            @Parameter(hidden = true)
+            @CurrentUser UserPrincipal userPrincipal
+    ) {
+        SavedPlaceListRequestDto requestDto = SavedPlaceListRequestDto.of(userPrincipal.getUsersId(), filterType);
+        return ApiResponse.ok(placeService.getSavedPlaces(requestDto));
     }
 
     /**

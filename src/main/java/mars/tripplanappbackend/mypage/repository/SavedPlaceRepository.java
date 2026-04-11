@@ -13,5 +13,12 @@ public interface SavedPlaceRepository extends JpaRepository<SavedPlace, Long> {
 
     long countByUserAndIsDeletedFalse(User user);
 
+    long countByUser_UsersIdAndIsDeletedFalseAndPlace_IsDeletedFalse(String usersId);
+
     List<SavedPlace> findAllByUser_UsersIdAndIsDeletedFalseAndPlace_IsDeletedFalseOrderByCreatedAtDesc(String usersId);
+
+    List<SavedPlace> findAllByUser_UsersIdAndIsDeletedFalseAndPlace_IsDeletedFalseAndPlace_PlaceTypeOrderByCreatedAtDesc(
+            String usersId,
+            mars.tripplanappbackend.place.enums.PlaceType placeType
+    );
 }

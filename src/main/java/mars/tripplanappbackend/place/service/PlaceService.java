@@ -12,6 +12,7 @@ import mars.tripplanappbackend.place.domain.PlaceTagMap;
 import mars.tripplanappbackend.place.dto.request.NearbyRecommendedPlaceRequestDto;
 import mars.tripplanappbackend.place.dto.request.RecommendedPlaceRequestDto;
 import mars.tripplanappbackend.place.dto.request.SavePlaceRequestDto;
+import mars.tripplanappbackend.place.dto.request.SavedPlaceListRequestDto;
 import mars.tripplanappbackend.place.dto.request.SharePlaceRequestDto;
 import mars.tripplanappbackend.place.dto.response.NearbyRecommendedPlaceListResponseDto;
 import mars.tripplanappbackend.place.dto.response.NearbyRecommendedPlaceResponseDto;
@@ -20,7 +21,10 @@ import mars.tripplanappbackend.place.dto.response.PlaceReviewPreviewResponseDto;
 import mars.tripplanappbackend.place.dto.response.RecommendedPlaceListResponseDto;
 import mars.tripplanappbackend.place.dto.response.RecommendedPlaceResponseDto;
 import mars.tripplanappbackend.place.dto.response.SavePlaceResponseDto;
+import mars.tripplanappbackend.place.dto.response.SavedPlaceItemResponseDto;
+import mars.tripplanappbackend.place.dto.response.SavedPlaceListResponseDto;
 import mars.tripplanappbackend.place.dto.response.SharePlaceResponseDto;
+import mars.tripplanappbackend.place.enums.SavedPlaceFilterType;
 import mars.tripplanappbackend.place.repository.PlaceRepository;
 import mars.tripplanappbackend.place.repository.PlaceTagMapRepository;
 import mars.tripplanappbackend.review.domain.Review;
@@ -81,6 +85,37 @@ public class PlaceService {
                 .toList();
 
         return RecommendedPlaceListResponseDto.of(recommendedPlaces);
+    }
+
+    /**
+     * 저장 탭과 여행 추가 바텀시트의 저장한 장소 탭에서 사용하는 저장한 장소 목록을 조회합니다.
+     * 전체 저장 개수와 현재 필터 기준 카드 목록을 함께 반환해 저장 화면과 바텀시트가 같은 응답을 재사용할 수 있도록 합니다.
+     *
+     * @param requestDto 로그인 사용자 아이디와 필터 유형을 담은 요청 DTO
+     * @return 저장한 장소 목록 응답 DTO
+     */
+    public SavedPlaceListResponseDto getSavedPlaces(SavedPlaceListRequestDto requestDto) {
+        validateSavedPlaceListRequest(requestDto);
+        validateAuthenticatedUser(requestDto.getUsersId());
+
+        long savedPlaceCount =
+                savedPlaceRepository.countByUser_UsersIdAndIsDeletedFalseAndPlace_IsDeletedFalse(requestDto.getUsersId());
+
+        List<SavedPlace> savedPlaces = findSavedPlacesByFilter(requestDto.getUsersId(), requestDto.getFilterType());
+        Map<Long, List<String>> tagsByPlaceId = getTagsByPlaceId(
+                savedPlaces.stream()
+                        .map(SavedPlace::getPlace)
+                        .toList()
+        );
+
+        List<SavedPlaceItemResponseDto> savedPlaceCards = savedPlaces.stream()
+                .map(savedPlace -> SavedPlaceItemResponseDto.from(
+                        savedPlace,
+                        tagsByPlaceId.getOrDefault(savedPlace.getPlace().getPlaceId(), List.of())
+                ))
+                .toList();
+
+        return SavedPlaceListResponseDto.of(requestDto.getFilterType(), savedPlaceCount, savedPlaceCards);
     }
 
     /**
@@ -252,6 +287,17 @@ public class PlaceService {
     }
 
     /**
+     * 저장한 장소 목록 조회 요청에 필요한 사용자 아이디와 필터 정보가 모두 존재하는지 검증합니다.
+     *
+     * @param requestDto 저장한 장소 목록 조회 요청 DTO
+     */
+    private void validateSavedPlaceListRequest(SavedPlaceListRequestDto requestDto) {
+        if (requestDto.getUsersId() == null || requestDto.getUsersId().isBlank() || requestDto.getFilterType() == null) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT);
+        }
+    }
+
+    /**
      * 공유 요청에 필요한 장소 PK와 사용자 아이디가 모두 유효한지 검증합니다.
      *
      * @param requestDto 공유 요청 DTO
@@ -271,6 +317,25 @@ public class PlaceService {
     private User findUser(String usersId) {
         return myPageRepository.findByUsersId(usersId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
+    }
+
+    /**
+     * 저장한 장소 목록 필터 유형에 맞춰 저장한 장소 엔티티 목록을 조회합니다.
+     *
+     * @param usersId 현재 로그인한 사용자 아이디
+     * @param filterType 저장한 장소 목록 필터 유형
+     * @return 필터 조건이 반영된 저장한 장소 엔티티 목록
+     */
+    private List<SavedPlace> findSavedPlacesByFilter(String usersId, SavedPlaceFilterType filterType) {
+        if (filterType == SavedPlaceFilterType.ALL) {
+            return savedPlaceRepository.findAllByUser_UsersIdAndIsDeletedFalseAndPlace_IsDeletedFalseOrderByCreatedAtDesc(usersId);
+        }
+
+        return savedPlaceRepository
+                .findAllByUser_UsersIdAndIsDeletedFalseAndPlace_IsDeletedFalseAndPlace_PlaceTypeOrderByCreatedAtDesc(
+                        usersId,
+                        filterType.getPlaceType()
+                );
     }
 
     /**
