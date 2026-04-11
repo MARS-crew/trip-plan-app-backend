@@ -5,6 +5,7 @@ import mars.tripplanappbackend.global.enums.ErrorCode;
 import mars.tripplanappbackend.global.exception.BusinessException;
 import mars.tripplanappbackend.mypage.domain.User;
 import mars.tripplanappbackend.mypage.repository.MyPageRepository;
+import mars.tripplanappbackend.mypage.repository.SavedPlaceRepository;
 import mars.tripplanappbackend.place.domain.Place;
 import mars.tripplanappbackend.place.repository.PlaceRepository;
 import mars.tripplanappbackend.trip.dto.request.AddWishlistPlaceRequestDto;
@@ -21,6 +22,7 @@ import mars.tripplanappbackend.trip.dto.request.MyTripScheduleByDateRequestDto;
 import mars.tripplanappbackend.trip.dto.request.MyTripScheduleListRequestDto;
 import mars.tripplanappbackend.trip.dto.request.NearbyTripScheduleRequestDto;
 import mars.tripplanappbackend.trip.dto.request.ShareTripRequestDto;
+import mars.tripplanappbackend.trip.dto.request.TripPlaceSelectionRequestDto;
 import mars.tripplanappbackend.trip.dto.request.UpdateTripRequestDto;
 import mars.tripplanappbackend.trip.dto.response.AddWishlistPlaceResponseDto;
 import mars.tripplanappbackend.trip.dto.response.CreateTripResponseDto;
@@ -36,6 +38,8 @@ import mars.tripplanappbackend.trip.dto.response.MyTripSummaryResponseDto;
 import mars.tripplanappbackend.trip.dto.response.NearbyTripScheduleItemResponseDto;
 import mars.tripplanappbackend.trip.dto.response.NearbyTripScheduleResponseDto;
 import mars.tripplanappbackend.trip.dto.response.ShareTripResponseDto;
+import mars.tripplanappbackend.trip.dto.response.TripPlaceSelectionItemResponseDto;
+import mars.tripplanappbackend.trip.dto.response.TripPlaceSelectionResponseDto;
 import mars.tripplanappbackend.trip.dto.response.UpdateTripResponseDto;
 import mars.tripplanappbackend.trip.enums.MyTripFilterType;
 import mars.tripplanappbackend.trip.enums.TripStatus;
@@ -73,6 +77,7 @@ public class TripService {
     private static final DateTimeFormatter SHARE_DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyy.MM.dd");
 
     private final MyPageRepository myPageRepository;
+    private final SavedPlaceRepository savedPlaceRepository;
     private final PlaceRepository placeRepository;
     private final TripRepository tripRepository;
     private final TripScheduleRepository tripScheduleRepository;
@@ -387,6 +392,44 @@ public class TripService {
     }
 
     /**
+     * 내 여행 상세 화면의 장소 추가하기 버튼을 눌렀을 때 표시할 저장한 장소와 위시리스트 목록을 함께 조회합니다.
+     * 저장한 장소는 사용자 기준으로, 위시리스트는 현재 여행 기준으로 조회해
+     * 장소 선택 화면에서 탭 형태로 바로 사용할 수 있는 응답 구조로 조합합니다.
+     *
+     * @param requestDto 조회 대상 여행 PK와 로그인 사용자 아이디를 담은 요청 DTO
+     * @return 저장한 장소와 위시리스트 목록을 함께 담은 응답 DTO
+     */
+    public TripPlaceSelectionResponseDto getTripPlaceSelection(TripPlaceSelectionRequestDto requestDto) {
+        validateTripPlaceSelectionRequest(requestDto);
+        validateUserExistsByUsersId(requestDto.getUsersId());
+
+        Trip trip = tripRepository.findByTripIdAndUser_UsersIdAndIsDeletedFalse(
+                        requestDto.getTripId(),
+                        requestDto.getUsersId()
+                )
+                .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_INPUT));
+
+        List<TripPlaceSelectionItemResponseDto> savedPlaces = savedPlaceRepository
+                .findAllByUser_UsersIdAndIsDeletedFalseAndPlace_IsDeletedFalseOrderByCreatedAtDesc(requestDto.getUsersId())
+                .stream()
+                .map(TripPlaceSelectionItemResponseDto::fromSavedPlace)
+                .toList();
+
+        List<TripPlaceSelectionItemResponseDto> wishlistPlaces = wishlistPlaceRepository
+                .findAllByTrip_TripIdAndIsDeletedFalseAndPlace_IsDeletedFalseOrderByCreatedAtDesc(trip.getTripId())
+                .stream()
+                .map(TripPlaceSelectionItemResponseDto::fromWishlistPlace)
+                .toList();
+
+        return TripPlaceSelectionResponseDto.of(
+                trip.getTripId(),
+                trip.getTitle(),
+                savedPlaces,
+                wishlistPlaces
+        );
+    }
+
+    /**
      * 홈 화면 상단 카드에서 사용할 기준상 가장 가까운 여행 일정 정보를 조회합니다.
      * 진행 중인 여행이 있으면 해당 여행을 우선 조회하고,
      * 없으면 가장 가까운 예정 여행을 조회합니다.
@@ -473,6 +516,19 @@ public class TripService {
      *
      * @param userId 로그인 사용자 PK
      */
+    /**
+     * 저장한 장소/위시리스트 조회 요청에 필요한 여행 PK와 사용자 아이디 존재 여부를 검증합니다.
+     *
+     * @param requestDto 저장한 장소/위시리스트 조회 요청 DTO
+     */
+    private void validateTripPlaceSelectionRequest(TripPlaceSelectionRequestDto requestDto) {
+        if (requestDto.getTripId() == null
+                || requestDto.getTripId() < 1
+                || requestDto.getUsersId() == null) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT);
+        }
+    }
+
     private void validateUserExistsByUserId(Long userId) {
         if (!myPageRepository.existsById(userId)) {
             throw new BusinessException(ErrorCode.USER_NOT_FOUND);
