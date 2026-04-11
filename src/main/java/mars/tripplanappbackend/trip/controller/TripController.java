@@ -12,6 +12,7 @@ import mars.tripplanappbackend.global.config.auth.UserPrincipal;
 import mars.tripplanappbackend.global.config.swagger.ApiErrorExceptions;
 import mars.tripplanappbackend.global.dto.ApiResponse;
 import mars.tripplanappbackend.global.enums.ErrorCode;
+import mars.tripplanappbackend.trip.dto.request.AddWishlistPlaceRequestDto;
 import mars.tripplanappbackend.trip.dto.request.CreateTripRequestDto;
 import mars.tripplanappbackend.trip.dto.request.DeleteTripRequestDto;
 import mars.tripplanappbackend.trip.dto.request.DeleteTripScheduleRequestDto;
@@ -22,6 +23,7 @@ import mars.tripplanappbackend.trip.dto.request.MyTripScheduleListRequestDto;
 import mars.tripplanappbackend.trip.dto.request.NearbyTripScheduleRequestDto;
 import mars.tripplanappbackend.trip.dto.request.ShareTripRequestDto;
 import mars.tripplanappbackend.trip.dto.request.UpdateTripRequestDto;
+import mars.tripplanappbackend.trip.dto.response.AddWishlistPlaceResponseDto;
 import mars.tripplanappbackend.trip.dto.response.CreateTripResponseDto;
 import mars.tripplanappbackend.trip.dto.response.DeleteTripResponseDto;
 import mars.tripplanappbackend.trip.dto.response.DeleteTripScheduleResponseDto;
@@ -263,6 +265,54 @@ public class TripController {
         MyTripScheduleListRequestDto requestDto =
                 MyTripScheduleListRequestDto.of(tripId, userPrincipal.getUsersId());
         return ApiResponse.ok(tripService.getMyTripScheduleList(requestDto));
+    }
+
+    /**
+     * 내 여행 상세 화면에서 날짜별 일정 카드의 추가하기 버튼을 통해 선택한 장소를 위시리스트에 추가합니다.
+     *
+     * @param tripId 위시리스트 장소를 추가할 여행 PK
+     * @param requestDto 선택한 장소 PK와 날짜 카드 기준 일정 날짜를 담은 본문 DTO
+     * @param userPrincipal 커스텀 어노테이션으로 주입된 현재 로그인 사용자 정보
+     * @return 공통 응답 형식으로 감싼 위시리스트 장소 추가 결과 응답
+     */
+    @PostMapping("/{tripId}/wishlist-places")
+    @ApiErrorExceptions({
+            ErrorCode.INVALID_INPUT,
+            ErrorCode.USER_NOT_FOUND,
+            ErrorCode.PLACE_NOT_FOUND,
+            ErrorCode.WISHLIST_PLACE_ALREADY_EXISTS,
+            ErrorCode.INTERNAL_ERROR
+    })
+    @Operation(
+            summary = "위시리스트 장소 추가",
+            description = "내 여행 상세 화면에서 날짜별 일정 카드의 추가하기 버튼을 통해 선택한 장소를 해당 여행의 위시리스트에 추가합니다."
+    )
+    public ApiResponse<AddWishlistPlaceResponseDto> addWishlistPlace(
+            @Parameter(description = "위시리스트 장소를 추가할 여행 PK", example = "5")
+            @PathVariable("tripId") Long tripId,
+            @io.swagger.v3.oas.annotations.parameters.RequestBody(
+                    description = "장소 선택/지도 화면에서 선택한 장소와 날짜 카드 기준 정보를 담은 요청입니다.",
+                    required = true,
+                    content = @Content(
+                            mediaType = "application/json",
+                            examples = @ExampleObject(
+                                    name = "위시리스트 장소 추가 예시",
+                                    value = """
+                                            {
+                                              "placeId": 7,
+                                              "scheduleDate": "2026-04-20"
+                                            }
+                                            """
+                            )
+                    )
+            )
+            @Valid @RequestBody AddWishlistPlaceRequestDto requestDto,
+            @Parameter(hidden = true)
+            @CurrentUser UserPrincipal userPrincipal
+    ) {
+        AddWishlistPlaceRequestDto serviceRequestDto =
+                AddWishlistPlaceRequestDto.of(tripId, userPrincipal.getUsersId(), requestDto);
+        return ApiResponse.ok(tripService.addWishlistPlace(serviceRequestDto));
     }
 
     /**
