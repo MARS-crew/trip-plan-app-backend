@@ -17,7 +17,4 @@ public class PapagoResponseDto {
 
     @Schema(description = "번역된 언어", example = "en")
     private String targetLang;
-
-    @Schema(description = "발음", example = "헬로우")
-    private String pronunciation;
 }

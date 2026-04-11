@@ -30,12 +30,6 @@ public class PapagoService {
     @Value("${spring.social.papago.client-secret}")
     private String clientSecret;
 
-    @Value("123")
-    private String clientId2;
-
-    @Value("123")
-    private String clientSecret2;
-
     private final WebClient webClient =
             WebClient.builder()
                     .baseUrl("https://papago.apigw.ntruss.com")
@@ -61,17 +55,6 @@ public class PapagoService {
      * 번역 실패 시 TRANSLATION_FAILED
      */
     public List<PapagoResponseDto> translatePhrases(String usersId, String targetLang) {
-        log.error("clientId: [{}]", clientId);
-        log.error("clientSecret: [{}]", clientSecret);
-
-        log.info("match client id: {}, {}, {}", clientId, clientId2, clientId.equals(clientId2));
-        log.info("match client id: {}, {}, {}", clientSecret, clientSecret2, clientSecret.equals(clientSecret2));
-
-        String cleanId = clientId != null ? clientId.strip() : "NULL";
-        String cleanSecret = clientSecret != null ? clientSecret.strip() : "NULL";
-
-        log.info("ID 길이: {}, Secret 길이: {}", cleanId.length(), cleanSecret.length());
-
         myPageRepository.findByUsersId(usersId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
 
@@ -106,8 +89,7 @@ public class PapagoService {
 
             return new PapagoResponseDto(text,
                     translatedText,
-                    targetLang,
-                    null);
+                    targetLang);
 
         } catch (Exception e) {
             log.error("번역 실패: {}", e.getMessage());
