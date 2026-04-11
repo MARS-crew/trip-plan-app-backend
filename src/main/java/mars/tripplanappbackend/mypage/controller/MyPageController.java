@@ -9,10 +9,12 @@ import mars.tripplanappbackend.global.config.auth.UserPrincipal;
 import mars.tripplanappbackend.global.config.swagger.ApiErrorExceptions;
 import mars.tripplanappbackend.global.dto.ApiResponse;
 import mars.tripplanappbackend.global.enums.ErrorCode;
+import mars.tripplanappbackend.mypage.dto.request.ExchangeRequestDto;
 import mars.tripplanappbackend.mypage.dto.request.PapagoRequestDto;
 import mars.tripplanappbackend.mypage.dto.request.UpdateAgreeRequestDto;
 import mars.tripplanappbackend.mypage.dto.request.UpdateProfileRequestDto;
 import mars.tripplanappbackend.mypage.dto.resopnse.*;
+import mars.tripplanappbackend.mypage.service.ExchangeService;
 import mars.tripplanappbackend.mypage.service.MyPageService;
 import mars.tripplanappbackend.mypage.service.PapagoService;
 import org.springframework.web.bind.annotation.*;
@@ -27,6 +29,7 @@ public class MyPageController {
 
     private final MyPageService myPageService;
     private final PapagoService papagoService;
+    private final ExchangeService exchangeService;
 
     @GetMapping("/me")
     @ApiErrorExceptions({ErrorCode.FORBIDDEN, ErrorCode.INVALID_TOKEN, ErrorCode.EXPIRED_REFRESH_TOKEN,
@@ -106,6 +109,20 @@ public class MyPageController {
     ) {
         List<PapagoResponseDto> response = papagoService.translatePhrases(
                 userPrincipal.getUsersId(), requestDto.getTargetLang()
+        );
+        return ApiResponse.ok(response);
+    }
+
+    @PostMapping("/exchange")
+    @Operation(summary = "환율 계산", description = "통화 코드와 금액을 입력하면 환율 계산 결과 반환 (fromKrw: true = KRW→현지통화, false = 현지통화→KRW)")
+    @ApiErrorExceptions({ErrorCode.USER_NOT_FOUND, ErrorCode.INVALID_INPUT,
+            ErrorCode.EXCHANGE_RATE_FAILED, ErrorCode.INTERNAL_ERROR})
+    public ApiResponse<ExchangeResponseDto> getExchangeRate(
+            @CurrentUser UserPrincipal userPrincipal,
+            @RequestBody ExchangeRequestDto requestDto
+    ) {
+        ExchangeResponseDto response = exchangeService.getExchangeRate(
+                userPrincipal.getUsersId(), requestDto
         );
         return ApiResponse.ok(response);
     }
