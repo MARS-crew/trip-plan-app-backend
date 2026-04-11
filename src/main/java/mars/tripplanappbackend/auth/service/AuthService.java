@@ -22,6 +22,7 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.security.SecureRandom;
 import java.time.LocalDateTime;
 import java.util.concurrent.TimeUnit;
 
@@ -359,7 +360,7 @@ public class AuthService {
                 TimeUnit.MINUTES
         );
 
-        // 3. 이메일 전송
+        // 이메일 전송
         SimpleMailMessage message = new SimpleMailMessage();
         message.setTo(email);
         message.setSubject("비밀번호 재설정 인증 코드");
@@ -372,6 +373,87 @@ public class AuthService {
         }
 
         return new PasswordEmailResponseDto(usersId, email);
+    }
+
+    /**
+     * 인증 코드 인증 및 임시 비밀번호 발급
+     * @param requestDto 유저 로그인 아이디, 이메일, 인증 코드
+     * @return 유저 로그인 아이디, 이메일
+     */
+    @Transactional
+    public PasswordResetResponseDto resetPassword(PasswordResetRequestDto requestDto) {
+
+        String EMAIL_VERIFY_KEY = "password:verify:";
+        String EMAIL_REQUEST_KEY = "password:requested:";
+
+        String email = requestDto.getEmail();
+        String usersId = requestDto.getUsersId();
+
+        // 요청 여부 확인 (이메일 틀림)
+        Boolean isRequested = redisTemplate.hasKey(EMAIL_REQUEST_KEY + email);
+        if (!Boolean.TRUE.equals(isRequested)) {
+            throw new BusinessException(ErrorCode.INVALID_EMAIL_REQUEST);
+        }
+
+        // 코드 조회
+        String savedCode = redisTemplate.opsForValue().get(EMAIL_VERIFY_KEY + email);
+
+        // 만료 확인
+        if (savedCode == null) {
+            throw new BusinessException(ErrorCode.EMAIL_CODE_EXPIRED);
+        }
+
+        // 코드 불일치
+        if (!savedCode.equals(requestDto.getCode())) {
+            throw new BusinessException(ErrorCode.INVALID_EMAIL_CODE);
+        }
+
+        // 유저 확인
+        User user = myPageRepository.findByUsersIdAndEmail(
+                requestDto.getUsersId(),
+                requestDto.getEmail()
+        ).orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
+
+        // 임시 비밀번호 생성
+        String tempPassword = generateTempPassword();
+
+        // 임시 비밀번호 저장
+        user.updatePassword(passwordEncoder.encode(tempPassword));
+
+        // Redis 삭제
+        redisTemplate.delete(EMAIL_VERIFY_KEY + email);
+        redisTemplate.delete(EMAIL_REQUEST_KEY + email);
+
+        // 이메일 전송
+        SimpleMailMessage message = new SimpleMailMessage();
+        message.setTo(email);
+        message.setSubject("임시 비밀번호 발급");
+        message.setText("임시 비밀번호: " + tempPassword);
+
+        try {
+            mailSender.send(message);
+        } catch (Exception e) {
+            throw new BusinessException(ErrorCode.EMAIL_SEND_FAIL);
+        }
+        return new PasswordResetResponseDto(usersId, email);
+    }
+
+    /**
+     * 임시 비밀번호 생성
+     * @return 영문 대소문자 + 숫자 조합 10자리 임시 비밀번호
+     */
+    private String generateTempPassword() {
+        String chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+        SecureRandom random = new SecureRandom();
+
+        StringBuilder password = new StringBuilder();
+
+        for (int i = 0; i < 10; i++) {
+            int index = random.nextInt(chars.length());
+            password.append(chars.charAt(index));
+        }
+
+        return password.toString();
     }
 
 
