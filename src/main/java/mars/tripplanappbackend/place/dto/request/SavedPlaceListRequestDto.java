@@ -33,4 +33,16 @@ public class SavedPlaceListRequestDto {
                 .filterType(filterType == null ? SavedPlaceFilterType.ALL : filterType)
                 .build();
     }
+
+    /**
+     * 화면에서 전달한 카테고리 문자열을 저장한 장소 목록 조회 요청 DTO로 변환합니다.
+     * 한글 카테고리값과 영문 enum 문자열을 모두 지원하도록 enum 정적 팩토리 메서드를 사용합니다.
+     *
+     * @param usersId 현재 로그인한 사용자 아이디
+     * @param filterType 저장한 장소 카테고리 문자열
+     * @return 저장한 장소 목록 조회 요청 DTO
+     */
+    public static SavedPlaceListRequestDto of(String usersId, String filterType) {
+        return of(usersId, SavedPlaceFilterType.from(filterType));
+    }
 }
