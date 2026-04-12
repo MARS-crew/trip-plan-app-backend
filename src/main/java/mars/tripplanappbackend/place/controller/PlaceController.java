@@ -22,7 +22,6 @@ import mars.tripplanappbackend.place.dto.response.RecommendedPlaceListResponseDt
 import mars.tripplanappbackend.place.dto.response.SavePlaceResponseDto;
 import mars.tripplanappbackend.place.dto.response.SavedPlaceListResponseDto;
 import mars.tripplanappbackend.place.dto.response.SharePlaceResponseDto;
-import mars.tripplanappbackend.place.enums.SavedPlaceFilterType;
 import mars.tripplanappbackend.place.service.PlaceService;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -62,21 +61,26 @@ public class PlaceController {
     }
 
     /**
-     * 저장한 장소 화면과 여행 추가 바텀시트에서 사용하는 저장한 장소 목록을 조회합니다.
+     * 저장한 장소 화면의 카테고리 탭에 따라 저장한 장소 목록을 조회합니다.
+     * 화면에서는 `전체`, `관광지`, `맛집`, `해변`, `자연`, `랜드마크` 값을 사용할 수 있고,
+     * API에서는 동일 의미의 영문 enum 문자열도 함께 허용합니다.
      *
-     * @param filterType 저장한 장소 필터 유형
+     * @param filterType 저장한 장소 카테고리 값
      * @param userPrincipal 커스텀 어노테이션으로 주입된 인증 사용자 정보
      * @return 공통 응답 형식으로 감싼 저장한 장소 목록
      */
     @GetMapping("/saved-places")
     @ApiErrorExceptions({ErrorCode.UNAUTHORIZED, ErrorCode.USER_NOT_FOUND, ErrorCode.INVALID_INPUT, ErrorCode.INTERNAL_ERROR})
     @Operation(
-            summary = "저장한 장소 조회",
-            description = "저장한 장소 화면과 여행 추가 바텀시트에서 사용하는 저장한 장소 목록을 조회합니다."
+            summary = "저장한 장소 카테고리 조회",
+            description = "저장한 장소 화면에서 선택한 카테고리값에 맞는 저장한 장소 목록을 조회합니다. 지원 값: 전체, 관광지, 맛집, 해변, 자연, 랜드마크 또는 ALL, ATTRACTION, RESTAURANT, BEACH, NATURE, LANDMARK"
     )
     public ApiResponse<SavedPlaceListResponseDto> getSavedPlaces(
-            @Parameter(description = "저장한 장소 필터 유형", example = "ALL")
-            @RequestParam(name = "filterType", defaultValue = "ALL") SavedPlaceFilterType filterType,
+            @Parameter(
+                    description = "저장한 장소 카테고리 값. 한글 라벨과 영문 enum 값을 모두 지원합니다.",
+                    example = "관광지"
+            )
+            @RequestParam(name = "filterType", defaultValue = "ALL") String filterType,
             @Parameter(hidden = true)
             @CurrentUser UserPrincipal userPrincipal
     ) {
