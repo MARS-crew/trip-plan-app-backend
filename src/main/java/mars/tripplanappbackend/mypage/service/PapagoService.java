@@ -89,7 +89,8 @@ public class PapagoService {
 
             return new PapagoResponseDto(text,
                     translatedText,
-                    targetLang);
+                    targetLang,
+                    "아리가토우");
 
         } catch (Exception e) {
             log.error("번역 실패: {}", e.getMessage());
