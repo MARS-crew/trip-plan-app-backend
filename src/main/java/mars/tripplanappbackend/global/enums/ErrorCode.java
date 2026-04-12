@@ -13,6 +13,7 @@ public enum ErrorCode {
     USER_NOT_FOUND(HttpStatus.NOT_FOUND, "USER_NOT_FOUND", "사용자를 찾을 수 없습니다."),
     PLACE_NOT_FOUND(HttpStatus.NOT_FOUND, "PLACE_NOT_FOUND", "장소를 찾을 수 없습니다."),
     SAVED_PLACE_ALREADY_EXISTS(HttpStatus.CONFLICT, "SAVED_PLACE_ALREADY_EXISTS", "이미 저장한 장소입니다."),
+    SAVED_PLACE_NOT_FOUND(HttpStatus.NOT_FOUND, "SAVED_PLACE_NOT_FOUND", "저장한 장소를 찾을 수 없습니다."),
     WISHLIST_PLACE_ALREADY_EXISTS(HttpStatus.CONFLICT, "WISHLIST_PLACE_ALREADY_EXISTS", "이미 위시리스트에 추가한 장소입니다."),
     VISITED_PLACE_ALREADY_EXISTS(HttpStatus.CONFLICT, "VISITED_PLACE_ALREADY_EXISTS", "이미 방문 기록이 있는 장소입니다."),
     UNAUTHORIZED(HttpStatus.UNAUTHORIZED, "UNAUTHORIZED", "인증이 필요합니다."),

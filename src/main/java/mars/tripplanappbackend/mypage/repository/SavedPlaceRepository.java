@@ -6,10 +6,13 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
+import java.util.Optional;
 
 @Repository
 public interface SavedPlaceRepository extends JpaRepository<SavedPlace, Long> {
     boolean existsByUser_UsersIdAndPlace_PlaceIdAndIsDeletedFalse(String usersId, Long placeId);
+
+    Optional<SavedPlace> findByUser_UsersIdAndPlace_PlaceIdAndIsDeletedFalse(String usersId, Long placeId);
 
     long countByUserAndIsDeletedFalse(User user);
 
