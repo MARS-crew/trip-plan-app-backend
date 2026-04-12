@@ -40,6 +40,12 @@ public class ExchangeService {
         myPageRepository.findByUsersId(usersId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
 
+        // 애플리케이션 기동은 유지하되, 환율 API 키가 비어있으면 기능 호출 시 명확히 실패시킨다.
+        if (authKey == null || authKey.isBlank()) {
+            log.error("Exchange API key is missing. Please set EXCHANGE_API_KEY.");
+            throw new BusinessException(ErrorCode.EXCHANGE_RATE_FAILED);
+        }
+
         String today = getRecentBusinessDay();
 
         try {
