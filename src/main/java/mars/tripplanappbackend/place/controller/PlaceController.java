@@ -33,27 +33,27 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * Provides place APIs used by the home, saved place, and place detail screens.
+ * 메인 화면, 저장한 장소 화면, 장소 상세 화면에서 사용하는 장소 관련 API를 제공하는 Controller입니다.
  */
 @RestController
 @RequestMapping("/api/v1/places")
 @RequiredArgsConstructor
-@Tag(name = "Place", description = "Place APIs")
+@Tag(name = "Place", description = "장소 관련 API")
 public class PlaceController {
 
     private final PlaceService placeService;
 
     /**
-     * Returns the recommended place list rendered on the home screen.
+     * 메인 화면에 노출할 추천 장소 목록을 조회합니다.
      *
-     * @param requestDto recommended place query DTO
-     * @return recommended place list wrapped with the common response format
+     * @param requestDto 추천 장소 조회 요청 DTO
+     * @return 공통 응답 형식으로 감싼 추천 장소 목록
      */
     @GetMapping("/recommended")
     @ApiErrorExceptions({ErrorCode.INVALID_INPUT, ErrorCode.UNAUTHORIZED, ErrorCode.INTERNAL_ERROR})
     @Operation(
-            summary = "Get recommended places",
-            description = "Returns the recommended place list rendered on the home screen."
+            summary = "추천 장소 조회",
+            description = "메인 화면에 노출할 추천 장소 목록을 조회합니다."
     )
     public ApiResponse<RecommendedPlaceListResponseDto> getRecommendedPlaces(
             @Valid RecommendedPlaceRequestDto requestDto
@@ -62,20 +62,20 @@ public class PlaceController {
     }
 
     /**
-     * Returns the saved place list shown on the saved place page and trip add bottom sheet.
+     * 저장한 장소 화면과 여행 추가 바텀시트에서 사용하는 저장한 장소 목록을 조회합니다.
      *
-     * @param filterType saved place filter type
-     * @param userPrincipal authenticated user injected via the custom annotation
-     * @return saved place list wrapped with the common response format
+     * @param filterType 저장한 장소 필터 유형
+     * @param userPrincipal 커스텀 어노테이션으로 주입된 인증 사용자 정보
+     * @return 공통 응답 형식으로 감싼 저장한 장소 목록
      */
     @GetMapping("/saved-places")
     @ApiErrorExceptions({ErrorCode.UNAUTHORIZED, ErrorCode.USER_NOT_FOUND, ErrorCode.INVALID_INPUT, ErrorCode.INTERNAL_ERROR})
     @Operation(
-            summary = "Get saved places",
-            description = "Returns the saved place list shown on the saved place page and trip add bottom sheet."
+            summary = "저장한 장소 조회",
+            description = "저장한 장소 화면과 여행 추가 바텀시트에서 사용하는 저장한 장소 목록을 조회합니다."
     )
     public ApiResponse<SavedPlaceListResponseDto> getSavedPlaces(
-            @Parameter(description = "Saved place filter type", example = "ALL")
+            @Parameter(description = "저장한 장소 필터 유형", example = "ALL")
             @RequestParam(name = "filterType", defaultValue = "ALL") SavedPlaceFilterType filterType,
             @Parameter(hidden = true)
             @CurrentUser UserPrincipal userPrincipal
@@ -85,11 +85,11 @@ public class PlaceController {
     }
 
     /**
-     * Saves the selected place from the place detail screen.
+     * 장소 상세 화면에서 선택한 장소를 저장 목록에 추가합니다.
      *
-     * @param placeId place PK to save
-     * @param userPrincipal authenticated user injected via the custom annotation
-     * @return save result wrapped with the common response format
+     * @param placeId 저장할 장소 PK
+     * @param userPrincipal 커스텀 어노테이션으로 주입된 인증 사용자 정보
+     * @return 공통 응답 형식으로 감싼 장소 저장 결과
      */
     @PostMapping("/{placeId}/saved-places")
     @ApiErrorExceptions({
@@ -101,11 +101,11 @@ public class PlaceController {
             ErrorCode.INTERNAL_ERROR
     })
     @Operation(
-            summary = "Save place",
-            description = "Saves the selected place from the place detail screen."
+            summary = "장소 저장",
+            description = "장소 상세 화면에서 선택한 장소를 저장 목록에 추가합니다."
     )
     public ApiResponse<SavePlaceResponseDto> savePlace(
-            @Parameter(description = "Place PK to save", example = "7")
+            @Parameter(description = "저장할 장소 PK", example = "7")
             @PathVariable("placeId") Long placeId,
             @Parameter(hidden = true)
             @CurrentUser UserPrincipal userPrincipal
@@ -115,12 +115,12 @@ public class PlaceController {
     }
 
     /**
-     * Cancels a saved place when the bookmark is tapped again on the saved list or place detail screen.
-     * The controller never accesses Authentication directly and only uses the injected UserPrincipal.
+     * 저장한 장소 목록 화면 또는 장소 상세 화면에서 북마크를 다시 눌러 저장을 취소합니다.
+     * Controller에서는 Authentication을 직접 다루지 않고, @CurrentUser로 주입된 사용자 정보만 사용합니다.
      *
-     * @param placeId place PK to unsave
-     * @param userPrincipal authenticated user injected via the custom annotation
-     * @return unsave result wrapped with the common response format
+     * @param placeId 저장 취소할 장소 PK
+     * @param userPrincipal 커스텀 어노테이션으로 주입된 인증 사용자 정보
+     * @return 공통 응답 형식으로 감싼 장소 저장 취소 결과
      */
     @DeleteMapping("/{placeId}/saved-places")
     @ApiErrorExceptions({
@@ -132,11 +132,11 @@ public class PlaceController {
             ErrorCode.INTERNAL_ERROR
     })
     @Operation(
-            summary = "Unsave place",
-            description = "Cancels a saved place when the bookmark is tapped again on the saved list or place detail screen."
+            summary = "장소 저장 취소",
+            description = "저장한 장소 목록 화면 또는 장소 상세 화면에서 북마크를 다시 눌러 저장을 취소합니다."
     )
     public ApiResponse<SavePlaceResponseDto> deleteSavedPlace(
-            @Parameter(description = "Place PK to unsave", example = "7")
+            @Parameter(description = "저장 취소할 장소 PK", example = "7")
             @PathVariable("placeId") Long placeId,
             @Parameter(hidden = true)
             @CurrentUser UserPrincipal userPrincipal
@@ -146,11 +146,11 @@ public class PlaceController {
     }
 
     /**
-     * Returns share metadata used by the place detail screen.
+     * 장소 상세 화면에서 사용하는 공유 메타데이터를 조회합니다.
      *
-     * @param placeId place PK to share
-     * @param userPrincipal authenticated user injected via the custom annotation
-     * @return share metadata wrapped with the common response format
+     * @param placeId 공유할 장소 PK
+     * @param userPrincipal 커스텀 어노테이션으로 주입된 인증 사용자 정보
+     * @return 공통 응답 형식으로 감싼 장소 공유 메타데이터
      */
     @GetMapping("/{placeId}/share")
     @ApiErrorExceptions({
@@ -161,11 +161,11 @@ public class PlaceController {
             ErrorCode.INTERNAL_ERROR
     })
     @Operation(
-            summary = "Share place",
-            description = "Returns share metadata used by the place detail screen."
+            summary = "장소 공유",
+            description = "장소 상세 화면에서 사용하는 공유 메타데이터를 조회합니다."
     )
     public ApiResponse<SharePlaceResponseDto> sharePlace(
-            @Parameter(description = "Place PK to share", example = "7")
+            @Parameter(description = "공유할 장소 PK", example = "7")
             @PathVariable("placeId") Long placeId,
             @Parameter(hidden = true)
             @CurrentUser UserPrincipal userPrincipal
@@ -175,11 +175,11 @@ public class PlaceController {
     }
 
     /**
-     * Returns nearby recommended places for the lower section of the place detail screen.
+     * 장소 상세 화면 하단에 노출할 주변 추천 장소 목록을 조회합니다.
      *
-     * @param placeId base place PK
-     * @param userPrincipal authenticated user injected via the custom annotation
-     * @return nearby recommended place list wrapped with the common response format
+     * @param placeId 기준 장소 PK
+     * @param userPrincipal 커스텀 어노테이션으로 주입된 인증 사용자 정보
+     * @return 공통 응답 형식으로 감싼 주변 추천 장소 목록
      */
     @GetMapping("/{placeId}/nearby-recommendations")
     @ApiErrorExceptions({
@@ -189,11 +189,11 @@ public class PlaceController {
             ErrorCode.INTERNAL_ERROR
     })
     @Operation(
-            summary = "Get nearby recommended places",
-            description = "Returns nearby recommended places for the lower section of the place detail screen."
+            summary = "주변 추천 장소 조회",
+            description = "장소 상세 화면 하단에 노출할 주변 추천 장소 목록을 조회합니다."
     )
     public ApiResponse<NearbyRecommendedPlaceListResponseDto> getNearbyRecommendedPlaces(
-            @Parameter(description = "Base place PK", example = "7")
+            @Parameter(description = "기준 장소 PK", example = "7")
             @PathVariable("placeId") Long placeId,
             @Parameter(hidden = true)
             @CurrentUser UserPrincipal userPrincipal
@@ -207,11 +207,11 @@ public class PlaceController {
     }
 
     /**
-     * Returns detailed place information required by the place detail screen.
+     * 장소 상세 화면에 필요한 장소 기본 정보, 태그, 저장 여부, 리뷰 미리보기 정보를 조회합니다.
      *
-     * @param placeId place PK to load
-     * @param userPrincipal authenticated user injected via the custom annotation
-     * @return place detail wrapped with the common response format
+     * @param placeId 조회할 장소 PK
+     * @param userPrincipal 커스텀 어노테이션으로 주입된 인증 사용자 정보
+     * @return 공통 응답 형식으로 감싼 장소 상세 정보
      */
     @GetMapping("/{placeId}")
     @ApiErrorExceptions({
@@ -221,11 +221,11 @@ public class PlaceController {
             ErrorCode.INTERNAL_ERROR
     })
     @Operation(
-            summary = "Get place detail",
-            description = "Returns the base information, tags, saved state, and review previews for the place detail screen."
+            summary = "장소 상세 조회",
+            description = "장소 상세 화면에 필요한 기본 정보, 태그, 저장 여부, 리뷰 미리보기 정보를 조회합니다."
     )
     public ApiResponse<PlaceDetailResponseDto> findOne(
-            @Parameter(description = "Place PK to load", example = "7")
+            @Parameter(description = "조회할 장소 PK", example = "7")
             @PathVariable("placeId") Long placeId,
             @Parameter(hidden = true)
             @CurrentUser UserPrincipal userPrincipal
