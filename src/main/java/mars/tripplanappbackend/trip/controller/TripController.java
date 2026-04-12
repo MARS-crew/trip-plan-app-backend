@@ -300,30 +300,6 @@ public class TripController {
     }
 
     /**
-     * 기존 일정 리스트 경로를 사용하는 클라이언트도 상세 화면 전체 응답을 받을 수 있도록 호환용으로 제공합니다.
-     * 실제 응답 구조는 내 일정 상세 조회 API와 동일하며, 여행 기본 정보와 액션 상태까지 함께 포함합니다.
-     *
-     * @param tripId 조회할 여행 PK
-     * @param userPrincipal 커스텀 어노테이션으로 주입한 현재 로그인 사용자 정보
-     * @return 공통 응답 형식으로 감싼 내 여행 상세 조회 응답
-     */
-    @GetMapping("/{tripId}/schedules")
-    @ApiErrorExceptions({ErrorCode.INVALID_INPUT, ErrorCode.USER_NOT_FOUND, ErrorCode.INTERNAL_ERROR})
-    @Operation(
-            summary = "내 일정 상세 조회(호환 경로)",
-            description = "기존 일정 리스트 경로를 사용하는 클라이언트를 위해 내 일정 상세 조회와 동일한 응답을 반환합니다."
-    )
-    public ApiResponse<MyTripDetailResponseDto> getMyTripScheduleList(
-            @Parameter(description = "조회할 여행 PK", example = "5")
-            @PathVariable("tripId") Long tripId,
-            @Parameter(hidden = true)
-            @CurrentUser UserPrincipal userPrincipal
-    ) {
-        MyTripDetailRequestDto requestDto = MyTripDetailRequestDto.of(tripId, userPrincipal.getUsersId());
-        return ApiResponse.ok(tripService.findOne(requestDto));
-    }
-
-    /**
      * 내 여행 상세 화면에서 지도 보기 버튼을 눌렀을 때 지도 페이지에 필요한 일정 위치 목록을 조회합니다.
      * 일정별 좌표, 현재 진행 중 일정 여부, 방문 인증 버튼 노출 여부, 핀 순서를 함께 내려주어
      * 프론트엔드가 현재 일정 강조, 이동 동선 연결, GPS 기반 방문 인증 UI를 한 번에 구성할 수 있도록 합니다.
