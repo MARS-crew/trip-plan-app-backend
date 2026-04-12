@@ -21,6 +21,7 @@ import mars.tripplanappbackend.trip.dto.request.DeleteWishlistPlaceRequestDto;
 import mars.tripplanappbackend.trip.dto.request.MyTripFilterRequestDto;
 import mars.tripplanappbackend.trip.dto.request.MyTripListRequestDto;
 import mars.tripplanappbackend.trip.dto.request.MyTripScheduleByDateRequestDto;
+import mars.tripplanappbackend.trip.dto.request.MyTripScheduleLocationRequestDto;
 import mars.tripplanappbackend.trip.dto.request.MyTripScheduleListRequestDto;
 import mars.tripplanappbackend.trip.dto.request.NearbyTripScheduleRequestDto;
 import mars.tripplanappbackend.trip.dto.request.ShareTripRequestDto;
@@ -37,6 +38,8 @@ import mars.tripplanappbackend.trip.dto.response.MyTripListResponseDto;
 import mars.tripplanappbackend.trip.dto.response.MyTripScheduleByDateResponseDto;
 import mars.tripplanappbackend.trip.dto.response.MyTripScheduleDateOptionResponseDto;
 import mars.tripplanappbackend.trip.dto.response.MyTripScheduleItemResponseDto;
+import mars.tripplanappbackend.trip.dto.response.MyTripScheduleLocationItemResponseDto;
+import mars.tripplanappbackend.trip.dto.response.MyTripScheduleLocationResponseDto;
 import mars.tripplanappbackend.trip.dto.response.MyTripScheduleListResponseDto;
 import mars.tripplanappbackend.trip.dto.response.MyTripSummaryResponseDto;
 import mars.tripplanappbackend.trip.dto.response.NearbyTripScheduleItemResponseDto;
@@ -59,6 +62,7 @@ import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -76,6 +80,7 @@ import java.util.stream.IntStream;
 @Transactional(readOnly = true)
 public class TripService {
 
+    private static final long VISIT_VERIFICATION_RADIUS_METERS = 1_000L;
     private static final String TRIP_SHARE_URL_TEMPLATE = "https://lets-trip.com/trips/share/%s";
     private static final String TRIP_SHARE_TITLE_TEMPLATE = "Let's Trip에서 %s 일정을 확인해보세요.";
     private static final String TRIP_SHARE_DESCRIPTION_TEMPLATE = "%s부터 %s까지의 %s 일정을 공유합니다.";
@@ -354,7 +359,7 @@ public class TripService {
                 .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_INPUT));
 
         List<TripSchedule> tripSchedules = tripScheduleRepository
-                .findAllByTrip_TripIdAndIsDeletedFalseOrderByScheduleDateAscStartTimeAsc(trip.getTripId());
+                .findAllWithPlaceByTrip_TripIdAndIsDeletedFalseOrderByScheduleDateAscStartTimeAsc(trip.getTripId());
 
         LocalDate today = LocalDate.now();
         LocalTime now = LocalTime.now();
@@ -381,6 +386,47 @@ public class TripService {
                 tripDayCount,
                 tripSchedules.size(),
                 dailySchedules
+        );
+    }
+
+    /**
+     * 내 여행 상세 화면에서 지도 보기 버튼을 눌렀을 때 사용할 일정 위치 목록을 조회합니다.
+     * 일정별 장소 좌표, 핀 순서, 현재 진행 중 여부, 방문 인증 가능 여부를 함께 계산해
+     * 지도 페이지에서 현재 일정 강조, 이동 동선 표시, 1km 반경 방문 인증 UI를 한 번에 구성할 수 있도록 합니다.
+     *
+     * @param requestDto 여행 PK와 로그인 사용자 아이디를 담은 일정 위치 조회 요청 DTO
+     * @return 지도 페이지에서 사용할 일정 위치 조회 응답 DTO
+     */
+    public MyTripScheduleLocationResponseDto getMyTripScheduleLocations(MyTripScheduleLocationRequestDto requestDto) {
+        validateTripScheduleLocationRequest(requestDto);
+        validateUserExistsByUsersId(requestDto.getUsersId());
+
+        Trip trip = tripRepository.findByTripIdAndUser_UsersIdAndIsDeletedFalse(
+                        requestDto.getTripId(),
+                        requestDto.getUsersId()
+                )
+                .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_INPUT));
+
+        List<TripSchedule> tripSchedules = tripScheduleRepository
+                .findAllWithPlaceByTrip_TripIdAndIsDeletedFalseOrderByScheduleDateAscStartTimeAsc(trip.getTripId());
+
+        LocalDate today = LocalDate.now();
+        LocalTime now = LocalTime.now();
+        TripStatus tripStatus = resolveTripStatus(trip, today);
+        Set<Long> visitedPlaceIds = createVisitedPlaceIdSet(trip.getTripId());
+
+        List<MyTripScheduleLocationItemResponseDto> schedules = buildTripScheduleLocationItems(
+                tripSchedules,
+                today,
+                now,
+                visitedPlaceIds
+        );
+
+        return MyTripScheduleLocationResponseDto.of(
+                trip,
+                tripStatus,
+                VISIT_VERIFICATION_RADIUS_METERS,
+                schedules
         );
     }
 
@@ -600,6 +646,20 @@ public class TripService {
      */
     private void validateTripScheduleListRequest(MyTripScheduleListRequestDto requestDto) {
         if (requestDto.getTripId() == null || requestDto.getTripId() < 1 || requestDto.getUsersId() == null) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT);
+        }
+    }
+
+    /**
+     * 지도용 일정 위치 조회 요청에 필요한 여행 PK와 로그인 사용자 아이디 존재 여부를 검증합니다.
+     *
+     * @param requestDto 일정 위치 조회 요청 DTO
+     */
+    private void validateTripScheduleLocationRequest(MyTripScheduleLocationRequestDto requestDto) {
+        if (requestDto.getTripId() == null
+                || requestDto.getTripId() < 1
+                || requestDto.getUsersId() == null
+                || requestDto.getUsersId().isBlank()) {
             throw new BusinessException(ErrorCode.INVALID_INPUT);
         }
     }
@@ -875,6 +935,80 @@ public class TripService {
     }
 
     /**
+     * 지도 페이지에서 사용할 일정 위치 항목 목록을 일정 순서대로 생성합니다.
+     * 좌표가 있는 일정에만 핀 순서를 부여하여 프론트엔드가 번호 핀과 이동 동선을 바로 그릴 수 있도록 합니다.
+     *
+     * @param tripSchedules 여행에 속한 전체 일정 목록
+     * @param today 서비스 기준 현재 날짜
+     * @param now 서비스 기준 현재 시간
+     * @param visitedPlaceIds 이미 방문 인증된 장소 PK 집합
+     * @return 지도 페이지용 일정 위치 항목 목록
+     */
+    private List<MyTripScheduleLocationItemResponseDto> buildTripScheduleLocationItems(
+            List<TripSchedule> tripSchedules,
+            LocalDate today,
+            LocalTime now,
+            Set<Long> visitedPlaceIds
+    ) {
+        List<MyTripScheduleLocationItemResponseDto> responses = new ArrayList<>(tripSchedules.size());
+        int pinOrder = 0;
+
+        for (int scheduleIndex = 0; scheduleIndex < tripSchedules.size(); scheduleIndex++) {
+            TripSchedule tripSchedule = tripSchedules.get(scheduleIndex);
+            boolean hasLocation = tripSchedule.getPlace() != null
+                    && tripSchedule.getPlace().getLatitude() != null
+                    && tripSchedule.getPlace().getLongitude() != null;
+            Integer currentPinOrder = hasLocation ? ++pinOrder : null;
+
+            responses.add(toTripScheduleLocationItemResponse(
+                    tripSchedule,
+                    scheduleIndex + 1,
+                    currentPinOrder,
+                    today,
+                    now,
+                    visitedPlaceIds
+            ));
+        }
+
+        return responses;
+    }
+
+    /**
+     * 여행 일정 엔티티를 지도 페이지 전용 위치 항목 DTO로 변환합니다.
+     * 기존 일정 카드 계산 로직과 동일하게 현재 진행 중 여부와 방문 인증 가능 여부를 함께 계산합니다.
+     *
+     * @param tripSchedule 변환 대상 여행 일정 엔티티
+     * @param scheduleOrder 전체 일정 순서
+     * @param pinOrder 지도 핀 순서, 좌표가 없으면 null
+     * @param today 서비스 기준 현재 날짜
+     * @param now 서비스 기준 현재 시간
+     * @param visitedPlaceIds 이미 방문 인증된 장소 PK 집합
+     * @return 지도 페이지에서 사용할 일정 위치 항목 DTO
+     */
+    private MyTripScheduleLocationItemResponseDto toTripScheduleLocationItemResponse(
+            TripSchedule tripSchedule,
+            int scheduleOrder,
+            Integer pinOrder,
+            LocalDate today,
+            LocalTime now,
+            Set<Long> visitedPlaceIds
+    ) {
+        Long placeId = tripSchedule.getPlace() != null ? tripSchedule.getPlace().getPlaceId() : null;
+        boolean isCurrent = isCurrentTripSchedule(tripSchedule, today, now);
+        boolean visited = placeId != null && visitedPlaceIds.contains(placeId);
+        boolean canAddVisitedPlace = placeId != null && isCurrent && !visited;
+
+        return MyTripScheduleLocationItemResponseDto.from(
+                tripSchedule,
+                scheduleOrder,
+                pinOrder,
+                isCurrent,
+                visited,
+                canAddVisitedPlace
+        );
+    }
+
+    /**
      * 일정 날짜와 시작/종료 시간이 현재 시각과 겹치는지 확인합니다.
      * 같은 날짜이면서 현재 시간이 시작 시간과 종료 시간 사이에 포함되면 진행 중 일정으로 판단합니다.
      *
@@ -939,7 +1073,7 @@ public class TripService {
     private NearbyTripScheduleResponseDto buildNearbyTripScheduleResponse(Trip trip, LocalDate today, LocalTime now) {
         TripStatus tripStatus = resolveTripStatus(trip, today);
         List<TripSchedule> schedules = tripScheduleRepository
-                .findAllByTrip_TripIdAndIsDeletedFalseOrderByScheduleDateAscStartTimeAsc(trip.getTripId());
+                .findAllWithPlaceByTrip_TripIdAndIsDeletedFalseOrderByScheduleDateAscStartTimeAsc(trip.getTripId());
 
         List<NearbyTripScheduleItemResponseDto> nextSchedules = filterNextSchedules(schedules, tripStatus, today, now)
                 .stream()
