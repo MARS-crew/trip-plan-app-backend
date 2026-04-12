@@ -9,6 +9,7 @@ import mars.tripplanappbackend.mypage.repository.MyPageRepository;
 import mars.tripplanappbackend.mypage.repository.SavedPlaceRepository;
 import mars.tripplanappbackend.place.domain.Place;
 import mars.tripplanappbackend.place.domain.PlaceTagMap;
+import mars.tripplanappbackend.place.dto.request.DeleteSavedPlaceRequestDto;
 import mars.tripplanappbackend.place.dto.request.NearbyRecommendedPlaceRequestDto;
 import mars.tripplanappbackend.place.dto.request.RecommendedPlaceRequestDto;
 import mars.tripplanappbackend.place.dto.request.SavePlaceRequestDto;
@@ -146,7 +147,7 @@ public class PlaceService {
                         .build()
         );
 
-        return SavePlaceResponseDto.from(savedPlace);
+        return SavePlaceResponseDto.saved(savedPlace);
     }
 
     /**
@@ -155,6 +156,32 @@ public class PlaceService {
      *
      * @param requestDto 공유 요청 DTO
      * @return 여행지 공유 응답 DTO
+     */
+    /**
+     * 저장한 장소 카드나 장소 상세 화면에서 북마크를 다시 눌러 저장을 취소합니다.
+     * placeId 기준으로 사용자의 저장 이력을 찾은 뒤 soft delete 처리하여 응답 구조를 저장 API와 동일하게 유지합니다.
+     *
+     * @param requestDto 저장 취소 요청 DTO
+     * @return 저장 취소 결과 응답 DTO
+     */
+    @Transactional
+    public SavePlaceResponseDto deleteSavedPlace(DeleteSavedPlaceRequestDto requestDto) {
+        validateDeleteSavedPlaceRequest(requestDto);
+
+        findUser(requestDto.getUsersId());
+        findPlace(requestDto.getPlaceId());
+
+        SavedPlace savedPlace = findSavedPlace(requestDto.getUsersId(), requestDto.getPlaceId());
+        savedPlace.markDeleted();
+
+        return SavePlaceResponseDto.unsaved(savedPlace);
+    }
+
+    /**
+     * Builds the share metadata consumed by the place detail screen.
+     *
+     * @param requestDto share request DTO
+     * @return place share response DTO
      */
     public SharePlaceResponseDto sharePlace(SharePlaceRequestDto requestDto) {
         validateSharePlaceRequest(requestDto);
@@ -287,6 +314,17 @@ public class PlaceService {
     }
 
     /**
+     * 저장 취소 요청에 필요한 장소 PK와 사용자 아이디가 모두 존재하는지 검증합니다.
+     *
+     * @param requestDto 저장 취소 요청 DTO
+     */
+    private void validateDeleteSavedPlaceRequest(DeleteSavedPlaceRequestDto requestDto) {
+        if (requestDto.getPlaceId() == null || requestDto.getPlaceId() < 1 || requestDto.getUsersId() == null) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT);
+        }
+    }
+
+    /**
      * 저장한 장소 목록 조회 요청에 필요한 사용자 아이디와 필터 정보가 모두 존재하는지 검증합니다.
      *
      * @param requestDto 저장한 장소 목록 조회 요청 DTO
@@ -355,6 +393,18 @@ public class PlaceService {
      * @param place 공유 대상 장소 엔티티
      * @return 공유 제목
      */
+    /**
+     * 현재 사용자가 해당 장소를 실제로 저장해 둔 이력이 있는지 조회합니다.
+     *
+     * @param usersId 현재 로그인한 사용자 아이디
+     * @param placeId 저장 이력을 찾을 장소 PK
+     * @return 저장한 장소 엔티티
+     */
+    private SavedPlace findSavedPlace(String usersId, Long placeId) {
+        return savedPlaceRepository.findByUser_UsersIdAndPlace_PlaceIdAndIsDeletedFalse(usersId, placeId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.SAVED_PLACE_NOT_FOUND));
+    }
+
     private String createShareTitle(Place place) {
         return SHARE_TITLE_TEMPLATE.formatted(place.getName());
     }
