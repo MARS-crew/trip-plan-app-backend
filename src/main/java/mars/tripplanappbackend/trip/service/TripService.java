@@ -63,6 +63,7 @@ import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
@@ -312,10 +313,14 @@ public class TripService {
         }
 
         List<MyTripScheduleDateOptionResponseDto> dateOptions = buildDateOptions(trip);
+        LocalDate today = LocalDate.now();
+        LocalTime now = LocalTime.now();
+        Set<Long> visitedPlaceIds = createVisitedPlaceIdSet(trip.getTripId());
+
         List<MyTripScheduleItemResponseDto> schedules = tripScheduleRepository
                 .findAllByTrip_TripIdAndScheduleDateAndIsDeletedFalseOrderByStartTimeAsc(trip.getTripId(), selectedDate)
                 .stream()
-                .map(MyTripScheduleItemResponseDto::from)
+                .map(tripSchedule -> toTripScheduleItemResponse(tripSchedule, today, now, visitedPlaceIds))
                 .toList();
 
         int selectedDayNo = calculateDayNo(trip.getStartDate(), selectedDate);
@@ -351,11 +356,19 @@ public class TripService {
         List<TripSchedule> tripSchedules = tripScheduleRepository
                 .findAllByTrip_TripIdAndIsDeletedFalseOrderByScheduleDateAscStartTimeAsc(trip.getTripId());
 
+        LocalDate today = LocalDate.now();
+        LocalTime now = LocalTime.now();
+        TripStatus tripStatus = resolveTripStatus(trip, today);
+        Set<Long> visitedPlaceIds = createVisitedPlaceIdSet(trip.getTripId());
+
         Map<LocalDate, List<MyTripScheduleItemResponseDto>> schedulesByDate = tripSchedules.stream()
                 .collect(Collectors.groupingBy(
                         TripSchedule::getScheduleDate,
                         LinkedHashMap::new,
-                        Collectors.mapping(MyTripScheduleItemResponseDto::from, Collectors.toList())
+                        Collectors.mapping(
+                                tripSchedule -> toTripScheduleItemResponse(tripSchedule, today, now, visitedPlaceIds),
+                                Collectors.toList()
+                        )
                 ));
 
         long tripDayCount = ChronoUnit.DAYS.between(trip.getStartDate(), trip.getEndDate()) + 1;
@@ -363,10 +376,8 @@ public class TripService {
                 buildDailyScheduleSections(trip, schedulesByDate, tripDayCount);
 
         return MyTripScheduleListResponseDto.of(
-                trip.getTripId(),
-                trip.getTitle(),
-                trip.getStartDate(),
-                trip.getEndDate(),
+                trip,
+                tripStatus,
                 tripDayCount,
                 tripSchedules.size(),
                 dailySchedules
@@ -826,6 +837,58 @@ public class TripService {
      * @param trip 조회 대상 여행 엔티티
      * @return 날짜 드롭다운 옵션 목록
      */
+    /**
+     * 여행에 이미 저장된 방문 기록 장소 PK 집합을 만들어 일정 카드 상태 계산에 재사용합니다.
+     * 일정마다 개별 조회를 반복하지 않도록 여행 단위로 한 번만 방문 기록을 읽어옵니다.
+     *
+     * @param tripId 방문 기록 조회 대상 여행 PK
+     * @return 해당 여행에서 이미 방문 기록으로 저장된 장소 PK 집합
+     */
+    private Set<Long> createVisitedPlaceIdSet(Long tripId) {
+        return visitedPlaceRepository.findAllByTrip_TripIdAndIsDeletedFalse(tripId).stream()
+                .map(visitedPlace -> visitedPlace.getPlace().getPlaceId())
+                .collect(Collectors.toSet());
+    }
+
+    /**
+     * 여행 일정 엔티티를 일정 상세 화면용 카드 응답 DTO로 변환합니다.
+     * 현재 시각 기준 진행 중 여부와 방문 기록 저장 버튼 노출 가능 여부를 함께 계산합니다.
+     *
+     * @param tripSchedule 변환 대상 여행 일정 엔티티
+     * @param today 서비스 기준 현재 날짜
+     * @param now 서비스 기준 현재 시간
+     * @param visitedPlaceIds 이미 방문 기록으로 저장된 장소 PK 집합
+     * @return 화면에 바로 사용할 수 있는 일정 카드 응답 DTO
+     */
+    private MyTripScheduleItemResponseDto toTripScheduleItemResponse(
+            TripSchedule tripSchedule,
+            LocalDate today,
+            LocalTime now,
+            Set<Long> visitedPlaceIds
+    ) {
+        Long placeId = tripSchedule.getPlace() != null ? tripSchedule.getPlace().getPlaceId() : null;
+        boolean isCurrent = isCurrentTripSchedule(tripSchedule, today, now);
+        boolean visited = placeId != null && visitedPlaceIds.contains(placeId);
+        boolean canAddVisitedPlace = placeId != null && isCurrent && !visited;
+
+        return MyTripScheduleItemResponseDto.from(tripSchedule, isCurrent, visited, canAddVisitedPlace);
+    }
+
+    /**
+     * 일정 날짜와 시작/종료 시간이 현재 시각과 겹치는지 확인합니다.
+     * 같은 날짜이면서 현재 시간이 시작 시간과 종료 시간 사이에 포함되면 진행 중 일정으로 판단합니다.
+     *
+     * @param tripSchedule 판별 대상 일정 엔티티
+     * @param today 서비스 기준 현재 날짜
+     * @param now 서비스 기준 현재 시간
+     * @return 현재 진행 중 일정이면 true
+     */
+    private boolean isCurrentTripSchedule(TripSchedule tripSchedule, LocalDate today, LocalTime now) {
+        return tripSchedule.getScheduleDate().isEqual(today)
+                && !tripSchedule.getStartTime().isAfter(now)
+                && !tripSchedule.getEndTime().isBefore(now);
+    }
+
     private List<MyTripScheduleDateOptionResponseDto> buildDateOptions(Trip trip) {
         long tripDayCount = ChronoUnit.DAYS.between(trip.getStartDate(), trip.getEndDate()) + 1;
 
