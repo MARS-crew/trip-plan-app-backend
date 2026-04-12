@@ -18,11 +18,11 @@ import mars.tripplanappbackend.trip.dto.request.CreateTripRequestDto;
 import mars.tripplanappbackend.trip.dto.request.DeleteTripRequestDto;
 import mars.tripplanappbackend.trip.dto.request.DeleteTripScheduleRequestDto;
 import mars.tripplanappbackend.trip.dto.request.DeleteWishlistPlaceRequestDto;
+import mars.tripplanappbackend.trip.dto.request.MyTripDetailRequestDto;
 import mars.tripplanappbackend.trip.dto.request.MyTripFilterRequestDto;
 import mars.tripplanappbackend.trip.dto.request.MyTripListRequestDto;
 import mars.tripplanappbackend.trip.dto.request.MyTripScheduleByDateRequestDto;
 import mars.tripplanappbackend.trip.dto.request.MyTripScheduleLocationRequestDto;
-import mars.tripplanappbackend.trip.dto.request.MyTripScheduleListRequestDto;
 import mars.tripplanappbackend.trip.dto.request.NearbyTripScheduleRequestDto;
 import mars.tripplanappbackend.trip.dto.request.ShareTripRequestDto;
 import mars.tripplanappbackend.trip.dto.request.TripPlaceSelectionRequestDto;
@@ -33,14 +33,15 @@ import mars.tripplanappbackend.trip.dto.response.CreateTripResponseDto;
 import mars.tripplanappbackend.trip.dto.response.DeleteTripResponseDto;
 import mars.tripplanappbackend.trip.dto.response.DeleteTripScheduleResponseDto;
 import mars.tripplanappbackend.trip.dto.response.DeleteWishlistPlaceResponseDto;
+import mars.tripplanappbackend.trip.dto.response.MyTripCurrentScheduleResponseDto;
 import mars.tripplanappbackend.trip.dto.response.MyTripDailyScheduleResponseDto;
+import mars.tripplanappbackend.trip.dto.response.MyTripDetailResponseDto;
 import mars.tripplanappbackend.trip.dto.response.MyTripListResponseDto;
 import mars.tripplanappbackend.trip.dto.response.MyTripScheduleByDateResponseDto;
 import mars.tripplanappbackend.trip.dto.response.MyTripScheduleDateOptionResponseDto;
 import mars.tripplanappbackend.trip.dto.response.MyTripScheduleItemResponseDto;
 import mars.tripplanappbackend.trip.dto.response.MyTripScheduleLocationItemResponseDto;
 import mars.tripplanappbackend.trip.dto.response.MyTripScheduleLocationResponseDto;
-import mars.tripplanappbackend.trip.dto.response.MyTripScheduleListResponseDto;
 import mars.tripplanappbackend.trip.dto.response.MyTripSummaryResponseDto;
 import mars.tripplanappbackend.trip.dto.response.NearbyTripScheduleItemResponseDto;
 import mars.tripplanappbackend.trip.dto.response.NearbyTripScheduleResponseDto;
@@ -341,15 +342,14 @@ public class TripService {
     }
 
     /**
-     * 내 여행 상세 화면 본문 전체를 구성하기 위해 여행 기간 전체를 기준으로 일차별 일정 리스트를 조회합니다.
-     * 특정 날짜만 내려주는 날짜별 조회와 달리 시작일부터 종료일까지 모든 날짜를 순회하며,
-     * 일정이 없는 날짜도 빈 리스트로 포함해 화면에서 일차 섹션을 그대로 렌더링할 수 있도록 합니다.
+     * 홈/내 여행 화면에서 선택한 여행의 상세 화면 전체를 구성할 데이터를 조회합니다.
+     * 여행 기본 정보와 일차별 일정 목록뿐 아니라 현재 진행 중 일정 요약과 화면 액션 가능 상태까지 함께 계산합니다.
      *
      * @param requestDto 조회 대상 여행 PK와 로그인 사용자 아이디를 담은 요청 DTO
-     * @return 여행 기본 정보와 일차별 일정 섹션 목록을 담은 응답 DTO
+     * @return 내 여행 상세 화면 전체를 구성하기 위한 응답 DTO
      */
-    public MyTripScheduleListResponseDto getMyTripScheduleList(MyTripScheduleListRequestDto requestDto) {
-        validateTripScheduleListRequest(requestDto);
+    public MyTripDetailResponseDto findOne(MyTripDetailRequestDto requestDto) {
+        validateTripDetailRequest(requestDto);
         validateUserExistsByUsersId(requestDto.getUsersId());
 
         Trip trip = tripRepository.findByTripIdAndUser_UsersIdAndIsDeletedFalse(
@@ -365,6 +365,9 @@ public class TripService {
         LocalTime now = LocalTime.now();
         TripStatus tripStatus = resolveTripStatus(trip, today);
         Set<Long> visitedPlaceIds = createVisitedPlaceIdSet(trip.getTripId());
+        int locationScheduleCount = countLocationSchedules(tripSchedules);
+        MyTripCurrentScheduleResponseDto currentSchedule =
+                findCurrentSchedule(tripSchedules, today, now, visitedPlaceIds);
 
         Map<LocalDate, List<MyTripScheduleItemResponseDto>> schedulesByDate = tripSchedules.stream()
                 .collect(Collectors.groupingBy(
@@ -380,11 +383,16 @@ public class TripService {
         List<MyTripDailyScheduleResponseDto> dailySchedules =
                 buildDailyScheduleSections(trip, schedulesByDate, tripDayCount);
 
-        return MyTripScheduleListResponseDto.of(
+        return MyTripDetailResponseDto.of(
                 trip,
                 tripStatus,
                 tripDayCount,
                 tripSchedules.size(),
+                locationScheduleCount,
+                currentSchedule,
+                canViewMap(locationScheduleCount),
+                canEditTrip(trip),
+                canAddSchedule(trip),
                 dailySchedules
         );
     }
@@ -640,11 +648,11 @@ public class TripService {
     }
 
     /**
-     * 일정 리스트 조회 요청에 필요한 여행 PK와 로그인 사용자 아이디가 모두 존재하는지 검증합니다.
+     * 내 여행 상세 조회 요청에 필요한 여행 PK와 로그인 사용자 아이디가 모두 존재하는지 검증합니다.
      *
-     * @param requestDto 일정 리스트 조회 요청 DTO
+     * @param requestDto 내 여행 상세 조회 요청 DTO
      */
-    private void validateTripScheduleListRequest(MyTripScheduleListRequestDto requestDto) {
+    private void validateTripDetailRequest(MyTripDetailRequestDto requestDto) {
         if (requestDto.getTripId() == null || requestDto.getTripId() < 1 || requestDto.getUsersId() == null) {
             throw new BusinessException(ErrorCode.INVALID_INPUT);
         }
@@ -911,8 +919,71 @@ public class TripService {
     }
 
     /**
+     * 지도 보기에서 바로 사용할 수 있는 좌표 보유 일정 개수를 계산합니다.
+     * 화면에서 지도 보기 버튼을 활성화할지 판단할 때 함께 사용합니다.
+     *
+     * @param tripSchedules 여행에 연결된 전체 일정 목록
+     * @return 좌표를 보유한 일정 개수
+     */
+    private int countLocationSchedules(List<TripSchedule> tripSchedules) {
+        return (int) tripSchedules.stream()
+                .filter(this::hasLocation)
+                .count();
+    }
+
+    /**
+     * 현재 시점과 겹치는 일정이 있으면 화면 상단에 바로 사용할 수 있도록 요약 응답을 생성합니다.
+     * 현재 일정이 없으면 null을 반환하여 화면에서 고정 액션 영역을 숨길 수 있게 합니다.
+     *
+     * @param tripSchedules 여행에 속한 전체 일정 목록
+     * @param today 서비스 기준 현재 날짜
+     * @param now 서비스 기준 현재 시간
+     * @param visitedPlaceIds 이미 방문 기록으로 저장된 장소 PK 집합
+     * @return 현재 진행 중 일정 요약 응답 DTO, 없으면 null
+     */
+    private MyTripCurrentScheduleResponseDto findCurrentSchedule(
+            List<TripSchedule> tripSchedules,
+            LocalDate today,
+            LocalTime now,
+            Set<Long> visitedPlaceIds
+    ) {
+        return tripSchedules.stream()
+                .filter(tripSchedule -> isCurrentTripSchedule(tripSchedule, today, now))
+                .findFirst()
+                .map(tripSchedule -> toCurrentScheduleResponse(tripSchedule, visitedPlaceIds))
+                .orElse(null);
+    }
+
+    /**
+     * 현재 진행 중 일정 엔티티를 화면 상단 요약용 DTO로 변환합니다.
+     * 방문지 저장과 길찾기 버튼 활성화 여부도 함께 계산해 프론트엔드가 즉시 사용할 수 있도록 합니다.
+     *
+     * @param tripSchedule 현재 진행 중 일정 엔티티
+     * @param visitedPlaceIds 이미 방문 기록으로 저장된 장소 PK 집합
+     * @return 현재 진행 중 일정 요약 응답 DTO
+     */
+    private MyTripCurrentScheduleResponseDto toCurrentScheduleResponse(
+            TripSchedule tripSchedule,
+            Set<Long> visitedPlaceIds
+    ) {
+        Long placeId = tripSchedule.getPlace() != null ? tripSchedule.getPlace().getPlaceId() : null;
+        boolean visited = placeId != null && visitedPlaceIds.contains(placeId);
+        boolean canAddVisitedPlace = placeId != null && !visited;
+        String address = resolveScheduleAddress(tripSchedule);
+        boolean canSearchRoute = canSearchRoute(tripSchedule, address);
+
+        return MyTripCurrentScheduleResponseDto.of(
+                tripSchedule,
+                address,
+                visited,
+                canAddVisitedPlace,
+                canSearchRoute
+        );
+    }
+
+    /**
      * 여행 일정 엔티티를 일정 상세 화면용 카드 응답 DTO로 변환합니다.
-     * 현재 시각 기준 진행 중 여부와 방문 기록 저장 버튼 노출 가능 여부를 함께 계산합니다.
+     * 현재 시각 기준 진행 중 여부와 상세 화면 액션 상태를 함께 계산합니다.
      *
      * @param tripSchedule 변환 대상 여행 일정 엔티티
      * @param today 서비스 기준 현재 날짜
@@ -930,8 +1001,19 @@ public class TripService {
         boolean isCurrent = isCurrentTripSchedule(tripSchedule, today, now);
         boolean visited = placeId != null && visitedPlaceIds.contains(placeId);
         boolean canAddVisitedPlace = placeId != null && isCurrent && !visited;
+        String address = resolveScheduleAddress(tripSchedule);
+        boolean canSearchRoute = canSearchRoute(tripSchedule, address);
+        boolean canEditSchedule = canEditTripSchedule(tripSchedule);
 
-        return MyTripScheduleItemResponseDto.from(tripSchedule, isCurrent, visited, canAddVisitedPlace);
+        return MyTripScheduleItemResponseDto.from(
+                tripSchedule,
+                address,
+                isCurrent,
+                visited,
+                canAddVisitedPlace,
+                canSearchRoute,
+                canEditSchedule
+        );
     }
 
     /**
@@ -1021,6 +1103,101 @@ public class TripService {
         return tripSchedule.getScheduleDate().isEqual(today)
                 && !tripSchedule.getStartTime().isAfter(now)
                 && !tripSchedule.getEndTime().isBefore(now);
+    }
+
+    /**
+     * 일정에 직접 입력된 주소가 있으면 우선 사용하고, 없으면 연결된 장소의 기본 주소로 보완합니다.
+     * 상세 화면 카드와 현재 일정 요약에서 동일한 주소 기준을 사용하기 위해 공통 메서드로 분리합니다.
+     *
+     * @param tripSchedule 주소를 해석할 일정 엔티티
+     * @return 화면 노출과 길찾기 판단에 사용할 기준 주소
+     */
+    private String resolveScheduleAddress(TripSchedule tripSchedule) {
+        if (hasText(tripSchedule.getAddress())) {
+            return tripSchedule.getAddress().trim();
+        }
+
+        if (tripSchedule.getPlace() != null && hasText(tripSchedule.getPlace().getAddress())) {
+            return tripSchedule.getPlace().getAddress().trim();
+        }
+
+        return null;
+    }
+
+    /**
+     * 길찾기 버튼을 활성화할 수 있는지 판단합니다.
+     * 좌표가 있으면 가장 안정적으로 길찾기가 가능하고, 좌표가 없어도 주소가 있으면 텍스트 기반 길찾기를 시도할 수 있습니다.
+     *
+     * @param tripSchedule 길찾기 가능 여부를 계산할 일정 엔티티
+     * @param address 화면에서 사용할 기준 주소
+     * @return 길찾기 가능 여부
+     */
+    private boolean canSearchRoute(TripSchedule tripSchedule, String address) {
+        return hasLocation(tripSchedule) || hasText(address);
+    }
+
+    /**
+     * 일정이 장소 좌표를 보유하고 있는지 확인합니다.
+     *
+     * @param tripSchedule 확인할 일정 엔티티
+     * @return 위도와 경도가 모두 존재하면 true
+     */
+    private boolean hasLocation(TripSchedule tripSchedule) {
+        return tripSchedule.getPlace() != null
+                && tripSchedule.getPlace().getLatitude() != null
+                && tripSchedule.getPlace().getLongitude() != null;
+    }
+
+    /**
+     * 현재 정책상 본인 여행에 속한 일정은 상세 화면에서 편집 가능하므로 true를 반환합니다.
+     * 향후 상태별 편집 제한 정책이 생기면 이 메서드만 수정해도 응답 값을 일괄 반영할 수 있습니다.
+     *
+     * @param tripSchedule 편집 가능 여부를 계산할 일정 엔티티
+     * @return 일정 편집 가능 여부
+     */
+    private boolean canEditTripSchedule(TripSchedule tripSchedule) {
+        return tripSchedule.getTrip() != null && Boolean.FALSE.equals(tripSchedule.getIsDeleted());
+    }
+
+    /**
+     * 지도 보기 버튼은 지도에 표시할 좌표 기반 일정이 1건 이상 있을 때만 활성화합니다.
+     *
+     * @param locationScheduleCount 좌표 보유 일정 개수
+     * @return 지도 보기 가능 여부
+     */
+    private boolean canViewMap(int locationScheduleCount) {
+        return locationScheduleCount > 0;
+    }
+
+    /**
+     * 현재 정책상 삭제되지 않은 내 여행은 상세 화면에서 편집할 수 있으므로 true를 반환합니다.
+     *
+     * @param trip 편집 가능 여부를 계산할 여행 엔티티
+     * @return 여행 편집 가능 여부
+     */
+    private boolean canEditTrip(Trip trip) {
+        return Boolean.FALSE.equals(trip.getIsDeleted());
+    }
+
+    /**
+     * 현재 정책상 상세 화면에서 일정 추가를 막는 별도 상태 제한이 없으므로 true를 반환합니다.
+     * 향후 완료 여행 잠금 정책이 생기면 이 메서드에서 일괄 반영할 수 있습니다.
+     *
+     * @param trip 일정 추가 가능 여부를 계산할 여행 엔티티
+     * @return 일정 추가 가능 여부
+     */
+    private boolean canAddSchedule(Trip trip) {
+        return Boolean.FALSE.equals(trip.getIsDeleted());
+    }
+
+    /**
+     * 공백이 아닌 실제 문자열 값이 존재하는지 확인합니다.
+     *
+     * @param value 확인할 문자열
+     * @return 값이 존재하면 true
+     */
+    private boolean hasText(String value) {
+        return value != null && !value.isBlank();
     }
 
     private List<MyTripScheduleDateOptionResponseDto> buildDateOptions(Trip trip) {
