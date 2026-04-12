@@ -23,11 +23,11 @@ public class AddVisitedPlaceRequestDto {
     private String usersId;
 
     @NotNull(message = "방문 기록을 남길 장소 PK는 필수입니다.")
-    @Schema(description = "방문 기록을 저장할 장소 PK", example = "7")
+    @Schema(description = "방문 기록을 저장할 장소 PK", example = "8")
     private Long placeId;
 
     @NotNull(message = "방문 기록과 연결할 일정 PK는 필수입니다.")
-    @Schema(description = "방문 기록과 연결할 일정 PK", example = "21")
+    @Schema(description = "방문 기록과 연결할 일정 PK", example = "7")
     private Long tripScheduleId;
 
     /**

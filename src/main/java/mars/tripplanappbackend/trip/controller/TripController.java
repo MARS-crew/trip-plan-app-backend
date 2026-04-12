@@ -21,6 +21,7 @@ import mars.tripplanappbackend.trip.dto.request.DeleteWishlistPlaceRequestDto;
 import mars.tripplanappbackend.trip.dto.request.MyTripFilterRequestDto;
 import mars.tripplanappbackend.trip.dto.request.MyTripListRequestDto;
 import mars.tripplanappbackend.trip.dto.request.MyTripScheduleByDateRequestDto;
+import mars.tripplanappbackend.trip.dto.request.MyTripScheduleLocationRequestDto;
 import mars.tripplanappbackend.trip.dto.request.MyTripScheduleListRequestDto;
 import mars.tripplanappbackend.trip.dto.request.NearbyTripScheduleRequestDto;
 import mars.tripplanappbackend.trip.dto.request.ShareTripRequestDto;
@@ -34,6 +35,7 @@ import mars.tripplanappbackend.trip.dto.response.DeleteTripScheduleResponseDto;
 import mars.tripplanappbackend.trip.dto.response.DeleteWishlistPlaceResponseDto;
 import mars.tripplanappbackend.trip.dto.response.MyTripListResponseDto;
 import mars.tripplanappbackend.trip.dto.response.MyTripScheduleByDateResponseDto;
+import mars.tripplanappbackend.trip.dto.response.MyTripScheduleLocationResponseDto;
 import mars.tripplanappbackend.trip.dto.response.MyTripScheduleListResponseDto;
 import mars.tripplanappbackend.trip.dto.response.NearbyTripScheduleResponseDto;
 import mars.tripplanappbackend.trip.dto.response.ShareTripResponseDto;
@@ -298,6 +300,32 @@ public class TripController {
     }
 
     /**
+     * 내 여행 상세 화면에서 지도 보기 버튼을 눌렀을 때 지도 페이지에 필요한 일정 위치 목록을 조회합니다.
+     * 일정별 좌표, 현재 진행 중 일정 여부, 방문 인증 버튼 노출 여부, 핀 순서를 함께 내려주어
+     * 프론트엔드가 현재 일정 강조, 이동 동선 연결, GPS 기반 방문 인증 UI를 한 번에 구성할 수 있도록 합니다.
+     *
+     * @param tripId 조회할 여행 PK
+     * @param userPrincipal 커스텀 어노테이션으로 주입한 현재 로그인 사용자 정보
+     * @return 공통 응답 형식으로 감싼 지도 페이지용 일정 위치 조회 응답
+     */
+    @GetMapping("/{tripId}/schedules/locations")
+    @ApiErrorExceptions({ErrorCode.INVALID_INPUT, ErrorCode.USER_NOT_FOUND, ErrorCode.INTERNAL_ERROR})
+    @Operation(
+            summary = "일정 위치 조회",
+            description = "내 여행 상세 화면에서 지도 보기 버튼을 눌렀을 때 일정별 핀, 이동 동선, 현재 일정 표시, GPS 방문 인증 UI에 필요한 일정 위치 목록을 조회합니다."
+    )
+    public ApiResponse<MyTripScheduleLocationResponseDto> getMyTripScheduleLocations(
+            @Parameter(description = "조회할 여행 PK", example = "5")
+            @PathVariable("tripId") Long tripId,
+            @Parameter(hidden = true)
+            @CurrentUser UserPrincipal userPrincipal
+    ) {
+        MyTripScheduleLocationRequestDto requestDto =
+                MyTripScheduleLocationRequestDto.of(tripId, userPrincipal.getUsersId());
+        return ApiResponse.ok(tripService.getMyTripScheduleLocations(requestDto));
+    }
+
+    /**
      * 내 여행지 상세 화면에서 현재 장소를 방문 인증 기록으로 저장합니다.
      * 단순 저장 탭용 찜이 아니라 여행 중 실제로 방문한 장소를 기록하는 용도이며,
      * 여행 PK, 일정 PK, 장소 PK, 로그인 사용자 정보가 모두 맞을 때만 저장합니다.
@@ -331,8 +359,8 @@ public class TripController {
                                     name = "방문 기록 저장 예시",
                                     value = """
                                             {
-                                              "placeId": 7,
-                                              "tripScheduleId": 21
+                                              "placeId": 8,
+                                              "tripScheduleId": 7
                                             }
                                             """
                             )
