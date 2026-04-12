@@ -21,8 +21,8 @@ import mars.tripplanappbackend.trip.dto.request.DeleteWishlistPlaceRequestDto;
 import mars.tripplanappbackend.trip.dto.request.MyTripFilterRequestDto;
 import mars.tripplanappbackend.trip.dto.request.MyTripListRequestDto;
 import mars.tripplanappbackend.trip.dto.request.MyTripScheduleByDateRequestDto;
+import mars.tripplanappbackend.trip.dto.request.MyTripDetailRequestDto;
 import mars.tripplanappbackend.trip.dto.request.MyTripScheduleLocationRequestDto;
-import mars.tripplanappbackend.trip.dto.request.MyTripScheduleListRequestDto;
 import mars.tripplanappbackend.trip.dto.request.NearbyTripScheduleRequestDto;
 import mars.tripplanappbackend.trip.dto.request.ShareTripRequestDto;
 import mars.tripplanappbackend.trip.dto.request.TripPlaceSelectionRequestDto;
@@ -33,10 +33,10 @@ import mars.tripplanappbackend.trip.dto.response.CreateTripResponseDto;
 import mars.tripplanappbackend.trip.dto.response.DeleteTripResponseDto;
 import mars.tripplanappbackend.trip.dto.response.DeleteTripScheduleResponseDto;
 import mars.tripplanappbackend.trip.dto.response.DeleteWishlistPlaceResponseDto;
+import mars.tripplanappbackend.trip.dto.response.MyTripDetailResponseDto;
 import mars.tripplanappbackend.trip.dto.response.MyTripListResponseDto;
 import mars.tripplanappbackend.trip.dto.response.MyTripScheduleByDateResponseDto;
 import mars.tripplanappbackend.trip.dto.response.MyTripScheduleLocationResponseDto;
-import mars.tripplanappbackend.trip.dto.response.MyTripScheduleListResponseDto;
 import mars.tripplanappbackend.trip.dto.response.NearbyTripScheduleResponseDto;
 import mars.tripplanappbackend.trip.dto.response.ShareTripResponseDto;
 import mars.tripplanappbackend.trip.dto.response.TripPlaceSelectionResponseDto;
@@ -180,6 +180,30 @@ public class TripController {
     }
 
     /**
+     * 홈/내 여행 화면에서 선택한 여행의 상세 화면 전체를 구성할 데이터를 조회합니다.
+     * 여행 기본 정보, 현재 진행 중 일정 요약, 지도 보기/편집/일정 추가 가능 여부, 일차별 일정 목록을 함께 반환합니다.
+     *
+     * @param tripId 조회할 여행 PK
+     * @param userPrincipal 커스텀 어노테이션으로 주입한 현재 로그인 사용자 정보
+     * @return 공통 응답 형식으로 감싼 내 여행 상세 조회 결과
+     */
+    @GetMapping("/{tripId}")
+    @ApiErrorExceptions({ErrorCode.INVALID_INPUT, ErrorCode.USER_NOT_FOUND, ErrorCode.INTERNAL_ERROR})
+    @Operation(
+            summary = "내 일정 상세 조회",
+            description = "홈/내 여행 화면에서 선택한 여행의 상세 화면 전체를 구성하기 위한 여행 기본 정보, 현재 진행 중 일정 요약, 액션 가능 상태, 일차별 일정 목록을 조회합니다."
+    )
+    public ApiResponse<MyTripDetailResponseDto> findOne(
+            @Parameter(description = "조회할 여행 PK", example = "5")
+            @PathVariable("tripId") Long tripId,
+            @Parameter(hidden = true)
+            @CurrentUser UserPrincipal userPrincipal
+    ) {
+        MyTripDetailRequestDto requestDto = MyTripDetailRequestDto.of(tripId, userPrincipal.getUsersId());
+        return ApiResponse.ok(tripService.findOne(requestDto));
+    }
+
+    /**
      * 내 여행 상세의 날짜 카드에서 장소 추가하기 버튼을 눌렀을 때 표시할
      * 저장한 장소와 위시리스트 목록을 함께 조회합니다.
      *
@@ -276,27 +300,27 @@ public class TripController {
     }
 
     /**
-     * 내 여행 상세 화면 본문에서 여행 기간 전체를 기준으로 일자별 일정 리스트를 조회합니다.
+     * 기존 일정 리스트 경로를 사용하는 클라이언트도 상세 화면 전체 응답을 받을 수 있도록 호환용으로 제공합니다.
+     * 실제 응답 구조는 내 일정 상세 조회 API와 동일하며, 여행 기본 정보와 액션 상태까지 함께 포함합니다.
      *
      * @param tripId 조회할 여행 PK
      * @param userPrincipal 커스텀 어노테이션으로 주입한 현재 로그인 사용자 정보
-     * @return 공통 응답 형식으로 감싼 일정 리스트 응답
+     * @return 공통 응답 형식으로 감싼 내 여행 상세 조회 응답
      */
     @GetMapping("/{tripId}/schedules")
     @ApiErrorExceptions({ErrorCode.INVALID_INPUT, ErrorCode.USER_NOT_FOUND, ErrorCode.INTERNAL_ERROR})
     @Operation(
-            summary = "일정 리스트 조회",
-            description = "내 여행 상세 화면에서 여행 기간 전체를 기준으로 일자별 일정 리스트를 조회합니다."
+            summary = "내 일정 상세 조회(호환 경로)",
+            description = "기존 일정 리스트 경로를 사용하는 클라이언트를 위해 내 일정 상세 조회와 동일한 응답을 반환합니다."
     )
-    public ApiResponse<MyTripScheduleListResponseDto> getMyTripScheduleList(
+    public ApiResponse<MyTripDetailResponseDto> getMyTripScheduleList(
             @Parameter(description = "조회할 여행 PK", example = "5")
             @PathVariable("tripId") Long tripId,
             @Parameter(hidden = true)
             @CurrentUser UserPrincipal userPrincipal
     ) {
-        MyTripScheduleListRequestDto requestDto =
-                MyTripScheduleListRequestDto.of(tripId, userPrincipal.getUsersId());
-        return ApiResponse.ok(tripService.getMyTripScheduleList(requestDto));
+        MyTripDetailRequestDto requestDto = MyTripDetailRequestDto.of(tripId, userPrincipal.getUsersId());
+        return ApiResponse.ok(tripService.findOne(requestDto));
     }
 
     /**

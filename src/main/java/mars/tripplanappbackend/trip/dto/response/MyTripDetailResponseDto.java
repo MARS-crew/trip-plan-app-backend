@@ -10,14 +10,13 @@ import java.time.LocalDate;
 import java.util.List;
 
 /**
- * 내 일정 상세 조회 화면 전체를 구성하기 위한 응답 DTO입니다.
- * 여행 기본 정보와 일차별 일정 섹션을 함께 내려주어,
- * 프론트엔드가 여행 헤더와 Day 탭, 일정 리스트를 한 번에 그릴 수 있도록 합니다.
+ * 내 여행 상세 화면 전체를 구성하기 위한 응답 DTO입니다.
+ * 여행 기본 정보, 현재 진행 중 일정 요약, 화면 액션 가능 상태, 일차별 일정 섹션 목록을 함께 반환합니다.
  */
 @Getter
 @Builder
-@Schema(description = "내 일정 상세 조회 응답 DTO")
-public class MyTripScheduleListResponseDto {
+@Schema(description = "내 여행 상세 조회 응답 DTO")
+public class MyTripDetailResponseDto {
 
     @Schema(description = "여행 PK", example = "7")
     private Long tripId;
@@ -46,28 +45,55 @@ public class MyTripScheduleListResponseDto {
     @Schema(description = "전체 일정 개수", example = "8")
     private int totalScheduleCount;
 
+    @Schema(description = "좌표가 있어 지도 보기에서 바로 사용할 수 있는 일정 개수", example = "5")
+    private int locationScheduleCount;
+
+    @Schema(description = "현재 진행 중인 일정이 존재하는지 여부", example = "true")
+    private boolean hasCurrentSchedule;
+
+    @Schema(description = "현재 진행 중인 일정 요약 정보", nullable = true)
+    private MyTripCurrentScheduleResponseDto currentSchedule;
+
+    @Schema(description = "상세 화면에서 지도 보기 버튼을 활성화할 수 있는지 여부", example = "true")
+    private boolean canViewMap;
+
+    @Schema(description = "상세 화면에서 여행 편집이 가능한지 여부", example = "true")
+    private boolean canEditTrip;
+
+    @Schema(description = "상세 화면에서 일정 추가가 가능한지 여부", example = "true")
+    private boolean canAddSchedule;
+
     @Schema(description = "일차별 일정 섹션 목록")
     private List<MyTripDailyScheduleResponseDto> dailySchedules;
 
     /**
-     * 여행 엔티티와 일정 섹션 목록을 일정 상세 조회 응답 DTO로 변환합니다.
-     * 상단 헤더에 필요한 여행 상태와 대표 이미지도 함께 내려줍니다.
+     * 여행 엔티티와 상세 화면 구성 정보를 묶어 내 여행 상세 응답 DTO를 생성합니다.
      *
      * @param trip 조회 대상 여행 엔티티
      * @param tripStatus 현재 날짜 기준 여행 상태
      * @param tripDayCount 여행 총 일수
      * @param totalScheduleCount 전체 일정 개수
+     * @param locationScheduleCount 지도 보기에서 사용할 수 있는 일정 개수
+     * @param currentSchedule 현재 진행 중 일정 요약 정보
+     * @param canViewMap 지도 보기 가능 여부
+     * @param canEditTrip 여행 편집 가능 여부
+     * @param canAddSchedule 일정 추가 가능 여부
      * @param dailySchedules 일차별 일정 섹션 목록
-     * @return 내 일정 상세 조회 응답 DTO
+     * @return 내 여행 상세 조회 응답 DTO
      */
-    public static MyTripScheduleListResponseDto of(
+    public static MyTripDetailResponseDto of(
             Trip trip,
             TripStatus tripStatus,
             long tripDayCount,
             int totalScheduleCount,
+            int locationScheduleCount,
+            MyTripCurrentScheduleResponseDto currentSchedule,
+            boolean canViewMap,
+            boolean canEditTrip,
+            boolean canAddSchedule,
             List<MyTripDailyScheduleResponseDto> dailySchedules
     ) {
-        return MyTripScheduleListResponseDto.builder()
+        return MyTripDetailResponseDto.builder()
                 .tripId(trip.getTripId())
                 .tripTitle(trip.getTitle())
                 .imageUrl(trip.getImageUrl())
@@ -77,6 +103,12 @@ public class MyTripScheduleListResponseDto {
                 .endDate(trip.getEndDate())
                 .tripDayCount(tripDayCount)
                 .totalScheduleCount(totalScheduleCount)
+                .locationScheduleCount(locationScheduleCount)
+                .hasCurrentSchedule(currentSchedule != null)
+                .currentSchedule(currentSchedule)
+                .canViewMap(canViewMap)
+                .canEditTrip(canEditTrip)
+                .canAddSchedule(canAddSchedule)
                 .dailySchedules(dailySchedules)
                 .build();
     }

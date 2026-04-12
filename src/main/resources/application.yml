@@ -28,7 +28,7 @@ spring:
       client-secret: ${PAPAGO_CLIENT_SECRET}
 
     exchange:
-      auth-key: ${EXCHANGE_API_KEY}
+      auth-key: ${EXCHANGE_API_KEY:}
 
   jpa:
     hibernate:
