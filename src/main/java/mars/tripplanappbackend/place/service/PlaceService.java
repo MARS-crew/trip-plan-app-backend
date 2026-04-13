@@ -13,6 +13,7 @@ import mars.tripplanappbackend.place.dto.request.DeleteSavedPlaceRequestDto;
 import mars.tripplanappbackend.place.dto.request.NearbyRecommendedPlaceRequestDto;
 import mars.tripplanappbackend.place.dto.request.RecommendedPlaceRequestDto;
 import mars.tripplanappbackend.place.dto.request.SavePlaceRequestDto;
+import mars.tripplanappbackend.place.dto.request.SavedPlaceCategoryListRequestDto;
 import mars.tripplanappbackend.place.dto.request.SavedPlaceListRequestDto;
 import mars.tripplanappbackend.place.dto.request.SharePlaceRequestDto;
 import mars.tripplanappbackend.place.dto.response.NearbyRecommendedPlaceListResponseDto;
@@ -22,6 +23,8 @@ import mars.tripplanappbackend.place.dto.response.PlaceReviewPreviewResponseDto;
 import mars.tripplanappbackend.place.dto.response.RecommendedPlaceListResponseDto;
 import mars.tripplanappbackend.place.dto.response.RecommendedPlaceResponseDto;
 import mars.tripplanappbackend.place.dto.response.SavePlaceResponseDto;
+import mars.tripplanappbackend.place.dto.response.SavedPlaceCategoryListResponseDto;
+import mars.tripplanappbackend.place.dto.response.SavedPlaceCategoryResponseDto;
 import mars.tripplanappbackend.place.dto.response.SavedPlaceItemResponseDto;
 import mars.tripplanappbackend.place.dto.response.SavedPlaceListResponseDto;
 import mars.tripplanappbackend.place.dto.response.SharePlaceResponseDto;
@@ -37,6 +40,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
@@ -117,6 +121,30 @@ public class PlaceService {
                 .toList();
 
         return SavedPlaceListResponseDto.of(requestDto.getFilterType(), savedPlaceCount, savedPlaceCards);
+    }
+
+    /**
+     * 저장한 장소 카테고리 목록을 조회합니다.
+     * 저장된 장소 조회 API와 별도로 탭 렌더링용 카테고리 메타 정보를 제공합니다.
+     *
+     * @param requestDto 카테고리 목록 조회 요청 DTO
+     * @return 저장한 장소 카테고리 목록 응답 DTO
+     */
+    public SavedPlaceCategoryListResponseDto getSavedPlaceCategories(SavedPlaceCategoryListRequestDto requestDto) {
+        validateSavedPlaceCategoryListRequest(requestDto);
+        validateAuthenticatedUser(requestDto.getUsersId());
+
+        long totalSavedPlaceCount =
+                savedPlaceRepository.countByUser_UsersIdAndIsDeletedFalseAndPlace_IsDeletedFalse(requestDto.getUsersId());
+
+        List<SavedPlaceCategoryResponseDto> categories = Arrays.stream(SavedPlaceFilterType.values())
+                .map(filterType -> SavedPlaceCategoryResponseDto.of(
+                        filterType,
+                        countSavedPlacesByFilterType(requestDto.getUsersId(), filterType, totalSavedPlaceCount)
+                ))
+                .toList();
+
+        return SavedPlaceCategoryListResponseDto.of(totalSavedPlaceCount, categories);
     }
 
     /**
@@ -336,6 +364,17 @@ public class PlaceService {
     }
 
     /**
+     * 저장한 장소 카테고리 목록 조회 요청 파라미터를 검증합니다.
+     *
+     * @param requestDto 저장한 장소 카테고리 목록 조회 요청 DTO
+     */
+    private void validateSavedPlaceCategoryListRequest(SavedPlaceCategoryListRequestDto requestDto) {
+        if (requestDto.getUsersId() == null || requestDto.getUsersId().isBlank()) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT);
+        }
+    }
+
+    /**
      * 공유 요청에 필요한 장소 PK와 사용자 아이디가 모두 유효한지 검증합니다.
      *
      * @param requestDto 공유 요청 DTO
@@ -374,6 +413,30 @@ public class PlaceService {
                         usersId,
                         filterType.getPlaceType()
                 );
+    }
+
+    /**
+     * 카테고리 필터 유형별 저장 개수를 조회합니다.
+     * `ALL`은 전체 개수를 그대로 사용하고, 나머지는 placeType 조건 count 쿼리를 수행합니다.
+     *
+     * @param usersId 현재 로그인 사용자 아이디
+     * @param filterType 저장한 장소 필터 유형
+     * @param totalSavedPlaceCount 전체 저장 개수
+     * @return 카테고리 필터에 해당하는 저장 개수
+     */
+    private long countSavedPlacesByFilterType(
+            String usersId,
+            SavedPlaceFilterType filterType,
+            long totalSavedPlaceCount
+    ) {
+        if (filterType == SavedPlaceFilterType.ALL) {
+            return totalSavedPlaceCount;
+        }
+
+        return savedPlaceRepository.countByUser_UsersIdAndIsDeletedFalseAndPlace_IsDeletedFalseAndPlace_PlaceType(
+                usersId,
+                filterType.getPlaceType()
+        );
     }
 
     /**

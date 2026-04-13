@@ -2,6 +2,7 @@ package mars.tripplanappbackend.mypage.repository;
 
 import mars.tripplanappbackend.mypage.domain.SavedPlace;
 import mars.tripplanappbackend.mypage.domain.User;
+import mars.tripplanappbackend.place.enums.PlaceType;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
@@ -17,6 +18,11 @@ public interface SavedPlaceRepository extends JpaRepository<SavedPlace, Long> {
     long countByUserAndIsDeletedFalse(User user);
 
     long countByUser_UsersIdAndIsDeletedFalseAndPlace_IsDeletedFalse(String usersId);
+
+    long countByUser_UsersIdAndIsDeletedFalseAndPlace_IsDeletedFalseAndPlace_PlaceType(
+            String usersId,
+            PlaceType placeType
+    );
 
     List<SavedPlace> findAllByUser_UsersIdAndIsDeletedFalseAndPlace_IsDeletedFalseOrderByCreatedAtDesc(String usersId);
 
