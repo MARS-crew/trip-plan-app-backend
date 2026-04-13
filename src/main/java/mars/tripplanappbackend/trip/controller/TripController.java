@@ -22,6 +22,7 @@ import mars.tripplanappbackend.trip.dto.request.MyTripFilterRequestDto;
 import mars.tripplanappbackend.trip.dto.request.MyTripListRequestDto;
 import mars.tripplanappbackend.trip.dto.request.MyTripScheduleByDateRequestDto;
 import mars.tripplanappbackend.trip.dto.request.MyTripDetailRequestDto;
+import mars.tripplanappbackend.trip.dto.request.MyTripScheduleListRequestDto;
 import mars.tripplanappbackend.trip.dto.request.MyTripScheduleLocationRequestDto;
 import mars.tripplanappbackend.trip.dto.request.NearbyTripScheduleRequestDto;
 import mars.tripplanappbackend.trip.dto.request.ShareTripRequestDto;
@@ -36,6 +37,7 @@ import mars.tripplanappbackend.trip.dto.response.DeleteWishlistPlaceResponseDto;
 import mars.tripplanappbackend.trip.dto.response.MyTripDetailResponseDto;
 import mars.tripplanappbackend.trip.dto.response.MyTripListResponseDto;
 import mars.tripplanappbackend.trip.dto.response.MyTripScheduleByDateResponseDto;
+import mars.tripplanappbackend.trip.dto.response.MyTripScheduleListResponseDto;
 import mars.tripplanappbackend.trip.dto.response.MyTripScheduleLocationResponseDto;
 import mars.tripplanappbackend.trip.dto.response.NearbyTripScheduleResponseDto;
 import mars.tripplanappbackend.trip.dto.response.ShareTripResponseDto;
@@ -201,6 +203,33 @@ public class TripController {
     ) {
         MyTripDetailRequestDto requestDto = MyTripDetailRequestDto.of(tripId, userPrincipal.getUsersId());
         return ApiResponse.ok(tripService.findOne(requestDto));
+    }
+
+    /**
+     * 내 여행 상세 화면 진입 시 일차별 일정 리스트를 한 번에 조회합니다.
+     * 여행 기간 전체(1일차 ~ n일차)를 기준으로 섹션을 구성하고, 일정이 없는 날짜도 빈 배열로 유지해
+     * 프론트엔드가 "일정 추가하기" UI를 자연스럽게 렌더링할 수 있도록 합니다.
+     * 또한 일정별 진행 상태(isOngoing), 방문 기록 여부, 방문지 저장 버튼 노출 가능 여부를 함께 반환합니다.
+     *
+     * @param tripId 조회할 여행 PK
+     * @param userPrincipal 커스텀 어노테이션으로 주입한 현재 로그인 사용자 정보
+     * @return 공통 응답 형식으로 감싼 내 여행 상세 일정 리스트 조회 결과
+     */
+    @GetMapping("/{tripId}/schedules")
+    @ApiErrorExceptions({ErrorCode.INVALID_INPUT, ErrorCode.USER_NOT_FOUND, ErrorCode.INTERNAL_ERROR})
+    @Operation(
+            summary = "일정 리스트 조회",
+            description = "여행 상세 화면에서 사용하는 일차별 일정 묶음 데이터를 조회합니다. 여행 기간 전체 날짜를 유지하고, 각 일정의 진행 상태와 방문 기록 상태를 함께 반환합니다."
+    )
+    public ApiResponse<MyTripScheduleListResponseDto> getMyTripSchedules(
+            @Parameter(description = "조회할 여행 PK", example = "5")
+            @PathVariable("tripId") Long tripId,
+            @Parameter(hidden = true)
+            @CurrentUser UserPrincipal userPrincipal
+    ) {
+        MyTripScheduleListRequestDto requestDto =
+                MyTripScheduleListRequestDto.of(tripId, userPrincipal.getUsersId());
+        return ApiResponse.ok(tripService.getMyTripSchedules(requestDto));
     }
 
     /**
