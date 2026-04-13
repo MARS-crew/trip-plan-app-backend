@@ -236,7 +236,9 @@ public class TripController {
 
     /**
      * 내 여행 상세의 날짜 카드에서 장소 추가하기 버튼을 눌렀을 때 표시할
-     * 저장한 장소와 위시리스트 목록을 함께 조회합니다.
+     * 저장한 장소/위시리스트 탭 데이터를 함께 조회합니다.
+     * 저장한 장소 탭에서는 현재 여행 위시리스트에 이미 담긴 장소인지 여부와
+     * 버튼 라벨(담기/취소)을 함께 반환하고, 각 탭이 비어 있을 때는 빈 상태 메시지도 함께 반환합니다.
      *
      * @param tripId 조회할 여행 PK
      * @param userPrincipal 커스텀 어노테이션으로 주입한 현재 로그인 사용자 정보
@@ -246,7 +248,7 @@ public class TripController {
     @ApiErrorExceptions({ErrorCode.INVALID_INPUT, ErrorCode.USER_NOT_FOUND, ErrorCode.INTERNAL_ERROR})
     @Operation(
             summary = "저장한 장소/위시리스트 조회",
-            description = "내 여행 상세 화면에서 날짜 카드의 장소 추가하기 버튼을 눌렀을 때 표시할 저장한 장소와 위시리스트 목록을 함께 조회합니다."
+            description = "여행 상세 바텀시트의 저장한 장소/위시리스트 탭 데이터를 함께 조회합니다. 저장한 장소의 위시 담김 상태와 탭별 빈 상태 메시지를 함께 반환합니다."
     )
     public ApiResponse<TripPlaceSelectionResponseDto> getTripPlaceSelection(
             @Parameter(description = "조회할 여행 PK", example = "5")
