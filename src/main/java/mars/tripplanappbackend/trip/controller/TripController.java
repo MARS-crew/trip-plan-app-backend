@@ -24,6 +24,7 @@ import mars.tripplanappbackend.trip.dto.request.MyTripScheduleByDateRequestDto;
 import mars.tripplanappbackend.trip.dto.request.MyTripDetailRequestDto;
 import mars.tripplanappbackend.trip.dto.request.MyTripScheduleListRequestDto;
 import mars.tripplanappbackend.trip.dto.request.MyTripScheduleLocationRequestDto;
+import mars.tripplanappbackend.trip.dto.request.MyTripScheduleRouteRequestDto;
 import mars.tripplanappbackend.trip.dto.request.NearbyTripScheduleRequestDto;
 import mars.tripplanappbackend.trip.dto.request.ShareTripRequestDto;
 import mars.tripplanappbackend.trip.dto.request.TripPlaceSelectionRequestDto;
@@ -39,6 +40,7 @@ import mars.tripplanappbackend.trip.dto.response.MyTripListResponseDto;
 import mars.tripplanappbackend.trip.dto.response.MyTripScheduleByDateResponseDto;
 import mars.tripplanappbackend.trip.dto.response.MyTripScheduleListResponseDto;
 import mars.tripplanappbackend.trip.dto.response.MyTripScheduleLocationResponseDto;
+import mars.tripplanappbackend.trip.dto.response.MyTripScheduleRouteResponseDto;
 import mars.tripplanappbackend.trip.dto.response.NearbyTripScheduleResponseDto;
 import mars.tripplanappbackend.trip.dto.response.ShareTripResponseDto;
 import mars.tripplanappbackend.trip.dto.response.TripPlaceSelectionResponseDto;
@@ -352,6 +354,39 @@ public class TripController {
         MyTripScheduleLocationRequestDto requestDto =
                 MyTripScheduleLocationRequestDto.of(tripId, userPrincipal.getUsersId());
         return ApiResponse.ok(tripService.getMyTripScheduleLocations(requestDto));
+    }
+
+    /**
+     * 내 여행 상세 화면의 특정 일정에서 "길찾기"를 눌렀을 때 사용할 목적지 정보를 조회합니다.
+     * 일정에 연결된 장소 데이터를 검증한 뒤, 구글 길찾기 앱으로 연결 가능한 URL을 함께 반환합니다.
+     *
+     * @param tripId 조회할 여행 PK
+     * @param tripScheduleId 길찾기 대상 일정 PK
+     * @param userPrincipal 커스텀 어노테이션으로 주입한 현재 로그인 사용자 정보
+     * @return 공통 응답 형식으로 감싼 길찾기 목적지 정보 응답
+     */
+    @GetMapping("/{tripId}/schedules/{tripScheduleId}/route")
+    @ApiErrorExceptions({
+            ErrorCode.INVALID_INPUT,
+            ErrorCode.USER_NOT_FOUND,
+            ErrorCode.PLACE_NOT_FOUND,
+            ErrorCode.INTERNAL_ERROR
+    })
+    @Operation(
+            summary = "길찾기",
+            description = "여행 상세 일정의 장소 정보를 기반으로 목적지 검증 후 구글 길찾기 연결 정보를 반환합니다."
+    )
+    public ApiResponse<MyTripScheduleRouteResponseDto> getMyTripScheduleRoute(
+            @Parameter(description = "조회할 여행 PK", example = "5")
+            @PathVariable("tripId") Long tripId,
+            @Parameter(description = "길찾기 대상 일정 PK", example = "7")
+            @PathVariable("tripScheduleId") Long tripScheduleId,
+            @Parameter(hidden = true)
+            @CurrentUser UserPrincipal userPrincipal
+    ) {
+        MyTripScheduleRouteRequestDto requestDto =
+                MyTripScheduleRouteRequestDto.of(tripId, tripScheduleId, userPrincipal.getUsersId());
+        return ApiResponse.ok(tripService.getMyTripScheduleRoute(requestDto));
     }
 
     /**

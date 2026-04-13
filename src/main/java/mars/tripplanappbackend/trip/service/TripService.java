@@ -24,6 +24,7 @@ import mars.tripplanappbackend.trip.dto.request.MyTripListRequestDto;
 import mars.tripplanappbackend.trip.dto.request.MyTripScheduleByDateRequestDto;
 import mars.tripplanappbackend.trip.dto.request.MyTripScheduleListRequestDto;
 import mars.tripplanappbackend.trip.dto.request.MyTripScheduleLocationRequestDto;
+import mars.tripplanappbackend.trip.dto.request.MyTripScheduleRouteRequestDto;
 import mars.tripplanappbackend.trip.dto.request.NearbyTripScheduleRequestDto;
 import mars.tripplanappbackend.trip.dto.request.ShareTripRequestDto;
 import mars.tripplanappbackend.trip.dto.request.TripPlaceSelectionRequestDto;
@@ -44,6 +45,7 @@ import mars.tripplanappbackend.trip.dto.response.MyTripScheduleItemResponseDto;
 import mars.tripplanappbackend.trip.dto.response.MyTripScheduleListResponseDto;
 import mars.tripplanappbackend.trip.dto.response.MyTripScheduleLocationItemResponseDto;
 import mars.tripplanappbackend.trip.dto.response.MyTripScheduleLocationResponseDto;
+import mars.tripplanappbackend.trip.dto.response.MyTripScheduleRouteResponseDto;
 import mars.tripplanappbackend.trip.dto.response.MyTripSummaryResponseDto;
 import mars.tripplanappbackend.trip.dto.response.NearbyTripScheduleItemResponseDto;
 import mars.tripplanappbackend.trip.dto.response.NearbyTripScheduleResponseDto;
@@ -61,6 +63,9 @@ import mars.tripplanappbackend.trip.repository.WishlistPlaceRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
@@ -87,6 +92,9 @@ public class TripService {
     private static final String TRIP_SHARE_URL_TEMPLATE = "https://lets-trip.com/trips/share/%s";
     private static final String TRIP_SHARE_TITLE_TEMPLATE = "Let's Trip에서 %s 일정을 확인해보세요.";
     private static final String TRIP_SHARE_DESCRIPTION_TEMPLATE = "%s부터 %s까지의 %s 일정을 공유합니다.";
+    private static final String GOOGLE_DIRECTIONS_BASE_URL = "https://www.google.com/maps/dir/?api=1";
+    private static final String GOOGLE_DIRECTIONS_COORDINATE_QUERY_TEMPLATE = "%s&destination=%s%%2C%s";
+    private static final String GOOGLE_DIRECTIONS_ADDRESS_QUERY_TEMPLATE = "%s&destination=%s";
     private static final DateTimeFormatter SHARE_DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyy.MM.dd");
 
     private final MyPageRepository myPageRepository;
@@ -496,6 +504,49 @@ public class TripService {
     }
 
     /**
+     * 내 여행 상세 화면의 특정 일정에 대해 외부 길찾기 앱 연결 정보를 조회합니다.
+     * 일정 소유권(내 여행 여부)과 장소 데이터 유효성을 먼저 검증한 뒤,
+     * 좌표가 있으면 좌표 기반 URL, 좌표가 없으면 주소 기반 URL로 구글 길찾기 연결 URL을 생성합니다.
+     *
+     * @param requestDto 여행 PK, 일정 PK, 로그인 사용자 아이디를 담은 길찾기 요청 DTO
+     * @return 목적지 정보와 구글 길찾기 연결 URL을 담은 응답 DTO
+     */
+    public MyTripScheduleRouteResponseDto getMyTripScheduleRoute(MyTripScheduleRouteRequestDto requestDto) {
+        validateMyTripScheduleRouteRequest(requestDto);
+        validateUserExistsByUsersId(requestDto.getUsersId());
+
+        TripSchedule tripSchedule = tripScheduleRepository
+                .findByTripScheduleIdAndTrip_TripIdAndTrip_User_UsersIdAndIsDeletedFalse(
+                        requestDto.getTripScheduleId(),
+                        requestDto.getTripId(),
+                        requestDto.getUsersId()
+                )
+                .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_INPUT));
+
+        Place place = tripSchedule.getPlace();
+        if (place == null || Boolean.TRUE.equals(place.getIsDeleted())) {
+            throw new BusinessException(ErrorCode.PLACE_NOT_FOUND);
+        }
+
+        String destinationAddress = resolveScheduleAddress(tripSchedule);
+        if (place.getLatitude() == null && place.getLongitude() == null && !hasText(destinationAddress)) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT);
+        }
+
+        String googleDirectionsUrl = buildGoogleDirectionsUrl(
+                place.getLatitude(),
+                place.getLongitude(),
+                destinationAddress
+        );
+
+        return MyTripScheduleRouteResponseDto.of(
+                tripSchedule,
+                destinationAddress,
+                googleDirectionsUrl
+        );
+    }
+
+    /**
      * 내 여행지 상세 화면에서 현재 장소를 방문 인증 기록으로 저장합니다.
      * 저장 탭용 찜과는 별개의 개념으로 처리하며, 현재 여행과 연결된 일정 카드 문맥 안에서
      * 실제 방문한 장소를 기록하는 용도로 사용합니다.
@@ -739,6 +790,24 @@ public class TripService {
     private void validateTripScheduleLocationRequest(MyTripScheduleLocationRequestDto requestDto) {
         if (requestDto.getTripId() == null
                 || requestDto.getTripId() < 1
+                || requestDto.getUsersId() == null
+                || requestDto.getUsersId().isBlank()) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT);
+        }
+    }
+
+    /**
+     * 내 여행 상세 길찾기 요청에 필요한 여행 PK, 일정 PK, 로그인 사용자 아이디를 검증합니다.
+     * 값이 누락되면 "내 여행의 특정 일정"이라는 길찾기 대상을 확정할 수 없으므로
+     * 요청 초기에 INVALID_INPUT으로 차단합니다.
+     *
+     * @param requestDto 내 여행 상세 길찾기 요청 DTO
+     */
+    private void validateMyTripScheduleRouteRequest(MyTripScheduleRouteRequestDto requestDto) {
+        if (requestDto.getTripId() == null
+                || requestDto.getTripId() < 1
+                || requestDto.getTripScheduleId() == null
+                || requestDto.getTripScheduleId() < 1
                 || requestDto.getUsersId() == null
                 || requestDto.getUsersId().isBlank()) {
             throw new BusinessException(ErrorCode.INVALID_INPUT);
@@ -1287,6 +1356,50 @@ public class TripService {
      */
     private boolean canSearchRoute(TripSchedule tripSchedule, String address) {
         return hasLocation(tripSchedule) || hasText(address);
+    }
+
+    /**
+     * 구글 길찾기 앱 연결 URL을 생성합니다.
+     * 좌표가 모두 존재하면 좌표 기반 URL을 우선 사용하고, 좌표가 없으면 주소 기반 URL로 생성합니다.
+     *
+     * @param latitude 목적지 위도
+     * @param longitude 목적지 경도
+     * @param destinationAddress 목적지 주소
+     * @return 구글 길찾기 연결 URL
+     */
+    private String buildGoogleDirectionsUrl(
+            BigDecimal latitude,
+            BigDecimal longitude,
+            String destinationAddress
+    ) {
+        if (latitude != null && longitude != null) {
+            return String.format(
+                    GOOGLE_DIRECTIONS_COORDINATE_QUERY_TEMPLATE,
+                    GOOGLE_DIRECTIONS_BASE_URL,
+                    encodeQueryValue(latitude.toPlainString()),
+                    encodeQueryValue(longitude.toPlainString())
+            );
+        }
+
+        if (!hasText(destinationAddress)) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT);
+        }
+
+        return String.format(
+                GOOGLE_DIRECTIONS_ADDRESS_QUERY_TEMPLATE,
+                GOOGLE_DIRECTIONS_BASE_URL,
+                encodeQueryValue(destinationAddress.trim())
+        );
+    }
+
+    /**
+     * URL Query 파라미터에 안전하게 포함할 수 있도록 UTF-8 인코딩을 적용합니다.
+     *
+     * @param value Query 문자열 값
+     * @return UTF-8 URL 인코딩 문자열
+     */
+    private String encodeQueryValue(String value) {
+        return URLEncoder.encode(value, StandardCharsets.UTF_8);
     }
 
     /**
