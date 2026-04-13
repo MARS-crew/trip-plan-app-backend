@@ -21,6 +21,7 @@ import mars.tripplanappbackend.trip.dto.request.DeleteWishlistPlaceRequestDto;
 import mars.tripplanappbackend.trip.dto.request.MyTripDetailRequestDto;
 import mars.tripplanappbackend.trip.dto.request.MyTripFilterRequestDto;
 import mars.tripplanappbackend.trip.dto.request.MyTripListRequestDto;
+import mars.tripplanappbackend.trip.dto.request.MyTripMapSearchRequestDto;
 import mars.tripplanappbackend.trip.dto.request.MyTripScheduleByDateRequestDto;
 import mars.tripplanappbackend.trip.dto.request.MyTripScheduleListRequestDto;
 import mars.tripplanappbackend.trip.dto.request.MyTripScheduleLocationRequestDto;
@@ -39,6 +40,8 @@ import mars.tripplanappbackend.trip.dto.response.MyTripCurrentScheduleResponseDt
 import mars.tripplanappbackend.trip.dto.response.MyTripDailyScheduleResponseDto;
 import mars.tripplanappbackend.trip.dto.response.MyTripDetailResponseDto;
 import mars.tripplanappbackend.trip.dto.response.MyTripListResponseDto;
+import mars.tripplanappbackend.trip.dto.response.MyTripMapSearchItemResponseDto;
+import mars.tripplanappbackend.trip.dto.response.MyTripMapSearchResponseDto;
 import mars.tripplanappbackend.trip.dto.response.MyTripScheduleByDateResponseDto;
 import mars.tripplanappbackend.trip.dto.response.MyTripScheduleDateOptionResponseDto;
 import mars.tripplanappbackend.trip.dto.response.MyTripScheduleItemResponseDto;
@@ -693,6 +696,58 @@ public class TripService {
     }
 
     /**
+     * 내 여행지 상세의 지도/검색창 키워드를 기준으로 장소 후보 목록을 조회합니다.
+     * 지도 핀 생성에 필요한 좌표(lat/lng)와 리스트 카드 표시 정보(이름/주소/소개/이미지)를 함께 반환하고,
+     * 현재 여행 위시리스트 담김 상태까지 포함해 프론트가 담기/취소 액션을 바로 렌더링할 수 있도록 구성합니다.
+     *
+     * @param requestDto 여행 PK, 로그인 사용자 아이디, 검색어를 담은 지도 검색 요청 DTO
+     * @return 지도 핀 + 리스트 카드 정보를 포함한 지도 검색 결과 응답 DTO
+     */
+    public MyTripMapSearchResponseDto getMyTripMapSearchResults(MyTripMapSearchRequestDto requestDto) {
+        validateMyTripMapSearchRequest(requestDto);
+        validateUserExistsByUsersId(requestDto.getUsersId());
+
+        Trip trip = tripRepository.findByTripIdAndUser_UsersIdAndIsDeletedFalse(
+                        requestDto.getTripId(),
+                        requestDto.getUsersId()
+                )
+                .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_INPUT));
+
+        String normalizedKeyword = normalizeMapSearchKeyword(requestDto.getKeyword());
+        if (normalizedKeyword == null) {
+            return MyTripMapSearchResponseDto.of(
+                    trip.getTripId(),
+                    trip.getTitle(),
+                    null,
+                    false,
+                    List.of()
+            );
+        }
+
+        List<Place> searchedPlaces = placeRepository.searchByKeyword(normalizedKeyword);
+        Map<Long, Long> wishlistPlaceIdByPlaceId = createWishlistPlaceIdByPlaceIdMap(
+                wishlistPlaceRepository.findAllByTrip_TripIdAndIsDeletedFalseAndPlace_IsDeletedFalseOrderByCreatedAtDesc(
+                        trip.getTripId()
+                )
+        );
+
+        List<MyTripMapSearchItemResponseDto> searchResults = searchedPlaces.stream()
+                .map(place -> MyTripMapSearchItemResponseDto.from(
+                        place,
+                        wishlistPlaceIdByPlaceId.get(place.getPlaceId())
+                ))
+                .toList();
+
+        return MyTripMapSearchResponseDto.of(
+                trip.getTripId(),
+                trip.getTitle(),
+                normalizedKeyword,
+                true,
+                searchResults
+        );
+    }
+
+    /**
      * 위시리스트 엔티티 목록을 "장소 PK -> 위시리스트 PK" 맵으로 변환합니다.
      * 저장한 장소 탭에서 "이미 담긴 장소인지"를 빠르게 판단하기 위해 사용합니다.
      *
@@ -888,6 +943,37 @@ public class TripService {
                 || requestDto.getUsersId() == null) {
             throw new BusinessException(ErrorCode.INVALID_INPUT);
         }
+    }
+
+    /**
+     * 내 여행지 상세 지도 검색 결과 조회 요청의 필수값을 검증합니다.
+     * 지도 검색은 여행 상세 문맥에서 동작하므로 여행 PK/사용자 아이디는 필수이며,
+     * 검색어는 기본 상태 화면을 위해 비어 있어도 허용합니다.
+     *
+     * @param requestDto 지도 검색 결과 조회 요청 DTO
+     */
+    private void validateMyTripMapSearchRequest(MyTripMapSearchRequestDto requestDto) {
+        if (requestDto.getTripId() == null
+                || requestDto.getTripId() < 1
+                || requestDto.getUsersId() == null
+                || requestDto.getUsersId().isBlank()) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT);
+        }
+    }
+
+    /**
+     * 지도 검색어를 정규화합니다.
+     * 검색어가 null/공백이면 검색을 수행하지 않도록 null을 반환하고,
+     * 값이 있으면 앞뒤 공백을 제거한 키워드를 반환합니다.
+     *
+     * @param keyword 지도 검색창 입력값
+     * @return 정규화된 검색어, 검색어가 없으면 null
+     */
+    private String normalizeMapSearchKeyword(String keyword) {
+        if (keyword == null || keyword.isBlank()) {
+            return null;
+        }
+        return keyword.trim();
     }
 
     private void validateUserExistsByUserId(Long userId) {
