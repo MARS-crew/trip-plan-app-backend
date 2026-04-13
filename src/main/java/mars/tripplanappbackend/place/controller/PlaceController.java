@@ -14,12 +14,14 @@ import mars.tripplanappbackend.place.dto.request.DeleteSavedPlaceRequestDto;
 import mars.tripplanappbackend.place.dto.request.NearbyRecommendedPlaceRequestDto;
 import mars.tripplanappbackend.place.dto.request.RecommendedPlaceRequestDto;
 import mars.tripplanappbackend.place.dto.request.SavePlaceRequestDto;
+import mars.tripplanappbackend.place.dto.request.SavedPlaceCategoryListRequestDto;
 import mars.tripplanappbackend.place.dto.request.SavedPlaceListRequestDto;
 import mars.tripplanappbackend.place.dto.request.SharePlaceRequestDto;
 import mars.tripplanappbackend.place.dto.response.NearbyRecommendedPlaceListResponseDto;
 import mars.tripplanappbackend.place.dto.response.PlaceDetailResponseDto;
 import mars.tripplanappbackend.place.dto.response.RecommendedPlaceListResponseDto;
 import mars.tripplanappbackend.place.dto.response.SavePlaceResponseDto;
+import mars.tripplanappbackend.place.dto.response.SavedPlaceCategoryListResponseDto;
 import mars.tripplanappbackend.place.dto.response.SavedPlaceListResponseDto;
 import mars.tripplanappbackend.place.dto.response.SharePlaceResponseDto;
 import mars.tripplanappbackend.place.service.PlaceService;
@@ -61,24 +63,24 @@ public class PlaceController {
     }
 
     /**
-     * 저장한 장소 화면의 카테고리 탭에 따라 저장한 장소 목록을 조회합니다.
+     * 저장된 장소 목록을 조회합니다.
      * 화면에서는 `전체`, `관광지`, `맛집`, `해변`, `자연`, `랜드마크` 값을 사용할 수 있고,
      * API에서는 동일 의미의 영문 enum 문자열도 함께 허용합니다.
      *
-     * @param filterType 저장한 장소 카테고리 값
+     * @param filterType 저장된 장소 카테고리 값
      * @param userPrincipal 커스텀 어노테이션으로 주입된 인증 사용자 정보
-     * @return 공통 응답 형식으로 감싼 저장한 장소 목록
+     * @return 공통 응답 형식으로 감싼 저장된 장소 목록
      */
     @GetMapping("/saved-places")
     @ApiErrorExceptions({ErrorCode.UNAUTHORIZED, ErrorCode.USER_NOT_FOUND, ErrorCode.INVALID_INPUT, ErrorCode.INTERNAL_ERROR})
     @Operation(
-            summary = "저장한 장소 카테고리 조회",
-            description = "저장한 장소 화면에서 선택한 카테고리값에 맞는 저장한 장소 목록을 조회합니다. 지원 값: 전체, 관광지, 맛집, 해변, 자연, 랜드마크 또는 ALL, ATTRACTION, RESTAURANT, BEACH, NATURE, LANDMARK"
+            summary = "저장된 장소 조회",
+            description = "저장한 장소 화면에서 선택한 카테고리값에 맞는 저장된 장소 목록을 조회합니다. 지원 값: 전체, 관광지, 맛집, 해변, 자연, 랜드마크 또는 ALL, ATTRACTION, RESTAURANT, BEACH, NATURE, LANDMARK"
     )
     public ApiResponse<SavedPlaceListResponseDto> getSavedPlaces(
             @Parameter(
-                    description = "저장한 장소 카테고리 값. 한글 라벨과 영문 enum 값을 모두 지원합니다.",
-                    example = "관광지"
+                    description = "저장된 장소 카테고리 값. 한글 라벨과 영문 enum 값을 모두 지원합니다.",
+                    example = "전체"
             )
             @RequestParam(name = "filterType", defaultValue = "ALL") String filterType,
             @Parameter(hidden = true)
@@ -86,6 +88,27 @@ public class PlaceController {
     ) {
         SavedPlaceListRequestDto requestDto = SavedPlaceListRequestDto.of(userPrincipal.getUsersId(), filterType);
         return ApiResponse.ok(placeService.getSavedPlaces(requestDto));
+    }
+
+    /**
+     * 저장한 장소 카테고리 목록을 조회합니다.
+     * 저장된 장소 조회 API와 분리하여, 카테고리 탭 렌더링에 필요한 카테고리 메타 정보를 제공합니다.
+     *
+     * @param userPrincipal 커스텀 어노테이션으로 주입된 인증 사용자 정보
+     * @return 공통 응답 형식으로 감싼 저장한 장소 카테고리 목록
+     */
+    @GetMapping("/saved-places/categories")
+    @ApiErrorExceptions({ErrorCode.UNAUTHORIZED, ErrorCode.USER_NOT_FOUND, ErrorCode.INTERNAL_ERROR})
+    @Operation(
+            summary = "저장한 장소 카테고리 조회",
+            description = "저장한 장소 화면 카테고리 탭에서 사용할 카테고리 코드, 라벨, 저장 개수를 조회합니다."
+    )
+    public ApiResponse<SavedPlaceCategoryListResponseDto> getSavedPlaceCategories(
+            @Parameter(hidden = true)
+            @CurrentUser UserPrincipal userPrincipal
+    ) {
+        SavedPlaceCategoryListRequestDto requestDto = SavedPlaceCategoryListRequestDto.of(userPrincipal.getUsersId());
+        return ApiResponse.ok(placeService.getSavedPlaceCategories(requestDto));
     }
 
     /**
