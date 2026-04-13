@@ -22,6 +22,7 @@ import mars.tripplanappbackend.trip.dto.request.MyTripDetailRequestDto;
 import mars.tripplanappbackend.trip.dto.request.MyTripFilterRequestDto;
 import mars.tripplanappbackend.trip.dto.request.MyTripListRequestDto;
 import mars.tripplanappbackend.trip.dto.request.MyTripScheduleByDateRequestDto;
+import mars.tripplanappbackend.trip.dto.request.MyTripScheduleListRequestDto;
 import mars.tripplanappbackend.trip.dto.request.MyTripScheduleLocationRequestDto;
 import mars.tripplanappbackend.trip.dto.request.NearbyTripScheduleRequestDto;
 import mars.tripplanappbackend.trip.dto.request.ShareTripRequestDto;
@@ -40,6 +41,7 @@ import mars.tripplanappbackend.trip.dto.response.MyTripListResponseDto;
 import mars.tripplanappbackend.trip.dto.response.MyTripScheduleByDateResponseDto;
 import mars.tripplanappbackend.trip.dto.response.MyTripScheduleDateOptionResponseDto;
 import mars.tripplanappbackend.trip.dto.response.MyTripScheduleItemResponseDto;
+import mars.tripplanappbackend.trip.dto.response.MyTripScheduleListResponseDto;
 import mars.tripplanappbackend.trip.dto.response.MyTripScheduleLocationItemResponseDto;
 import mars.tripplanappbackend.trip.dto.response.MyTripScheduleLocationResponseDto;
 import mars.tripplanappbackend.trip.dto.response.MyTripSummaryResponseDto;
@@ -338,6 +340,61 @@ public class TripService {
                 selectedDayNo,
                 dateOptions,
                 schedules
+        );
+    }
+
+    /**
+     * 내 여행 상세 화면의 일정 리스트 영역을 구성하기 위한 일차별 일정 데이터를 조회합니다.
+     * 여행 기간 전체 날짜를 1일차부터 순회하며 일정이 없는 날짜도 빈 배열로 유지해
+     * 프론트엔드가 "일정 추가하기" 화면을 일관된 구조로 렌더링할 수 있도록 합니다.
+     * 또한 각 일정 카드에 현재 진행 상태, 방문 기록 여부, 방문지 저장 버튼 노출 여부를 함께 계산합니다.
+     *
+     * @param requestDto 여행 PK와 로그인 사용자 아이디를 담은 일정 리스트 조회 요청 DTO
+     * @return 내 여행 상세 화면용 일차별 일정 리스트 응답 DTO
+     */
+    public MyTripScheduleListResponseDto getMyTripSchedules(MyTripScheduleListRequestDto requestDto) {
+        validateMyTripScheduleListRequest(requestDto);
+        validateUserExistsByUsersId(requestDto.getUsersId());
+
+        Trip trip = tripRepository.findByTripIdAndUser_UsersIdAndIsDeletedFalse(
+                        requestDto.getTripId(),
+                        requestDto.getUsersId()
+                )
+                .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_INPUT));
+
+        List<TripSchedule> tripSchedules = tripScheduleRepository
+                .findAllWithPlaceByTrip_TripIdAndIsDeletedFalseOrderByScheduleDateAscStartTimeAsc(trip.getTripId());
+
+        LocalDate today = LocalDate.now();
+        LocalTime now = LocalTime.now();
+        Set<Long> visitedPlaceIds = createVisitedPlaceIdSet(trip.getTripId());
+        long tripDayCount = ChronoUnit.DAYS.between(trip.getStartDate(), trip.getEndDate()) + 1;
+
+        Map<LocalDate, List<TripSchedule>> schedulesByDate = tripSchedules.stream()
+                .collect(Collectors.groupingBy(
+                        TripSchedule::getScheduleDate,
+                        LinkedHashMap::new,
+                        Collectors.toList()
+                ));
+
+        List<MyTripScheduleListResponseDto.DayScheduleResponseDto> dailySchedules =
+                buildTripScheduleListDailySections(
+                        trip,
+                        schedulesByDate,
+                        tripDayCount,
+                        today,
+                        now,
+                        visitedPlaceIds
+                );
+
+        boolean hasOngoingSchedule = tripSchedules.stream()
+                .anyMatch(tripSchedule -> isCurrentTripSchedule(tripSchedule, today, now));
+
+        return MyTripScheduleListResponseDto.of(
+                trip,
+                tripDayCount,
+                hasOngoingSchedule,
+                dailySchedules
         );
     }
 
@@ -659,6 +716,22 @@ public class TripService {
     }
 
     /**
+     * 내 여행 상세 일정 리스트 조회 요청에 필요한 여행 PK와 로그인 사용자 아이디를 검증합니다.
+     * 사용자 식별자가 비어 있거나 여행 PK가 음수/0이면 상세 화면 구성에 필요한 조회를 수행할 수 없으므로
+     * 요청 초기에 INVALID_INPUT으로 차단합니다.
+     *
+     * @param requestDto 내 여행 상세 일정 리스트 조회 요청 DTO
+     */
+    private void validateMyTripScheduleListRequest(MyTripScheduleListRequestDto requestDto) {
+        if (requestDto.getTripId() == null
+                || requestDto.getTripId() < 1
+                || requestDto.getUsersId() == null
+                || requestDto.getUsersId().isBlank()) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT);
+        }
+    }
+
+    /**
      * 지도용 일정 위치 조회 요청에 필요한 여행 PK와 로그인 사용자 아이디 존재 여부를 검증합니다.
      *
      * @param requestDto 일정 위치 조회 요청 DTO
@@ -897,6 +970,86 @@ public class TripService {
                     );
                 })
                 .toList();
+    }
+
+    /**
+     * 내 여행 상세 일정 리스트 API 전용으로 여행 기간 전체의 일차별 섹션을 구성합니다.
+     * 기존 상세 API와 동일하게 여행 시작일부터 종료일까지 모든 날짜를 순회하며,
+     * 일정이 없는 날짜도 빈 schedules 배열을 내려 화면 구조를 고정합니다.
+     *
+     * @param trip 조회 대상 여행 엔티티
+     * @param schedulesByDate 날짜별 여행 일정 엔티티 목록 맵
+     * @param tripDayCount 여행 총 일수
+     * @param today 서비스 기준 현재 날짜
+     * @param now 서비스 기준 현재 시간
+     * @param visitedPlaceIds 이미 방문 기록으로 저장된 장소 PK 집합
+     * @return 내 여행 상세 일정 리스트용 일차별 섹션 목록
+     */
+    private List<MyTripScheduleListResponseDto.DayScheduleResponseDto> buildTripScheduleListDailySections(
+            Trip trip,
+            Map<LocalDate, List<TripSchedule>> schedulesByDate,
+            long tripDayCount,
+            LocalDate today,
+            LocalTime now,
+            Set<Long> visitedPlaceIds
+    ) {
+        return IntStream.range(0, Math.toIntExact(tripDayCount))
+                .mapToObj(dayOffset -> {
+                    LocalDate scheduleDate = trip.getStartDate().plusDays(dayOffset);
+                    List<TripSchedule> schedules = schedulesByDate.getOrDefault(scheduleDate, List.of());
+
+                    List<MyTripScheduleListResponseDto.ScheduleItemResponseDto> scheduleItems =
+                            IntStream.range(0, schedules.size())
+                                    .mapToObj(index -> toTripScheduleListItemResponse(
+                                            schedules.get(index),
+                                            index + 1,
+                                            today,
+                                            now,
+                                            visitedPlaceIds
+                                    ))
+                                    .toList();
+
+                    return MyTripScheduleListResponseDto.DayScheduleResponseDto.of(
+                            calculateDayNo(trip.getStartDate(), scheduleDate),
+                            scheduleDate,
+                            scheduleItems
+                    );
+                })
+                .toList();
+    }
+
+    /**
+     * 여행 일정 엔티티를 내 여행 상세 일정 리스트 API의 일정 카드 DTO로 변환합니다.
+     * 화면 렌더링에 필요한 일정 순번, 현재 진행 상태, 방문 기록 여부를 함께 계산해 반환합니다.
+     *
+     * @param tripSchedule 변환 대상 여행 일정 엔티티
+     * @param scheduleOrder 해당 일차 내 일정 순번(1부터 시작)
+     * @param today 서비스 기준 현재 날짜
+     * @param now 서비스 기준 현재 시간
+     * @param visitedPlaceIds 이미 방문 기록으로 저장된 장소 PK 집합
+     * @return 내 여행 상세 일정 리스트 API용 일정 카드 DTO
+     */
+    private MyTripScheduleListResponseDto.ScheduleItemResponseDto toTripScheduleListItemResponse(
+            TripSchedule tripSchedule,
+            int scheduleOrder,
+            LocalDate today,
+            LocalTime now,
+            Set<Long> visitedPlaceIds
+    ) {
+        Long placeId = tripSchedule.getPlace() != null ? tripSchedule.getPlace().getPlaceId() : null;
+        boolean isOngoing = isCurrentTripSchedule(tripSchedule, today, now);
+        boolean visited = placeId != null && visitedPlaceIds.contains(placeId);
+        boolean canAddVisitedPlace = placeId != null && isOngoing && !visited;
+        String address = resolveScheduleAddress(tripSchedule);
+
+        return MyTripScheduleListResponseDto.ScheduleItemResponseDto.from(
+                tripSchedule,
+                scheduleOrder,
+                address,
+                isOngoing,
+                visited,
+                canAddVisitedPlace
+        );
     }
 
     /**
