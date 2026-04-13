@@ -72,6 +72,7 @@ import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -665,15 +666,21 @@ public class TripService {
                 )
                 .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_INPUT));
 
+        List<WishlistPlace> wishlistPlaceEntities = wishlistPlaceRepository
+                .findAllByTrip_TripIdAndIsDeletedFalseAndPlace_IsDeletedFalseOrderByCreatedAtDesc(trip.getTripId());
+
+        Map<Long, Long> wishlistPlaceIdByPlaceId = createWishlistPlaceIdByPlaceIdMap(wishlistPlaceEntities);
+
         List<TripPlaceSelectionItemResponseDto> savedPlaces = savedPlaceRepository
                 .findAllByUser_UsersIdAndIsDeletedFalseAndPlace_IsDeletedFalseOrderByCreatedAtDesc(requestDto.getUsersId())
                 .stream()
-                .map(TripPlaceSelectionItemResponseDto::fromSavedPlace)
+                .map(savedPlace -> TripPlaceSelectionItemResponseDto.fromSavedPlace(
+                        savedPlace,
+                        wishlistPlaceIdByPlaceId.get(savedPlace.getPlace().getPlaceId())
+                ))
                 .toList();
 
-        List<TripPlaceSelectionItemResponseDto> wishlistPlaces = wishlistPlaceRepository
-                .findAllByTrip_TripIdAndIsDeletedFalseAndPlace_IsDeletedFalseOrderByCreatedAtDesc(trip.getTripId())
-                .stream()
+        List<TripPlaceSelectionItemResponseDto> wishlistPlaces = wishlistPlaceEntities.stream()
                 .map(TripPlaceSelectionItemResponseDto::fromWishlistPlace)
                 .toList();
 
@@ -683,6 +690,24 @@ public class TripService {
                 savedPlaces,
                 wishlistPlaces
         );
+    }
+
+    /**
+     * 위시리스트 엔티티 목록을 "장소 PK -> 위시리스트 PK" 맵으로 변환합니다.
+     * 저장한 장소 탭에서 "이미 담긴 장소인지"를 빠르게 판단하기 위해 사용합니다.
+     *
+     * @param wishlistPlaces 현재 여행에 담긴 위시리스트 엔티티 목록
+     * @return 장소 PK를 키로 하는 위시리스트 PK 맵
+     */
+    private Map<Long, Long> createWishlistPlaceIdByPlaceIdMap(List<WishlistPlace> wishlistPlaces) {
+        Map<Long, Long> wishlistPlaceIdByPlaceId = new HashMap<>();
+        for (WishlistPlace wishlistPlace : wishlistPlaces) {
+            wishlistPlaceIdByPlaceId.put(
+                    wishlistPlace.getPlace().getPlaceId(),
+                    wishlistPlace.getWishlistPlaceId()
+            );
+        }
+        return wishlistPlaceIdByPlaceId;
     }
 
     /**
