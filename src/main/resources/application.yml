@@ -16,8 +16,8 @@ spring:
 
   jwt:
     secret: ${SPRING_JWT_SECRET}
-    accessTokenExpiration: ${SPRING_ACCESS_TOKEN_EXPIRATION}
-    refreshTokenExpiration: ${SPRING_REFRESH_TOKEN_EXPIRATION}
+    accessTokenExpiration: ${SPRING_JWT_ACCESS_TOKEN_EXPIRATION}
+    refreshTokenExpiration: ${SPRING_JWT_REFRESH_TOKEN_EXPIRATION}
 
 
   social:
