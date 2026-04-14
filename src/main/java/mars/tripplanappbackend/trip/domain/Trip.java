@@ -70,6 +70,7 @@ public class Trip extends BaseEntity {
     @JoinColumn(name = "user_id", nullable = false)
     private User user;
 
+
     /**
      * 내 여행 상세 화면에서 수정한 기본 여행 정보를 현재 엔티티에 반영합니다.
      * 여행 추가 화면을 재사용하는 수정 흐름을 기준으로 제목, 이미지, 기간, 상태를 함께 갱신합니다.
@@ -104,5 +105,17 @@ public class Trip extends BaseEntity {
      */
     public void updateShareCode(String shareCode) {
         this.shareCode = shareCode;
+    }
+
+    /**
+     * 여행 제목을 수정합니다.
+     *
+     * 사용자가 여행 상세 화면에서 제목을 변경할 때 호출되며,
+     * 기존 제목을 새로운 값으로 갱신합니다.
+     *
+     * @param title 변경할 여행 제목
+     */
+    public void updateTitle(String title) {
+        this.title = title;
     }
 }
