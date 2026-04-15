@@ -44,7 +44,7 @@ public class Notification extends BaseEntity {
     private Long notificationId;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "type", nullable = false, columnDefinition = "ENUM('SCHEDULE','WEATHER','SYSTEM','MARKETING')")
+    @Column(name = "type", nullable = false, columnDefinition = "ENUM('SCHEDULE','WEATHER')")
     private NotificationType type;
 
     @Column(name = "title", length = 60, nullable = false)
