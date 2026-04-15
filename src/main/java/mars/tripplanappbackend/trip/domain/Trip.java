@@ -17,6 +17,7 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import java.time.LocalDate;
 import mars.tripplanappbackend.global.entity.BaseEntity;
 import mars.tripplanappbackend.trip.enums.TripStatus;
 import mars.tripplanappbackend.mypage.domain.User;
@@ -70,6 +71,7 @@ public class Trip extends BaseEntity {
     @JoinColumn(name = "user_id", nullable = false)
     private User user;
 
+
     /**
      * 내 여행 상세 화면에서 수정한 기본 여행 정보를 현재 엔티티에 반영합니다.
      * 여행 추가 화면을 재사용하는 수정 흐름을 기준으로 제목, 이미지, 기간, 상태를 함께 갱신합니다.
@@ -104,5 +106,20 @@ public class Trip extends BaseEntity {
      */
     public void updateShareCode(String shareCode) {
         this.shareCode = shareCode;
+    }
+
+
+    /**
+     * 여행 날짜 수정 메서드
+     *
+     * @param startDate 수정할 시작 날짜
+     * @param endDate 수정할 종료 날짜
+     */
+    public void updateTripDate(LocalDate startDate, LocalDate endDate) {
+        // 시작 날짜 변경
+        this.startDate = startDate;
+
+        // 종료 날짜 변경
+        this.endDate = endDate;
     }
 }
