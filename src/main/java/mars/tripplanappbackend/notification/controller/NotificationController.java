@@ -9,12 +9,20 @@ import mars.tripplanappbackend.global.config.swagger.ApiErrorExceptions;
 import mars.tripplanappbackend.global.dto.ApiResponse;
 import mars.tripplanappbackend.global.enums.ErrorCode;
 import mars.tripplanappbackend.notification.dto.request.FcmTokenRequest;
+import mars.tripplanappbackend.notification.dto.response.NotificationResponse;
+import mars.tripplanappbackend.notification.service.FcmTokenService;
+import mars.tripplanappbackend.notification.service.NotificationService;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
+
 import mars.tripplanappbackend.notification.service.FcmTokenService;
 import mars.tripplanappbackend.notification.service.NotificationService;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+
 
 @RestController
 @RequestMapping("/api/v1/notifications")
@@ -31,10 +39,20 @@ public class NotificationController {
     @Operation(summary = "FCM 토큰 저장", description = "로그인 후 FCM 토큰 저장 api")
     public ApiResponse<Void> saveFcmToken(
             @CurrentUser UserPrincipal userPrincipal,
+            @RequestBody FcmTokenRequest request
             @Valid @RequestBody FcmTokenRequest request
     ) {
         String usersId = userPrincipal.getUsersId();
         fcmTokenService.saveToken(usersId, request);
         return ApiResponse.ok(null);
+    }
+
+    @GetMapping
+    @ApiErrorExceptions({ErrorCode.INVALID_INPUT, ErrorCode.INTERNAL_ERROR})
+    @Operation(summary = "알림 목록 조회", description = "알림 목록 조회 api")
+    public ApiResponse<List<NotificationResponse>> getNotifications(
+            @CurrentUser UserPrincipal userPrincipal
+    ) {
+        return ApiResponse.ok(notificationService.getNotifications(userPrincipal.getUsersId()));
     }
 }

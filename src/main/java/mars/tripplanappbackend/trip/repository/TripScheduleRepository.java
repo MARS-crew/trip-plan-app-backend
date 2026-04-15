@@ -29,7 +29,7 @@ public interface TripScheduleRepository extends JpaRepository<TripSchedule, Long
     List<TripSchedule> findAllByScheduleDateAndStartTime(LocalDate scheduleDate, LocalTime startTime);
 
     Optional<TripSchedule> findTop1ByTripAndScheduleDateOrderByStartTime(Trip trip, LocalDate scheduleDate);
-  
+
     Optional<TripSchedule> findByTripScheduleIdAndTrip_TripIdAndTrip_User_UsersIdAndIsDeletedFalse(
             Long tripScheduleId,
             Long tripId,

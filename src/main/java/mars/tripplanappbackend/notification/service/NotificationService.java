@@ -2,6 +2,13 @@ package mars.tripplanappbackend.notification.service;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import mars.tripplanappbackend.global.enums.ErrorCode;
+import mars.tripplanappbackend.global.enums.UseYnEnum;
+import mars.tripplanappbackend.global.exception.BusinessException;
+import mars.tripplanappbackend.mypage.domain.User;
+import mars.tripplanappbackend.mypage.repository.MyPageRepository;
+import mars.tripplanappbackend.notification.domain.Notification;
+import mars.tripplanappbackend.notification.dto.response.NotificationResponse;
 import mars.tripplanappbackend.global.enums.UseYnEnum;
 import mars.tripplanappbackend.mypage.domain.User;
 import mars.tripplanappbackend.notification.domain.Notification;
@@ -16,6 +23,8 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.util.HashMap;
+
+import java.util.List;
 import java.util.Map;
 
 @Service
@@ -27,6 +36,8 @@ public class NotificationService {
     private final NotificationRepository notificationRepository;
     private final UserFcmTokenRepository userFcmTokenRepository;
     private final FcmService fcmService;
+    private final MyPageRepository myPageRepository;
+
 
     /**
      * 알림 전송 공통 로직
@@ -72,6 +83,7 @@ public class NotificationService {
      *
      * 사용자 토큰이 존재하는 경우에만 FCM 전송을 수행
      */
+
     public void sendFcm(User user, Trip trip, TripSchedule tripSchedule,
                          NotificationType type, String title, String content) {
 
@@ -122,5 +134,26 @@ public class NotificationService {
     public void sendWeatherNotification(User user, Trip trip,
                                         String title, String content) {
         sendNotification(user, trip, null, NotificationType.WEATHER, title, content);
+    }
+
+    /**
+     * 알림 조회 + 읽음 여부 처리
+     *
+     * @param usersId JWT에서 추출한 사용자 ID
+     * @return 알림 목록
+     */
+    @Transactional
+    public List<NotificationResponse> getNotifications(String usersId) {
+        User user = myPageRepository.findByUsersId(usersId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
+
+        List<Notification> notifications = notificationRepository
+                .findByUserAndIsDeletedFalseOrderBySendAtDesc(user);
+
+        notifications.forEach(Notification::markAsRead);
+
+        return notifications.stream()
+                .map(NotificationResponse::new)
+                .toList();
     }
 }
