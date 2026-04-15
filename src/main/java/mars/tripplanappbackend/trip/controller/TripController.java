@@ -599,12 +599,21 @@ public class TripController {
      *
      * PATCH /api/v1/trips/{tripId}/date
      */
-    @Operation(summary = "내 여행 날짜 수정", description = "여행의 시작일과 종료일을 수정합니다.")
     @PatchMapping("/{tripId}/date")
-    public UpdateTripDateResponseDto updateTripDate(
+    @ApiErrorExceptions({
+            ErrorCode.INVALID_INPUT,
+            ErrorCode.INVALID_TRIP_DATE,
+            ErrorCode.TRIP_NOT_FOUND,
+            ErrorCode.INTERNAL_ERROR
+    })
+    @Operation(
+            summary = "내 여행 날짜 수정",
+            description = "내 여행의 시작일과 종료일을 수정합니다."
+    )
+    public ApiResponse<UpdateTripDateResponseDto> updateTripDate(
             @PathVariable Long tripId,
             @RequestBody UpdateTripDateRequestDto requestDto
     ) {
-        return tripService.updateTripDate(tripId, requestDto);
+        return ApiResponse.ok(tripService.updateTripDate(tripId, requestDto));
     }
 }
