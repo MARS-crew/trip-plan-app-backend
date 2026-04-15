@@ -2,6 +2,7 @@ package mars.tripplanappbackend.notification.controller;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import mars.tripplanappbackend.global.config.auth.CurrentUser;
 import mars.tripplanappbackend.global.config.auth.UserPrincipal;
@@ -16,7 +17,6 @@ import mars.tripplanappbackend.notification.service.NotificationService;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
-
 
 @RestController
 @RequestMapping("/api/v1/notifications")

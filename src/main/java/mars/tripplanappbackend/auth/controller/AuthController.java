@@ -104,7 +104,7 @@ public class AuthController {
     @PostMapping("/email-request")
     @ApiErrorExceptions({ErrorCode.INVALID_INPUT, ErrorCode.USER_NOT_FOUND, ErrorCode.INTERNAL_ERROR})
     @Operation(summary = "이메일 전송", description = "이메일 전송 api, gmail만 가능")
-    public ApiResponse<EmailResponseDto> findId(@Valid @RequestBody EmailRequestDto requestDto){
+    public ApiResponse<EmailResponseDto> sendEmail(@Valid @RequestBody EmailRequestDto requestDto){
         EmailResponseDto response = authService.sendEmail(requestDto);
         return ApiResponse.ok(response);
     }
@@ -114,7 +114,7 @@ public class AuthController {
             ErrorCode.EMAIL_CODE_EXPIRED, ErrorCode.INTERNAL_ERROR})
     @Operation(summary = "이메일 인증", description = "이메일 인증 api, 이메일로 전송된 인증 번호 6자리 입력, " +
             "해당 이메일로 가입된 유저가 없으면 user_not_found")
-    public ApiResponse<EmailVerifyResponseDto> findId(@Valid @RequestBody EmailVerifyRequestDto requestDto){
+    public ApiResponse<EmailVerifyResponseDto> emailVerify(@Valid @RequestBody EmailVerifyRequestDto requestDto){
         EmailVerifyResponseDto response = authService.verifyEmailCode(requestDto);
         return ApiResponse.ok(response);
     }
@@ -143,4 +143,12 @@ public class AuthController {
         return ApiResponse.ok(null);
     }
 
+    @PostMapping("/password/email-request")
+    @ApiErrorExceptions({ErrorCode.INVALID_INPUT, ErrorCode.USER_NOT_FOUND,
+            ErrorCode.INTERNAL_ERROR, ErrorCode.EMAIL_SEND_FAIL})
+    @Operation(summary = "임시 비밀번호 이메일 전송", description = "임시 비밀번호 이메일 전송 api, gmail만 가능")
+    public ApiResponse<PasswordEmailResponseDto> findPassword(@Valid @RequestBody PasswordEmailRequestDto requestDto){
+        PasswordEmailResponseDto response = authService.sendPasswordResetEmail(requestDto);
+        return ApiResponse.ok(response);
+    }
 }

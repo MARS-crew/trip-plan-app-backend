@@ -45,7 +45,7 @@ public class NotificationScheduler {
                     "일정 안내",
                     content
             );
-
+          
             notificationService.sendFcm(
                     schedule.getTrip().getUser(),
                     schedule.getTrip(),

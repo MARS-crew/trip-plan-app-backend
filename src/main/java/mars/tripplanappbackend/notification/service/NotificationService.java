@@ -82,7 +82,6 @@ public class NotificationService {
      *
      * 사용자 토큰이 존재하는 경우에만 FCM 전송을 수행
      */
-
     public void sendFcm(User user, Trip trip, TripSchedule tripSchedule,
                          NotificationType type, String title, String content) {
 

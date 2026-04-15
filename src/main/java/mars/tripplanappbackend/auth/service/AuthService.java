@@ -38,7 +38,7 @@ public class AuthService {
 
     /**
      * 회원가입 처리
-     * <p>
+     *
      * 소셜 가입은 비밀번호 없이 진행되므로 loginType이 LOCAL인 경우에만 비밀번호를 검증한다.
      * 비밀번호는 평문 저장을 방지하기 위해 BCrypt로 암호화 후 저장한다.
      *
@@ -69,7 +69,7 @@ public class AuthService {
 
     /**
      * 로그인 처리
-     * <p>
+     *
      * 사용자의 ID로 계정을 조회하고, 저장된 해시 비밀번호와 입력 비밀번호를 비교한다.
      * 소셜 가입 회원이 일반 로그인 API를 호출하는 경우 예외를 던진다.
      * 로그인 성공 시 AccessToken + RefreshToken을 발급하며,
@@ -112,7 +112,7 @@ public class AuthService {
 
     /**
      * AccessToken 재발급
-     * <p>
+     *
      * 클라이언트가 RefreshToken을 전달하면
      * 해당 토큰이 DB에 저장된 값과 일치하는지 확인하고,
      * 만료 여부와 토큰 유효성을 검증한 뒤 새로운 토큰을 발급한다.
@@ -154,7 +154,7 @@ public class AuthService {
 
     /**
      * 아이디 중복 확인
-     * <p>
+     *
      * 회원가입 전 사용자가 입력한 아이디의 중복 여부를 확인한다.
      * 이미 존재하는 아이디인 경우 예외를 발생시켜
      * 클라이언트에 즉시 알린다.
@@ -171,7 +171,7 @@ public class AuthService {
 
     /**
      * 아이디 찾기
-     * <p>
+     *
      * 사용자가 입력한 닉네임과 이메일로 계정을 조회한다.
      * 일치하는 계정이 없을 경우 예외를 발생시킨다.
      *
@@ -188,7 +188,7 @@ public class AuthService {
     /**
      *
      * 이메일 전송
-     * <p>
+     *
      * 입력된 gmail로 인증 코드 6자리를 전송한다.
      * 전송에 실패할 경우 EMAIL_SEND_FAIL 에러를 발생시킨다.
      *
@@ -321,4 +321,58 @@ public class AuthService {
 
         user.withdraw(requestDto.getReasonType().name(), reasonText);
     }
+
+    /**
+     * 임시 비밀번호 발급을 위한 이메일 인증 코드 전송
+     *
+     * @param requestDto 유저 로그인 아이디, 이메일
+     * @return 작성한 유저 로그인 아이디, 이메일
+     */
+    @Transactional
+    public PasswordEmailResponseDto sendPasswordResetEmail(PasswordEmailRequestDto requestDto) {
+
+        String EMAIL_VERIFY_KEY = "password:verify:";
+        String EMAIL_REQUEST_KEY = "password:requested:";
+
+        // 유저 검증 (아이디 + 이메일)
+        User user = myPageRepository.findByUsersIdAndEmail(
+                requestDto.getUsersId(),
+                requestDto.getEmail()
+        ).orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
+
+        String email = user.getEmail();
+        String usersId = user.getUsersId();
+        String code = generateVerificationCode();
+
+        // Redis 저장
+        redisTemplate.opsForValue().set(
+                EMAIL_VERIFY_KEY + email,
+                code,
+                5,
+                TimeUnit.MINUTES
+        );
+
+        redisTemplate.opsForValue().set(
+                EMAIL_REQUEST_KEY + email,
+                "true",
+                10,
+                TimeUnit.MINUTES
+        );
+
+        // 3. 이메일 전송
+        SimpleMailMessage message = new SimpleMailMessage();
+        message.setTo(email);
+        message.setSubject("비밀번호 재설정 인증 코드");
+        message.setText("인증 코드: " + code);
+
+        try {
+            mailSender.send(message);
+        } catch (Exception e) {
+            throw new BusinessException(ErrorCode.EMAIL_SEND_FAIL);
+        }
+
+        return new PasswordEmailResponseDto(usersId, email);
+    }
+
+
 }

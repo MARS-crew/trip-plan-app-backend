@@ -30,7 +30,7 @@ public enum ErrorCode {
     INVALID_EMAIL_REQUEST(HttpStatus.BAD_REQUEST, "INVALID_EMAIL_REQUEST", "이메일 요청이 유효하지 않습니다."),
     TRANSLATION_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "TRANSLATION_FAILED", "번역에 실패했습니다."),
     EXCHANGE_RATE_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "EXCHANGE_RATE_FAILED", "환율 정보 조회에 실패했습니다.");
-
+  
     private final HttpStatus status;
     private final String code;
     private final String message;
