@@ -31,7 +31,7 @@ public class NotificationController {
     @Operation(summary = "FCM 토큰 저장", description = "로그인 후 FCM 토큰 저장 api")
     public ApiResponse<Void> saveFcmToken(
             @CurrentUser UserPrincipal userPrincipal,
-            @RequestBody FcmTokenRequest request
+            @Valid @RequestBody FcmTokenRequest request
     ) {
         String usersId = userPrincipal.getUsersId();
         fcmTokenService.saveToken(usersId, request);

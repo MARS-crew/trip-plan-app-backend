@@ -45,6 +45,15 @@ public class NotificationScheduler {
                     "일정 안내",
                     content
             );
+
+            notificationService.sendFcm(
+                    schedule.getTrip().getUser(),
+                    schedule.getTrip(),
+                    schedule,
+                    NotificationType.SCHEDULE,
+                    "일정 안내",
+                    content
+            );
         }
     }
 
@@ -86,6 +95,15 @@ public class NotificationScheduler {
                     null,
                     NotificationType.WEATHER,
                     "날씨 안내",
+                    content
+            );
+
+            notificationService.sendFcm(
+                    schedule.getTrip().getUser(),
+                    schedule.getTrip(),
+                    schedule,
+                    NotificationType.SCHEDULE,
+                    "일정 안내",
                     content
             );
         }

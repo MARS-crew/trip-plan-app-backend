@@ -65,8 +65,6 @@ public class NotificationService {
                 .build();
 
         notificationRepository.save(notification);
-
-        sendFcm(user, trip, tripSchedule, type, title, content);
     }
 
     /**
@@ -74,7 +72,7 @@ public class NotificationService {
      *
      * 사용자 토큰이 존재하는 경우에만 FCM 전송을 수행
      */
-    private void sendFcm(User user, Trip trip, TripSchedule tripSchedule,
+    public void sendFcm(User user, Trip trip, TripSchedule tripSchedule,
                          NotificationType type, String title, String content) {
 
         userFcmTokenRepository.findByUser(user).ifPresent(fcmToken -> {
