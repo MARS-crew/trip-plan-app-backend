@@ -97,7 +97,7 @@ public class NotificationScheduler {
                     "날씨 안내",
                     content
             );
-
+          
             notificationService.sendFcm(
                     schedule.getTrip().getUser(),
                     schedule.getTrip(),

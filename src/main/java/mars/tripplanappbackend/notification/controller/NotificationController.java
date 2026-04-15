@@ -10,18 +10,12 @@ import mars.tripplanappbackend.global.dto.ApiResponse;
 import mars.tripplanappbackend.global.enums.ErrorCode;
 import mars.tripplanappbackend.notification.dto.request.FcmTokenRequest;
 import mars.tripplanappbackend.notification.dto.response.NotificationResponse;
+import mars.tripplanappbackend.notification.dto.response.UnreadNotificationResponse;
 import mars.tripplanappbackend.notification.service.FcmTokenService;
 import mars.tripplanappbackend.notification.service.NotificationService;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
-
-import mars.tripplanappbackend.notification.service.FcmTokenService;
-import mars.tripplanappbackend.notification.service.NotificationService;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
 
 
 @RestController
@@ -35,7 +29,7 @@ public class NotificationController {
 
     @PostMapping("/token")
     @ApiErrorExceptions({ErrorCode.INVALID_INPUT, ErrorCode.INTERNAL_ERROR,
-    ErrorCode.INVALID_FCM_TOKEN, ErrorCode.FCM_SEND_FAIL})
+            ErrorCode.INVALID_FCM_TOKEN, ErrorCode.FCM_SEND_FAIL})
     @Operation(summary = "FCM 토큰 저장", description = "로그인 후 FCM 토큰 저장 api")
     public ApiResponse<Void> saveFcmToken(
             @CurrentUser UserPrincipal userPrincipal,
@@ -54,5 +48,16 @@ public class NotificationController {
             @CurrentUser UserPrincipal userPrincipal
     ) {
         return ApiResponse.ok(notificationService.getNotifications(userPrincipal.getUsersId()));
+    }
+
+    @GetMapping("/unread")
+    @ApiErrorExceptions({ErrorCode.USER_NOT_FOUND, ErrorCode.INTERNAL_ERROR})
+    @Operation(summary = "안 읽은 알림 존재 여부 조회", description = "안 읽은 알림이 하나라도 있으면 false 반환")
+    public ApiResponse<UnreadNotificationResponse> hasUnreadNotification(
+            @CurrentUser UserPrincipal userPrincipal
+    ) {
+        return ApiResponse.ok(new UnreadNotificationResponse(
+                notificationService.hasUnreadNotification(userPrincipal.getUsersId())
+        ));
     }
 }

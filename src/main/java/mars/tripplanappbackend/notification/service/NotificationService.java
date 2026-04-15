@@ -9,6 +9,7 @@ import mars.tripplanappbackend.mypage.domain.User;
 import mars.tripplanappbackend.mypage.repository.MyPageRepository;
 import mars.tripplanappbackend.notification.domain.Notification;
 import mars.tripplanappbackend.notification.dto.response.NotificationResponse;
+import mars.tripplanappbackend.notification.dto.response.UnreadNotificationResponse;
 import mars.tripplanappbackend.global.enums.UseYnEnum;
 import mars.tripplanappbackend.mypage.domain.User;
 import mars.tripplanappbackend.notification.domain.Notification;
@@ -23,7 +24,6 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.util.HashMap;
-
 import java.util.List;
 import java.util.Map;
 
@@ -37,7 +37,6 @@ public class NotificationService {
     private final UserFcmTokenRepository userFcmTokenRepository;
     private final FcmService fcmService;
     private final MyPageRepository myPageRepository;
-
 
     /**
      * 알림 전송 공통 로직
@@ -155,5 +154,17 @@ public class NotificationService {
         return notifications.stream()
                 .map(NotificationResponse::new)
                 .toList();
+    }
+
+    /**
+     *
+     * @param usersId JWT에서 추출한 사용자 ID
+     * @return 사용자가 읽지 않은 알림이 하나라도 존재하면 false, 없으면 true 반환
+     */
+    @Transactional(readOnly = true)
+    public boolean hasUnreadNotification(String usersId) {
+        User user = myPageRepository.findByUsersId(usersId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
+        return !notificationRepository.existsByUserAndIsReadAndIsDeletedFalse(user, UseYnEnum.N);
     }
 }

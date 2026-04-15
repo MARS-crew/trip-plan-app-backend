@@ -76,7 +76,6 @@ public class FcmService {
 
         if ((errorCode == MessagingErrorCode.UNREGISTERED
                 || errorCode == MessagingErrorCode.INVALID_ARGUMENT)) {
-
             log.warn("유효하지 않은 FCM 토큰 - code: {}", errorCode);
 
             userFcmTokenRepository.deleteByToken(token);

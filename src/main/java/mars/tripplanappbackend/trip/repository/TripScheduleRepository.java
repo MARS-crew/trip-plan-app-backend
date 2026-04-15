@@ -35,4 +35,5 @@ public interface TripScheduleRepository extends JpaRepository<TripSchedule, Long
             Long tripId,
             String usersId
     );
+
 }
