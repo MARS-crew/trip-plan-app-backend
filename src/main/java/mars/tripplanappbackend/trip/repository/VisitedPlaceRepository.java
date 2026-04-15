@@ -9,4 +9,6 @@ public interface VisitedPlaceRepository extends JpaRepository<VisitedPlace, Long
     long countByUser_UserIdAndIsDeletedFalse(Long userId);
 
     java.util.List<VisitedPlace> findAllByTrip_TripIdAndIsDeletedFalse(Long tripId);
+
+    boolean existsByTrip_TripIdAndPlace_PlaceIdAndIsDeletedFalse(Long tripId, Long placeId);
 }

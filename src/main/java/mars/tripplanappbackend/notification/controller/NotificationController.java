@@ -17,6 +17,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
+
 @RestController
 @RequestMapping("/api/v1/notifications")
 @RequiredArgsConstructor
@@ -33,6 +34,7 @@ public class NotificationController {
     public ApiResponse<Void> saveFcmToken(
             @CurrentUser UserPrincipal userPrincipal,
             @RequestBody FcmTokenRequest request
+            @Valid @RequestBody FcmTokenRequest request
     ) {
         String usersId = userPrincipal.getUsersId();
         fcmTokenService.saveToken(usersId, request);

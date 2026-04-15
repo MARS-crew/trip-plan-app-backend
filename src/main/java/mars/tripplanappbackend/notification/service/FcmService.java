@@ -30,7 +30,7 @@ public class FcmService {
 
         try {
             String response = firebaseMessaging.send(message);
-            log.info("FCM 전송 성공 - token: {}, response: {}", token, response);
+            log.info("FCM 전송 성공");
 
         } catch (FirebaseMessagingException e) {
             handleFcmError(e, token);
@@ -76,10 +76,10 @@ public class FcmService {
 
         if ((errorCode == MessagingErrorCode.UNREGISTERED
                 || errorCode == MessagingErrorCode.INVALID_ARGUMENT)) {
-
-            log.warn("유효하지 않은 FCM 토큰 - 삭제 처리: {}", token);
+            log.warn("유효하지 않은 FCM 토큰 - code: {}", errorCode);
 
             userFcmTokenRepository.deleteByToken(token);
+            log.info("FCM 토큰 삭제 완료");
             return;
         }
 
