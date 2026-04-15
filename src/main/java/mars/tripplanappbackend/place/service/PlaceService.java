@@ -3,18 +3,32 @@ package mars.tripplanappbackend.place.service;
 import lombok.RequiredArgsConstructor;
 import mars.tripplanappbackend.global.enums.ErrorCode;
 import mars.tripplanappbackend.global.exception.BusinessException;
+import mars.tripplanappbackend.mypage.domain.SavedPlace;
+import mars.tripplanappbackend.mypage.domain.User;
 import mars.tripplanappbackend.mypage.repository.MyPageRepository;
 import mars.tripplanappbackend.mypage.repository.SavedPlaceRepository;
 import mars.tripplanappbackend.place.domain.Place;
 import mars.tripplanappbackend.place.domain.PlaceTagMap;
+import mars.tripplanappbackend.place.dto.request.DeleteSavedPlaceRequestDto;
 import mars.tripplanappbackend.place.dto.request.NearbyRecommendedPlaceRequestDto;
 import mars.tripplanappbackend.place.dto.request.RecommendedPlaceRequestDto;
+import mars.tripplanappbackend.place.dto.request.SavePlaceRequestDto;
+import mars.tripplanappbackend.place.dto.request.SavedPlaceCategoryListRequestDto;
+import mars.tripplanappbackend.place.dto.request.SavedPlaceListRequestDto;
+import mars.tripplanappbackend.place.dto.request.SharePlaceRequestDto;
 import mars.tripplanappbackend.place.dto.response.NearbyRecommendedPlaceListResponseDto;
 import mars.tripplanappbackend.place.dto.response.NearbyRecommendedPlaceResponseDto;
 import mars.tripplanappbackend.place.dto.response.PlaceDetailResponseDto;
 import mars.tripplanappbackend.place.dto.response.PlaceReviewPreviewResponseDto;
 import mars.tripplanappbackend.place.dto.response.RecommendedPlaceListResponseDto;
 import mars.tripplanappbackend.place.dto.response.RecommendedPlaceResponseDto;
+import mars.tripplanappbackend.place.dto.response.SavePlaceResponseDto;
+import mars.tripplanappbackend.place.dto.response.SavedPlaceCategoryListResponseDto;
+import mars.tripplanappbackend.place.dto.response.SavedPlaceCategoryResponseDto;
+import mars.tripplanappbackend.place.dto.response.SavedPlaceItemResponseDto;
+import mars.tripplanappbackend.place.dto.response.SavedPlaceListResponseDto;
+import mars.tripplanappbackend.place.dto.response.SharePlaceResponseDto;
+import mars.tripplanappbackend.place.enums.SavedPlaceFilterType;
 import mars.tripplanappbackend.place.repository.PlaceRepository;
 import mars.tripplanappbackend.place.repository.PlaceTagMapRepository;
 import mars.tripplanappbackend.review.domain.Review;
@@ -26,6 +40,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
@@ -43,6 +58,9 @@ public class PlaceService {
     private static final int MAX_TAG_COUNT = 3;
     private static final int MAX_NEARBY_RECOMMENDED_PLACE_COUNT = 3;
     private static final long MAX_NEARBY_DISTANCE_METERS = 1_000L;
+    private static final String SHARE_URL_TEMPLATE = "https://lets-trip.com/places/%d";
+    private static final String SHARE_TITLE_TEMPLATE = "Let's Trip에서 %s을(를) 확인해보세요.";
+    private static final String SHARE_DESCRIPTION_TEMPLATE = "%s에 위치한 %s의 상세 정보를 공유합니다.";
 
     private final MyPageRepository myPageRepository;
     private final SavedPlaceRepository savedPlaceRepository;
@@ -72,6 +90,139 @@ public class PlaceService {
                 .toList();
 
         return RecommendedPlaceListResponseDto.of(recommendedPlaces);
+    }
+
+    /**
+     * 저장 탭과 여행 추가 바텀시트의 저장한 장소 탭에서 사용하는 저장한 장소 목록을 조회합니다.
+     * 전체 저장 개수와 현재 필터 기준 카드 목록을 함께 반환해 저장 화면과 바텀시트가 같은 응답을 재사용할 수 있도록 합니다.
+     *
+     * @param requestDto 로그인 사용자 아이디와 필터 유형을 담은 요청 DTO
+     * @return 저장한 장소 목록 응답 DTO
+     */
+    public SavedPlaceListResponseDto getSavedPlaces(SavedPlaceListRequestDto requestDto) {
+        validateSavedPlaceListRequest(requestDto);
+        validateAuthenticatedUser(requestDto.getUsersId());
+
+        long savedPlaceCount =
+                savedPlaceRepository.countByUser_UsersIdAndIsDeletedFalseAndPlace_IsDeletedFalse(requestDto.getUsersId());
+
+        List<SavedPlace> savedPlaces = findSavedPlacesByFilter(requestDto.getUsersId(), requestDto.getFilterType());
+        Map<Long, List<String>> tagsByPlaceId = getTagsByPlaceId(
+                savedPlaces.stream()
+                        .map(SavedPlace::getPlace)
+                        .toList()
+        );
+
+        List<SavedPlaceItemResponseDto> savedPlaceCards = savedPlaces.stream()
+                .map(savedPlace -> SavedPlaceItemResponseDto.from(
+                        savedPlace,
+                        tagsByPlaceId.getOrDefault(savedPlace.getPlace().getPlaceId(), List.of())
+                ))
+                .toList();
+
+        return SavedPlaceListResponseDto.of(requestDto.getFilterType(), savedPlaceCount, savedPlaceCards);
+    }
+
+    /**
+     * 저장한 장소 카테고리 목록을 조회합니다.
+     * 저장된 장소 조회 API와 별도로 탭 렌더링용 카테고리 메타 정보를 제공합니다.
+     *
+     * @param requestDto 카테고리 목록 조회 요청 DTO
+     * @return 저장한 장소 카테고리 목록 응답 DTO
+     */
+    public SavedPlaceCategoryListResponseDto getSavedPlaceCategories(SavedPlaceCategoryListRequestDto requestDto) {
+        validateSavedPlaceCategoryListRequest(requestDto);
+        validateAuthenticatedUser(requestDto.getUsersId());
+
+        long totalSavedPlaceCount =
+                savedPlaceRepository.countByUser_UsersIdAndIsDeletedFalseAndPlace_IsDeletedFalse(requestDto.getUsersId());
+
+        List<SavedPlaceCategoryResponseDto> categories = Arrays.stream(SavedPlaceFilterType.values())
+                .map(filterType -> SavedPlaceCategoryResponseDto.of(
+                        filterType,
+                        countSavedPlacesByFilterType(requestDto.getUsersId(), filterType, totalSavedPlaceCount)
+                ))
+                .toList();
+
+        return SavedPlaceCategoryListResponseDto.of(totalSavedPlaceCount, categories);
+    }
+
+    /**
+     * 여행지 상세 페이지에서 선택한 장소를 저장 목록에 추가합니다.
+     * 사용자와 장소 존재 여부를 검증한 뒤, 이미 저장된 장소가 아니면 저장 항목을 생성합니다.
+     *
+     * @param requestDto 저장 항목 추가 요청 DTO
+     * @return 저장 항목 추가 응답 DTO
+     */
+    @Transactional
+    public SavePlaceResponseDto savePlace(SavePlaceRequestDto requestDto) {
+        validateSavePlaceRequest(requestDto);
+
+        User user = findUser(requestDto.getUsersId());
+        Place place = findPlace(requestDto.getPlaceId());
+
+        if (savedPlaceRepository.existsByUser_UsersIdAndPlace_PlaceIdAndIsDeletedFalse(
+                requestDto.getUsersId(),
+                requestDto.getPlaceId()
+        )) {
+            throw new BusinessException(ErrorCode.SAVED_PLACE_ALREADY_EXISTS);
+        }
+
+        SavedPlace savedPlace = savedPlaceRepository.save(
+                SavedPlace.builder()
+                        .user(user)
+                        .place(place)
+                        .build()
+        );
+
+        return SavePlaceResponseDto.saved(savedPlace);
+    }
+
+    /**
+     * 여행지 상세 페이지에서 공유 시트에 필요한 공유 메타데이터를 생성합니다.
+     * 사용자 인증과 장소 존재 여부를 검증한 뒤, 공유 제목/설명/링크를 조합해 반환합니다.
+     *
+     * @param requestDto 공유 요청 DTO
+     * @return 여행지 공유 응답 DTO
+     */
+    /**
+     * 저장한 장소 카드나 장소 상세 화면에서 북마크를 다시 눌러 저장을 취소합니다.
+     * placeId 기준으로 사용자의 저장 이력을 찾은 뒤 soft delete 처리하여 응답 구조를 저장 API와 동일하게 유지합니다.
+     *
+     * @param requestDto 저장 취소 요청 DTO
+     * @return 저장 취소 결과 응답 DTO
+     */
+    @Transactional
+    public SavePlaceResponseDto deleteSavedPlace(DeleteSavedPlaceRequestDto requestDto) {
+        validateDeleteSavedPlaceRequest(requestDto);
+
+        findUser(requestDto.getUsersId());
+        findPlace(requestDto.getPlaceId());
+
+        SavedPlace savedPlace = findSavedPlace(requestDto.getUsersId(), requestDto.getPlaceId());
+        savedPlace.markDeleted();
+
+        return SavePlaceResponseDto.unsaved(savedPlace);
+    }
+
+    /**
+     * Builds the share metadata consumed by the place detail screen.
+     *
+     * @param requestDto share request DTO
+     * @return place share response DTO
+     */
+    public SharePlaceResponseDto sharePlace(SharePlaceRequestDto requestDto) {
+        validateSharePlaceRequest(requestDto);
+
+        findUser(requestDto.getUsersId());
+        Place place = findPlace(requestDto.getPlaceId());
+
+        return SharePlaceResponseDto.from(
+                place,
+                createShareTitle(place),
+                createShareDescription(place),
+                createShareUrl(place.getPlaceId())
+        );
     }
 
     /**
@@ -177,6 +328,172 @@ public class PlaceService {
 
         myPageRepository.findByUsersId(usersId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
+    }
+
+    /**
+     * 저장 요청 파라미터가 유효한지 확인합니다.
+     *
+     * @param requestDto 저장 요청 DTO
+     */
+    private void validateSavePlaceRequest(SavePlaceRequestDto requestDto) {
+        if (requestDto.getPlaceId() == null || requestDto.getPlaceId() < 1 || requestDto.getUsersId() == null) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT);
+        }
+    }
+
+    /**
+     * 저장 취소 요청에 필요한 장소 PK와 사용자 아이디가 모두 존재하는지 검증합니다.
+     *
+     * @param requestDto 저장 취소 요청 DTO
+     */
+    private void validateDeleteSavedPlaceRequest(DeleteSavedPlaceRequestDto requestDto) {
+        if (requestDto.getPlaceId() == null || requestDto.getPlaceId() < 1 || requestDto.getUsersId() == null) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT);
+        }
+    }
+
+    /**
+     * 저장한 장소 목록 조회 요청에 필요한 사용자 아이디와 필터 정보가 모두 존재하는지 검증합니다.
+     *
+     * @param requestDto 저장한 장소 목록 조회 요청 DTO
+     */
+    private void validateSavedPlaceListRequest(SavedPlaceListRequestDto requestDto) {
+        if (requestDto.getUsersId() == null || requestDto.getUsersId().isBlank() || requestDto.getFilterType() == null) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT);
+        }
+    }
+
+    /**
+     * 저장한 장소 카테고리 목록 조회 요청 파라미터를 검증합니다.
+     *
+     * @param requestDto 저장한 장소 카테고리 목록 조회 요청 DTO
+     */
+    private void validateSavedPlaceCategoryListRequest(SavedPlaceCategoryListRequestDto requestDto) {
+        if (requestDto.getUsersId() == null || requestDto.getUsersId().isBlank()) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT);
+        }
+    }
+
+    /**
+     * 공유 요청에 필요한 장소 PK와 사용자 아이디가 모두 유효한지 검증합니다.
+     *
+     * @param requestDto 공유 요청 DTO
+     */
+    private void validateSharePlaceRequest(SharePlaceRequestDto requestDto) {
+        if (requestDto.getPlaceId() == null || requestDto.getPlaceId() < 1 || requestDto.getUsersId() == null) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT);
+        }
+    }
+
+    /**
+     * 사용자 아이디로 활성 사용자 정보를 조회합니다.
+     *
+     * @param usersId JWT에서 추출한 사용자 아이디
+     * @return 사용자 엔티티
+     */
+    private User findUser(String usersId) {
+        return myPageRepository.findByUsersId(usersId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
+    }
+
+    /**
+     * 저장한 장소 목록 필터 유형에 맞춰 저장한 장소 엔티티 목록을 조회합니다.
+     *
+     * @param usersId 현재 로그인한 사용자 아이디
+     * @param filterType 저장한 장소 목록 필터 유형
+     * @return 필터 조건이 반영된 저장한 장소 엔티티 목록
+     */
+    private List<SavedPlace> findSavedPlacesByFilter(String usersId, SavedPlaceFilterType filterType) {
+        if (filterType == SavedPlaceFilterType.ALL) {
+            return savedPlaceRepository.findAllByUser_UsersIdAndIsDeletedFalseAndPlace_IsDeletedFalseOrderByCreatedAtDesc(usersId);
+        }
+
+        return savedPlaceRepository
+                .findAllByUser_UsersIdAndIsDeletedFalseAndPlace_IsDeletedFalseAndPlace_PlaceTypeOrderByCreatedAtDesc(
+                        usersId,
+                        filterType.getPlaceType()
+                );
+    }
+
+    /**
+     * 카테고리 필터 유형별 저장 개수를 조회합니다.
+     * `ALL`은 전체 개수를 그대로 사용하고, 나머지는 placeType 조건 count 쿼리를 수행합니다.
+     *
+     * @param usersId 현재 로그인 사용자 아이디
+     * @param filterType 저장한 장소 필터 유형
+     * @param totalSavedPlaceCount 전체 저장 개수
+     * @return 카테고리 필터에 해당하는 저장 개수
+     */
+    private long countSavedPlacesByFilterType(
+            String usersId,
+            SavedPlaceFilterType filterType,
+            long totalSavedPlaceCount
+    ) {
+        if (filterType == SavedPlaceFilterType.ALL) {
+            return totalSavedPlaceCount;
+        }
+
+        return savedPlaceRepository.countByUser_UsersIdAndIsDeletedFalseAndPlace_IsDeletedFalseAndPlace_PlaceType(
+                usersId,
+                filterType.getPlaceType()
+        );
+    }
+
+    /**
+     * 장소 PK로 삭제되지 않은 장소 정보를 조회합니다.
+     *
+     * @param placeId 장소 PK
+     * @return 장소 엔티티
+     */
+    private Place findPlace(Long placeId) {
+        return placeRepository.findByPlaceIdAndIsDeletedFalse(placeId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.PLACE_NOT_FOUND));
+    }
+
+    /**
+     * 장소명을 이용해 공유 시트 제목을 생성합니다.
+     *
+     * @param place 공유 대상 장소 엔티티
+     * @return 공유 제목
+     */
+    /**
+     * 현재 사용자가 해당 장소를 실제로 저장해 둔 이력이 있는지 조회합니다.
+     *
+     * @param usersId 현재 로그인한 사용자 아이디
+     * @param placeId 저장 이력을 찾을 장소 PK
+     * @return 저장한 장소 엔티티
+     */
+    private SavedPlace findSavedPlace(String usersId, Long placeId) {
+        return savedPlaceRepository.findByUser_UsersIdAndPlace_PlaceIdAndIsDeletedFalse(usersId, placeId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.SAVED_PLACE_NOT_FOUND));
+    }
+
+    private String createShareTitle(Place place) {
+        return SHARE_TITLE_TEMPLATE.formatted(place.getName());
+    }
+
+    /**
+     * 국가/도시 정보와 장소명을 조합해 공유 시트 설명을 생성합니다.
+     *
+     * @param place 공유 대상 장소 엔티티
+     * @return 공유 설명
+     */
+    private String createShareDescription(Place place) {
+        String location = hasText(place.getCityName())
+                ? place.getCountryName() + " " + place.getCityName()
+                : place.getCountryName();
+
+        return SHARE_DESCRIPTION_TEMPLATE.formatted(location, place.getName());
+    }
+
+    /**
+     * 장소 PK를 기준으로 공유 링크를 생성합니다.
+     *
+     * @param placeId 공유 대상 장소 PK
+     * @return 공유 링크
+     */
+    private String createShareUrl(Long placeId) {
+        return SHARE_URL_TEMPLATE.formatted(placeId);
     }
 
     /**
