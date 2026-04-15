@@ -15,9 +15,9 @@ public class UpdateTripDateResponseDto {
     // 여행 ID
     private Long tripId;
 
-    // 수정된 시작 날짜
+    // 시작 날짜
     private String startDate;
 
-    // 수정된 종료 날짜
+    // 종료 날짜
     private String endDate;
 }

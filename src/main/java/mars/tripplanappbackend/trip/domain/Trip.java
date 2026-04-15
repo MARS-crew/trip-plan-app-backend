@@ -111,15 +111,9 @@ public class Trip extends BaseEntity {
 
     /**
      * 여행 날짜 수정 메서드
-     *
-     * @param startDate 수정할 시작 날짜
-     * @param endDate 수정할 종료 날짜
      */
     public void updateTripDate(LocalDate startDate, LocalDate endDate) {
-        // 시작 날짜 변경
         this.startDate = startDate;
-
-        // 종료 날짜 변경
         this.endDate = endDate;
     }
 }
