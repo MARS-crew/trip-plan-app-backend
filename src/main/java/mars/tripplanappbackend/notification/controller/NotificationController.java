@@ -16,6 +16,14 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
+import mars.tripplanappbackend.notification.service.FcmTokenService;
+import mars.tripplanappbackend.notification.service.NotificationService;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+
 @RestController
 @RequestMapping("/api/v1/notifications")
 @RequiredArgsConstructor
@@ -32,6 +40,7 @@ public class NotificationController {
     public ApiResponse<Void> saveFcmToken(
             @CurrentUser UserPrincipal userPrincipal,
             @RequestBody FcmTokenRequest request
+            @Valid @RequestBody FcmTokenRequest request
     ) {
         String usersId = userPrincipal.getUsersId();
         fcmTokenService.saveToken(usersId, request);

@@ -11,6 +11,6 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 public class FcmTokenRequest {
     @Schema(description = "fcm 토큰", example = "토큰값")
-    @NotNull(message = "토큰을 입력해 주세요.")
+    @NotBlank(message = "토큰을 입력해 주세요.")
     private String token;
 }

@@ -74,4 +74,22 @@ public class TripSchedule extends BaseEntity {
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "place_id", nullable = true)
     private Place place;
+
+    /**
+     * 여행 시작일이 변경되었을 때 일정의 일차 번호를 다시 계산해 반영합니다.
+     *
+     * @param dayNo 일정 날짜가 변경된 여행 기준으로 몇 일차인지 나타내는 값
+     */
+    public void updateDayNo(int dayNo) {
+        this.dayNo = dayNo;
+    }
+
+    /**
+     * 연결된 여행이 삭제되었을 때 일정도 함께 soft delete 상태로 전환합니다.
+     * 여행 상세에서 더 이상 노출되면 안 되므로 삭제 여부와 삭제 시점을 같이 기록합니다.
+     */
+    public void markDeleted() {
+        this.isDeleted = true;
+        this.deletedDate = LocalDateTime.now();
+    }
 }
