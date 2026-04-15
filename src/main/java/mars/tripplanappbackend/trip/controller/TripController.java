@@ -51,6 +51,8 @@ import mars.tripplanappbackend.trip.dto.response.UpdateTripScheduleResponseDto;
 import mars.tripplanappbackend.trip.dto.response.UpdateTripResponseDto;
 import mars.tripplanappbackend.trip.enums.MyTripFilterType;
 import mars.tripplanappbackend.trip.service.TripService;
+import mars.tripplanappbackend.trip.dto.request.UpdateTripDateRequestDto;
+import mars.tripplanappbackend.trip.dto.response.UpdateTripDateResponseDto;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -61,6 +63,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
 
@@ -665,5 +668,22 @@ public class TripController {
             @Valid @RequestBody NearbyTripScheduleRequestDto requestDto
     ) {
         return ApiResponse.ok(tripService.getNearbyTripSchedule(requestDto));
+    }
+
+    /**
+     * 여행 날짜 수정 API
+     *
+     * PATCH /api/v1/trips/{tripId}/date
+     *
+     * @param tripId 여행 ID
+     * @param requestDto 수정할 날짜 정보
+     * @return 수정된 날짜 정보
+     */
+    @PatchMapping("/{tripId}/date")
+    public UpdateTripDateResponseDto updateTripDate(
+            @PathVariable Long tripId,
+            @RequestBody UpdateTripDateRequestDto requestDto
+    ) {
+        return tripService.updateTripDate(tripId, requestDto);
     }
 }
