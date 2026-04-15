@@ -30,32 +30,7 @@ import mars.tripplanappbackend.trip.dto.request.NearbyTripScheduleRequestDto;
 import mars.tripplanappbackend.trip.dto.request.ShareTripRequestDto;
 import mars.tripplanappbackend.trip.dto.request.TripPlaceSelectionRequestDto;
 import mars.tripplanappbackend.trip.dto.request.UpdateTripRequestDto;
-import mars.tripplanappbackend.trip.dto.response.AddVisitedPlaceResponseDto;
-import mars.tripplanappbackend.trip.dto.response.AddWishlistPlaceResponseDto;
-import mars.tripplanappbackend.trip.dto.response.CreateTripResponseDto;
-import mars.tripplanappbackend.trip.dto.response.DeleteTripResponseDto;
-import mars.tripplanappbackend.trip.dto.response.DeleteTripScheduleResponseDto;
-import mars.tripplanappbackend.trip.dto.response.DeleteWishlistPlaceResponseDto;
-import mars.tripplanappbackend.trip.dto.response.MyTripCurrentScheduleResponseDto;
-import mars.tripplanappbackend.trip.dto.response.MyTripDailyScheduleResponseDto;
-import mars.tripplanappbackend.trip.dto.response.MyTripDetailResponseDto;
-import mars.tripplanappbackend.trip.dto.response.MyTripListResponseDto;
-import mars.tripplanappbackend.trip.dto.response.MyTripMapSearchItemResponseDto;
-import mars.tripplanappbackend.trip.dto.response.MyTripMapSearchResponseDto;
-import mars.tripplanappbackend.trip.dto.response.MyTripScheduleByDateResponseDto;
-import mars.tripplanappbackend.trip.dto.response.MyTripScheduleDateOptionResponseDto;
-import mars.tripplanappbackend.trip.dto.response.MyTripScheduleItemResponseDto;
-import mars.tripplanappbackend.trip.dto.response.MyTripScheduleListResponseDto;
-import mars.tripplanappbackend.trip.dto.response.MyTripScheduleLocationItemResponseDto;
-import mars.tripplanappbackend.trip.dto.response.MyTripScheduleLocationResponseDto;
-import mars.tripplanappbackend.trip.dto.response.MyTripScheduleRouteResponseDto;
-import mars.tripplanappbackend.trip.dto.response.MyTripSummaryResponseDto;
-import mars.tripplanappbackend.trip.dto.response.NearbyTripScheduleItemResponseDto;
-import mars.tripplanappbackend.trip.dto.response.NearbyTripScheduleResponseDto;
-import mars.tripplanappbackend.trip.dto.response.ShareTripResponseDto;
-import mars.tripplanappbackend.trip.dto.response.TripPlaceSelectionItemResponseDto;
-import mars.tripplanappbackend.trip.dto.response.TripPlaceSelectionResponseDto;
-import mars.tripplanappbackend.trip.dto.response.UpdateTripResponseDto;
+import mars.tripplanappbackend.trip.dto.response.*;
 import mars.tripplanappbackend.trip.enums.MyTripFilterType;
 import mars.tripplanappbackend.trip.enums.TripStatus;
 import mars.tripplanappbackend.trip.enums.WishlistSourceType;
@@ -66,7 +41,6 @@ import mars.tripplanappbackend.trip.repository.WishlistPlaceRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import mars.tripplanappbackend.trip.dto.request.UpdateTripDateRequestDto;
-import mars.tripplanappbackend.trip.dto.response.UpdateTripDateResponseDto;
 
 
 import java.math.BigDecimal;
@@ -1808,55 +1782,39 @@ public class TripService {
 
 
     /**
-     * 여행 날짜 수정 메서드
-     *
-     * @param tripId 수정할 여행 ID
-     * @param requestDto 수정할 날짜 정보
-     * @return 수정된 여행 날짜 응답 DTO
+     * 여행 날짜 수정 API
      */
     @Transactional
     public UpdateTripDateResponseDto updateTripDate(Long tripId, UpdateTripDateRequestDto requestDto) {
 
-        // 1. 요청값 검증 (null 체크)
-        validateUpdateTripDateRequest(requestDto);
+        // 1. 요청값 검증
+        if (requestDto == null ||
+                requestDto.getStartDate() == null ||
+                requestDto.getEndDate() == null) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT);
+        }
 
-        // 2. DB에서 여행 조회
+        // 2. 여행 조회
         Trip trip = tripRepository.findById(tripId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.TRIP_NOT_FOUND));
 
-        // 3. 시작일이 종료일보다 늦으면 잘못된 요청
+        // 3. 날짜 검증 (시작일 > 종료일)
         if (requestDto.getStartDate().isAfter(requestDto.getEndDate())) {
             throw new BusinessException(ErrorCode.INVALID_TRIP_DATE);
         }
 
-        // 4. 엔티티 값 변경 (JPA Dirty Checking으로 자동 update)
+        // 4. 날짜 수정
         trip.updateTripDate(
                 requestDto.getStartDate(),
                 requestDto.getEndDate()
         );
 
-        // 5. 응답 DTO 생성 후 반환
+        // 5. 응답 반환
         return UpdateTripDateResponseDto.builder()
-                .tripId(trip.getTripId()) // 여행 ID
-                .startDate(trip.getStartDate().toString()) // 시작일
-                .endDate(trip.getEndDate().toString())     // 종료일
+                .tripId(trip.getTripId())
+                .startDate(trip.getStartDate().toString())
+                .endDate(trip.getEndDate().toString())
                 .build();
-    }
-
-    /**
-     * 요청값 검증 메서드
-     * (null 체크)
-     */
-    private void validateUpdateTripDateRequest(UpdateTripDateRequestDto requestDto) {
-
-        // requestDto 자체가 null이거나
-        // 시작일 / 종료일 중 하나라도 null이면 예외 발생
-        if (requestDto == null ||
-                requestDto.getStartDate() == null ||
-                requestDto.getEndDate() == null) {
-
-            throw new BusinessException(ErrorCode.INVALID_INPUT);
-        }
     }
 
 }
