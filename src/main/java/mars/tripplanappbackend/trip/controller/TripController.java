@@ -673,6 +673,7 @@ public class TripController {
      *
      * PATCH /api/v1/trips/{tripId}/date
      */
+    @Operation(summary = "내 여행 날짜 수정", description = "여행의 시작일과 종료일을 수정합니다.")
     @PatchMapping("/{tripId}/date")
     public UpdateTripDateResponseDto updateTripDate(
             @PathVariable Long tripId,
