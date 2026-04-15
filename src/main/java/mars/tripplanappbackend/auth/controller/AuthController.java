@@ -38,8 +38,7 @@ public class AuthController {
     }
 
     @PostMapping("/login")
-    @ApiErrorExceptions({ErrorCode.INVALID_INPUT, ErrorCode.USER_NOT_FOUND,
-            ErrorCode.PASSWORD_MISMATCH, ErrorCode.INTERNAL_ERROR})
+    @ApiErrorExceptions({ErrorCode.INVALID_INPUT, ErrorCode.USER_NOT_FOUND, ErrorCode.INTERNAL_ERROR})
     @Operation(summary = "로그인", description = "로그인 api")
     public ApiResponse<LoginResponseDto> login(@Valid @RequestBody LoginRequestDto requestDto) {
         LoginResponseDto response = authService.login(requestDto);

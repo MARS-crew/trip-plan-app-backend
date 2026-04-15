@@ -9,6 +9,10 @@ import mars.tripplanappbackend.mypage.domain.User;
 import mars.tripplanappbackend.mypage.repository.MyPageRepository;
 import mars.tripplanappbackend.notification.domain.Notification;
 import mars.tripplanappbackend.notification.dto.response.NotificationResponse;
+import mars.tripplanappbackend.notification.dto.response.UnreadNotificationResponse;
+import mars.tripplanappbackend.global.enums.UseYnEnum;
+import mars.tripplanappbackend.mypage.domain.User;
+import mars.tripplanappbackend.notification.domain.Notification;
 import mars.tripplanappbackend.notification.enums.NotificationType;
 import mars.tripplanappbackend.notification.repository.NotificationRepository;
 import mars.tripplanappbackend.notification.repository.UserFcmTokenRepository;
@@ -71,8 +75,6 @@ public class NotificationService {
                 .build();
 
         notificationRepository.save(notification);
-
-        sendFcm(user, trip, tripSchedule, type, title, content);
     }
 
     /**
@@ -80,7 +82,7 @@ public class NotificationService {
      *
      * 사용자 토큰이 존재하는 경우에만 FCM 전송을 수행
      */
-    private void sendFcm(User user, Trip trip, TripSchedule tripSchedule,
+    public void sendFcm(User user, Trip trip, TripSchedule tripSchedule,
                          NotificationType type, String title, String content) {
 
         userFcmTokenRepository.findByUser(user).ifPresent(fcmToken -> {
