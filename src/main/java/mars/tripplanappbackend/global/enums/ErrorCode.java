@@ -29,7 +29,8 @@ public enum ErrorCode {
     INVALID_FCM_TOKEN(HttpStatus.BAD_REQUEST, "INVALID_FCM_TOKEN", "유효하지 않은 FCM 토큰입니다."),
     INVALID_EMAIL_REQUEST(HttpStatus.BAD_REQUEST, "INVALID_EMAIL_REQUEST", "이메일 요청이 유효하지 않습니다."),
     TRANSLATION_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "TRANSLATION_FAILED", "번역에 실패했습니다."),
-    EXCHANGE_RATE_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "EXCHANGE_RATE_FAILED", "환율 정보 조회에 실패했습니다.");
+    EXCHANGE_RATE_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "EXCHANGE_RATE_FAILED", "환율 정보 조회에 실패했습니다."),
+    INVALID_FILE_FORMAT(HttpStatus.BAD_REQUEST, "INVALID_FILE_FORMAT", "지원하지 않는 파일 형식입니다.");
   
     private final HttpStatus status;
     private final String code;
