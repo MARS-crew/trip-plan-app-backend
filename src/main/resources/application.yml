@@ -62,7 +62,7 @@ spring:
 
   firebase:
     service-account:
-      path: "config/service-account.json"
+      path: ${FCM_CONFIG_PATH:config/service-account.json}
 
 openweather:
   api:
