@@ -104,7 +104,7 @@ public class ReviewService {
 
         reviewRepository.save(review);
 
-        // 이미지 배열로 저장 (string으로 저장하기엔 문자가 너무 많음)
+        // 이미지 배열로 저장
         List<ReviewImage> images = new ArrayList<>();
         if (requestDto.getImageUrls() != null && !requestDto.getImageUrls().isEmpty()) {
             List<String> urls = requestDto.getImageUrls();
