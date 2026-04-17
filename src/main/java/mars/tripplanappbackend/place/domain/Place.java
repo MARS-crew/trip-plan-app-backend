@@ -20,6 +20,7 @@ import mars.tripplanappbackend.place.enums.PlaceType;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDateTime;
 
 @Entity
@@ -84,4 +85,21 @@ public class Place extends BaseEntity {
 
     @Column(name = "deleted_date")
     private LocalDateTime deletedDate;
+
+    // 리뷰 평점 계산 및 총 리뷰 갯수
+    public void updateRating(Integer newRating) {
+        // 첫 리뷰 달릴 때는 null 값일 수도 있는데, 이 null값으로 에러날까 봐 초기값 선언 
+        if (this.reviewCount == null) this.reviewCount = 0;
+        if (this.ratingAvg == null) this.ratingAvg = BigDecimal.ZERO;
+        
+        // 리뷰 새로 달릴 때마다 +1
+        int newCount = this.reviewCount + 1;
+        
+        //리뷰 총점 계산
+        BigDecimal total = this.ratingAvg
+                .multiply(BigDecimal.valueOf(this.reviewCount))
+                .add(BigDecimal.valueOf(newRating));
+        this.ratingAvg = total.divide(BigDecimal.valueOf(newCount), 1, RoundingMode.HALF_UP);
+        this.reviewCount = newCount;
+    }
 }
