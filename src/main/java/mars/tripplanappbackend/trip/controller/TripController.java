@@ -13,6 +13,7 @@ import mars.tripplanappbackend.global.config.swagger.ApiErrorExceptions;
 import mars.tripplanappbackend.global.dto.ApiResponse;
 import mars.tripplanappbackend.global.enums.ErrorCode;
 import mars.tripplanappbackend.trip.dto.request.AddVisitedPlaceRequestDto;
+import mars.tripplanappbackend.trip.dto.request.AddTripScheduleRequestDto;
 import mars.tripplanappbackend.trip.dto.request.AddWishlistPlaceRequestDto;
 import mars.tripplanappbackend.trip.dto.request.CreateTripRequestDto;
 import mars.tripplanappbackend.trip.dto.request.DeleteTripRequestDto;
@@ -31,6 +32,7 @@ import mars.tripplanappbackend.trip.dto.request.ShareTripRequestDto;
 import mars.tripplanappbackend.trip.dto.request.TripPlaceSelectionRequestDto;
 import mars.tripplanappbackend.trip.dto.request.UpdateTripRequestDto;
 import mars.tripplanappbackend.trip.dto.response.AddVisitedPlaceResponseDto;
+import mars.tripplanappbackend.trip.dto.response.AddTripScheduleResponseDto;
 import mars.tripplanappbackend.trip.dto.response.AddWishlistPlaceResponseDto;
 import mars.tripplanappbackend.trip.dto.response.CreateTripResponseDto;
 import mars.tripplanappbackend.trip.dto.response.DeleteTripResponseDto;
@@ -545,6 +547,58 @@ public class TripController {
         DeleteWishlistPlaceRequestDto requestDto =
                 DeleteWishlistPlaceRequestDto.of(tripId, wishlistPlaceId, userPrincipal.getUsersId());
         return ApiResponse.ok(tripService.deleteWishlistPlace(requestDto));
+    }
+
+    /**
+     * 내 여행지 상세 화면에서 날짜별 "일정 추가하기"를 통해 입력한 일정 데이터를 등록합니다.
+     * 일정명/날짜/시간/장소/메모를 전달받아 일정을 생성하고, 생성 결과를 응답합니다.
+     *
+     * @param tripId 일정을 추가할 여행 PK
+     * @param requestDto 일정 추가 입력값(일정명, 날짜, 시간, 장소, 메모)
+     * @param userPrincipal @CurrentUser 기반 인증 사용자 정보
+     * @return 공통 응답 포맷으로 감싼 일정 추가 결과
+     */
+    @PostMapping("/{tripId}/schedules")
+    @ApiErrorExceptions({
+            ErrorCode.INVALID_INPUT,
+            ErrorCode.USER_NOT_FOUND,
+            ErrorCode.PLACE_NOT_FOUND,
+            ErrorCode.INTERNAL_ERROR
+    })
+    @Operation(
+            summary = "일정 추가",
+            description = "내 여행지 상세의 일정 추가 화면에서 입력한 일정명, 날짜, 시간, 장소, 메모를 기반으로 일정을 생성합니다."
+    )
+    public ApiResponse<AddTripScheduleResponseDto> addTripSchedule(
+            @Parameter(description = "일정을 추가할 여행 PK", example = "8")
+            @PathVariable("tripId") Long tripId,
+            @io.swagger.v3.oas.annotations.parameters.RequestBody(
+                    description = "일정 추가 화면에서 입력한 정보입니다. scheduleDate는 여행 기간 내 날짜만 선택 가능합니다.",
+                    required = true,
+                    content = @Content(
+                            mediaType = "application/json",
+                            examples = @ExampleObject(
+                                    name = "일정 추가 예시",
+                                    value = """
+                                            {
+                                              "title": "점심 식사",
+                                              "scheduleDate": "2026-03-02",
+                                              "startTime": "11:30",
+                                              "endTime": "12:30",
+                                              "placeId": 7,
+                                              "memo": "현지 맛집 방문"
+                                            }
+                                            """
+                            )
+                    )
+            )
+            @Valid @RequestBody AddTripScheduleRequestDto requestDto,
+            @Parameter(hidden = true)
+            @CurrentUser UserPrincipal userPrincipal
+    ) {
+        AddTripScheduleRequestDto serviceRequestDto =
+                AddTripScheduleRequestDto.of(tripId, userPrincipal.getUsersId(), requestDto);
+        return ApiResponse.ok(tripService.addTripSchedule(serviceRequestDto));
     }
 
     /**
