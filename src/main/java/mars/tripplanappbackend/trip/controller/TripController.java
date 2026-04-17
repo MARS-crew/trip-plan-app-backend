@@ -505,8 +505,7 @@ public class TripController {
                                     name = "위시리스트 장소 추가 예시",
                                     value = """
                                             {
-                                              "placeId": 7,
-                                              "scheduleDate": "2026-04-20"
+                                              "placeId": 7
                                             }
                                             """
                             )

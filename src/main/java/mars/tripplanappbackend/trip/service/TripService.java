@@ -623,11 +623,6 @@ public class TripService {
                 )
                 .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_INPUT));
 
-        if (requestDto.getScheduleDate().isBefore(trip.getStartDate())
-                || requestDto.getScheduleDate().isAfter(trip.getEndDate())) {
-            throw new BusinessException(ErrorCode.INVALID_INPUT);
-        }
-
         Place place = placeRepository.findByPlaceIdAndIsDeletedFalse(requestDto.getPlaceId())
                 .orElseThrow(() -> new BusinessException(ErrorCode.PLACE_NOT_FOUND));
 
@@ -646,9 +641,10 @@ public class TripService {
                         .build()
         );
 
-        int dayNo = calculateDayNo(trip.getStartDate(), requestDto.getScheduleDate());
+        LocalDate responseScheduleDate = trip.getStartDate();
+        int dayNo = calculateDayNo(trip.getStartDate(), responseScheduleDate);
 
-        return AddWishlistPlaceResponseDto.from(wishlistPlace, requestDto.getScheduleDate(), dayNo);
+        return AddWishlistPlaceResponseDto.from(wishlistPlace, responseScheduleDate, dayNo);
     }
 
     /**
@@ -921,7 +917,6 @@ public class TripService {
                 || requestDto.getTripId() < 1
                 || requestDto.getPlaceId() == null
                 || requestDto.getPlaceId() < 1
-                || requestDto.getScheduleDate() == null
                 || requestDto.getUsersId() == null) {
             throw new BusinessException(ErrorCode.INVALID_INPUT);
         }
