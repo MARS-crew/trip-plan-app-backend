@@ -8,6 +8,7 @@ import mars.tripplanappbackend.mypage.repository.MyPageRepository;
 import mars.tripplanappbackend.mypage.repository.SavedPlaceRepository;
 import mars.tripplanappbackend.place.domain.Place;
 import mars.tripplanappbackend.place.repository.PlaceRepository;
+import mars.tripplanappbackend.trip.dto.request.AddTripScheduleRequestDto;
 import mars.tripplanappbackend.trip.dto.request.AddVisitedPlaceRequestDto;
 import mars.tripplanappbackend.trip.dto.request.AddWishlistPlaceRequestDto;
 import mars.tripplanappbackend.trip.domain.Trip;
@@ -30,6 +31,7 @@ import mars.tripplanappbackend.trip.dto.request.NearbyTripScheduleRequestDto;
 import mars.tripplanappbackend.trip.dto.request.ShareTripRequestDto;
 import mars.tripplanappbackend.trip.dto.request.TripPlaceSelectionRequestDto;
 import mars.tripplanappbackend.trip.dto.request.UpdateTripRequestDto;
+import mars.tripplanappbackend.trip.dto.response.AddTripScheduleResponseDto;
 import mars.tripplanappbackend.trip.dto.response.AddVisitedPlaceResponseDto;
 import mars.tripplanappbackend.trip.dto.response.AddWishlistPlaceResponseDto;
 import mars.tripplanappbackend.trip.dto.response.CreateTripResponseDto;
@@ -605,6 +607,58 @@ public class TripService {
     }
 
     /**
+     * 내 여행지 상세 화면의 "일정 추가" 입력값을 기반으로 신규 일정을 생성합니다.
+     * <p>
+     * 처리 순서는 아래와 같습니다.
+     * 1) 요청 필수값/형식 검증
+     * 2) 사용자 및 여행 소유권 검증
+     * 3) 여행 기간 내 날짜 검증
+     * 4) 선택 장소 검증(선택값이 있을 때만)
+     * 5) dayNo 계산 후 일정 저장
+     *
+     * @param requestDto 여행 PK, 사용자 식별자, 일정 입력값을 포함한 일정 추가 요청 DTO
+     * @return 생성된 일정 정보를 담은 응답 DTO
+     */
+    @Transactional
+    public AddTripScheduleResponseDto addTripSchedule(AddTripScheduleRequestDto requestDto) {
+        validateAddTripScheduleRequest(requestDto);
+        validateUserExistsByUsersId(requestDto.getUsersId());
+
+        Trip trip = tripRepository.findByTripIdAndUser_UsersIdAndIsDeletedFalse(
+                        requestDto.getTripId(),
+                        requestDto.getUsersId()
+                )
+                .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_INPUT));
+
+        validateScheduleDateInTripPeriod(requestDto.getScheduleDate(), trip.getStartDate(), trip.getEndDate());
+
+        Place place = null;
+        if (requestDto.getPlaceId() != null) {
+            place = placeRepository.findByPlaceIdAndIsDeletedFalse(requestDto.getPlaceId())
+                    .orElseThrow(() -> new BusinessException(ErrorCode.PLACE_NOT_FOUND));
+        }
+
+        int dayNo = calculateDayNo(trip.getStartDate(), requestDto.getScheduleDate());
+        String normalizedMemo = normalizeTripScheduleMemo(requestDto.getMemo());
+
+        TripSchedule savedTripSchedule = tripScheduleRepository.save(
+                TripSchedule.builder()
+                        .trip(trip)
+                        .dayNo(dayNo)
+                        .scheduleDate(requestDto.getScheduleDate())
+                        .title(requestDto.getTitle().trim())
+                        .address(place != null ? place.getAddress() : null)
+                        .startTime(requestDto.getStartTime())
+                        .endTime(requestDto.getEndTime())
+                        .memo(normalizedMemo)
+                        .place(place)
+                        .build()
+        );
+
+        return AddTripScheduleResponseDto.from(savedTripSchedule);
+    }
+
+    /**
      * 내 여행 상세 화면의 날짜별 일정 카드에서 선택한 장소를 여행 위시리스트에 추가합니다.
      * 현재 저장 구조는 여행 단위 위시리스트이므로 선택한 날짜는 저장하지 않고,
      * 요청 유효성 검증과 응답 문맥 정보 계산에만 사용합니다.
@@ -912,6 +966,45 @@ public class TripService {
         }
     }
 
+    /**
+     * 일정 추가 요청의 기본 입력값을 검증합니다.
+     * <p>
+     * 설계서 기준으로 일정명(10자), 날짜, 시작/종료 시간, 메모(100자), 선택 장소 PK 형식을 확인합니다.
+     * 시간은 시작 시간이 종료 시간보다 빨라야 유효합니다.
+     *
+     * @param requestDto 일정 추가 요청 DTO
+     */
+    private void validateAddTripScheduleRequest(AddTripScheduleRequestDto requestDto) {
+        if (requestDto.getTripId() == null
+                || requestDto.getTripId() < 1
+                || requestDto.getUsersId() == null
+                || requestDto.getUsersId().isBlank()
+                || requestDto.getTitle() == null
+                || requestDto.getTitle().isBlank()
+                || requestDto.getTitle().trim().length() > 10
+                || requestDto.getScheduleDate() == null
+                || requestDto.getStartTime() == null
+                || requestDto.getEndTime() == null
+                || !requestDto.getStartTime().isBefore(requestDto.getEndTime())
+                || (requestDto.getPlaceId() != null && requestDto.getPlaceId() < 1)
+                || (requestDto.getMemo() != null && requestDto.getMemo().length() > 100)) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT);
+        }
+    }
+
+    /**
+     * 입력받은 일정 날짜가 여행 기간 내에 포함되는지 검증합니다.
+     *
+     * @param scheduleDate 일정 날짜
+     * @param tripStartDate 여행 시작일
+     * @param tripEndDate 여행 종료일
+     */
+    private void validateScheduleDateInTripPeriod(LocalDate scheduleDate, LocalDate tripStartDate, LocalDate tripEndDate) {
+        if (scheduleDate.isBefore(tripStartDate) || scheduleDate.isAfter(tripEndDate)) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT);
+        }
+    }
+
     private void validateAddWishlistPlaceRequest(AddWishlistPlaceRequestDto requestDto) {
         if (requestDto.getTripId() == null
                 || requestDto.getTripId() < 1
@@ -1065,6 +1158,20 @@ public class TripService {
             return null;
         }
         return imageUrl.trim();
+    }
+
+    /**
+     * 일정 메모 입력값을 저장 가능한 형태로 정규화합니다.
+     * 메모가 비어 있으면 null로 저장하여 불필요한 공백 문자열 누적을 방지합니다.
+     *
+     * @param memo 일정 메모 입력값
+     * @return 정규화된 메모 값(null 허용)
+     */
+    private String normalizeTripScheduleMemo(String memo) {
+        if (memo == null || memo.isBlank()) {
+            return null;
+        }
+        return memo.trim();
     }
 
     /**
