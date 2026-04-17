@@ -2,18 +2,18 @@ package mars.tripplanappbackend.review.controller;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import mars.tripplanappbackend.global.config.auth.CurrentUser;
 import mars.tripplanappbackend.global.config.auth.UserPrincipal;
 import mars.tripplanappbackend.global.config.swagger.ApiErrorExceptions;
 import mars.tripplanappbackend.global.dto.ApiResponse;
 import mars.tripplanappbackend.global.enums.ErrorCode;
+import mars.tripplanappbackend.review.dto.request.ReviewCreateRequestDto;
+import mars.tripplanappbackend.review.dto.response.ReviewCreateResponseDto;
 import mars.tripplanappbackend.review.dto.response.ReviewPreviewResponseDto;
 import mars.tripplanappbackend.review.service.ReviewService;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequestMapping("/api/v1/reviews")
@@ -34,6 +34,21 @@ public class ReviewController {
     ) {
         String usersId = userPrincipal.getUsersId();
         ReviewPreviewResponseDto response = reviewService.getReviewPreview(usersId, visitedPlaceId);
+        return ApiResponse.ok(response);
+    }
+
+    @PostMapping
+    @Operation(summary = "리뷰 작성",
+            description = "별점, 내용, 사진으로 리뷰를 작성, 사진 없이 작성하고 싶다면 컬럼 삭제 || 빈 배열로 작성해 주세용")
+    @ApiErrorExceptions({ErrorCode.FORBIDDEN, ErrorCode.INVALID_TOKEN, ErrorCode.EXPIRED_REFRESH_TOKEN,
+            ErrorCode.USER_NOT_FOUND, ErrorCode.VISITED_PLACE_NOT_FOUND,
+            ErrorCode.DUPLICATE_REVIEW, ErrorCode.INVALID_INPUT, ErrorCode.INTERNAL_ERROR})
+    public ApiResponse<ReviewCreateResponseDto> createReview(
+            @CurrentUser UserPrincipal userPrincipal,
+            @RequestBody @Valid ReviewCreateRequestDto requestDto
+    ) {
+        String usersId = userPrincipal.getUsersId();
+        ReviewCreateResponseDto response = reviewService.createReview(usersId, requestDto);
         return ApiResponse.ok(response);
     }
 }
