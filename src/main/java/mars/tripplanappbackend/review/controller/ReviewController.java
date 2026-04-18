@@ -11,11 +11,9 @@ import mars.tripplanappbackend.global.dto.ApiResponse;
 import mars.tripplanappbackend.global.enums.ErrorCode;
 import mars.tripplanappbackend.review.dto.request.ReviewCreateRequestDto;
 import mars.tripplanappbackend.review.dto.response.ReviewCreateResponseDto;
+import mars.tripplanappbackend.review.dto.response.ReviewPreviewResponseDto;
 import mars.tripplanappbackend.review.service.ReviewService;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequestMapping("/api/v1/reviews")
@@ -25,16 +23,32 @@ public class ReviewController {
 
     private final ReviewService reviewService;
 
-    @PostMapping
-    @Operation(summary = "리뷰 생성", description = "리뷰 생성 API")
-    @ApiErrorExceptions({ErrorCode.USER_NOT_FOUND, ErrorCode.PLACE_NOT_FOUND,
+    @GetMapping("/{visitedPlaceId}/info")
+    @Operation(summary = "리뷰 작성 사전 조회",
+            description = "리뷰 작성 화면 진입 시 방문 장소명, 방문 날짜 등 사전 정보를 조회합니다.")
+    @ApiErrorExceptions({ErrorCode.FORBIDDEN, ErrorCode.INVALID_TOKEN, ErrorCode.EXPIRED_REFRESH_TOKEN,
             ErrorCode.VISITED_PLACE_NOT_FOUND, ErrorCode.INVALID_INPUT, ErrorCode.INTERNAL_ERROR})
+    public ApiResponse<ReviewPreviewResponseDto> getReviewPreview(
+            @CurrentUser UserPrincipal userPrincipal,
+            @PathVariable Long visitedPlaceId
+    ) {
+        String usersId = userPrincipal.getUsersId();
+        ReviewPreviewResponseDto response = reviewService.getReviewPreview(usersId, visitedPlaceId);
+        return ApiResponse.ok(response);
+    }
+
+    @PostMapping
+    @Operation(summary = "리뷰 작성",
+            description = "별점, 내용, 사진으로 리뷰를 작성, 사진 없이 작성하고 싶다면 컬럼 삭제 || 빈 배열로 작성해 주세용")
+    @ApiErrorExceptions({ErrorCode.FORBIDDEN, ErrorCode.INVALID_TOKEN, ErrorCode.EXPIRED_REFRESH_TOKEN,
+            ErrorCode.USER_NOT_FOUND, ErrorCode.VISITED_PLACE_NOT_FOUND,
+            ErrorCode.DUPLICATE_REVIEW, ErrorCode.INVALID_INPUT, ErrorCode.INTERNAL_ERROR})
     public ApiResponse<ReviewCreateResponseDto> createReview(
             @CurrentUser UserPrincipal userPrincipal,
-            @RequestBody @Valid ReviewCreateRequestDto requestDto) {
+            @RequestBody @Valid ReviewCreateRequestDto requestDto
+    ) {
         String usersId = userPrincipal.getUsersId();
         ReviewCreateResponseDto response = reviewService.createReview(usersId, requestDto);
-
         return ApiResponse.ok(response);
     }
 }

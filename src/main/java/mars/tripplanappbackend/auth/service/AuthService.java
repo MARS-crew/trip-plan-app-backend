@@ -22,6 +22,7 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.security.SecureRandom;
 import java.time.LocalDateTime;
 import java.util.concurrent.TimeUnit;
 
@@ -198,17 +199,27 @@ public class AuthService {
 
     @Transactional
     public EmailResponseDto sendEmail(EmailRequestDto requestDto) {
-        
+
         String email = requestDto.getEmail();
         String code = generateVerificationCode();
 
-        
-        //redis에 저장되는 내용 ex) email verify: email@gmail.com
+        String EMAIL_VERIFY_KEY = "email:verify:";
+        String EMAIL_REQUEST_KEY = "email:requested:";
+
+
+        //redis에 저장되는 내용 ex) email:verify: email@gmail.com
         // 5분 뒤에 알아서 삭제됨
         redisTemplate.opsForValue().set(
-                "email verify:" + email,
+                EMAIL_VERIFY_KEY + email,
                 code,
                 5,
+                TimeUnit.MINUTES
+        );
+
+        redisTemplate.opsForValue().set(
+                EMAIL_REQUEST_KEY + email,
+                "true",
+                10,
                 TimeUnit.MINUTES
         );
 
@@ -245,29 +256,35 @@ public class AuthService {
      */
     @Transactional
     public EmailVerifyResponseDto verifyEmailCode(EmailVerifyRequestDto requestDto) {
-        String redisKey = "email verify:" + requestDto.getEmail();
-        String savedCode = redisTemplate.opsForValue().get(redisKey);
 
-        // 코드가 만료됐을 경우 (5분 이후)
+        String email = requestDto.getEmail();
+        String EMAIL_VERIFY_KEY = "email:verify:";
+        String EMAIL_REQUEST_KEY = "email:requested:";
+
+        Boolean isRequested = redisTemplate.hasKey(EMAIL_REQUEST_KEY + email);
+        if (!Boolean.TRUE.equals(isRequested)) {
+            throw new BusinessException(ErrorCode.INVALID_EMAIL_REQUEST);
+        }
+
+        String savedCode = redisTemplate.opsForValue().get(EMAIL_VERIFY_KEY + email);
+
         if (savedCode == null) {
             throw new BusinessException(ErrorCode.EMAIL_CODE_EXPIRED);
         }
 
-        // 코드가 일치하지 않을 경우
         if (!savedCode.equals(requestDto.getCode())) {
             throw new BusinessException(ErrorCode.INVALID_EMAIL_CODE);
         }
 
-        // 인증 성공 시 Redis에서 삭제
-        redisTemplate.delete(redisKey);
+        redisTemplate.delete(EMAIL_VERIFY_KEY + email);
+        redisTemplate.delete(EMAIL_REQUEST_KEY + email);
 
-        // DB에서 사용자 찾기 후 email_verified Y로 업데이트
-        User user = myPageRepository.findByEmail(requestDto.getEmail())
+        User user = myPageRepository.findByEmail(email)
                 .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
-        user.setEmailVerified(UseYnEnum.Y);
-        myPageRepository.save(user);
 
-        return new EmailVerifyResponseDto(requestDto.getEmail(), UseYnEnum.Y);
+        user.setEmailVerified(UseYnEnum.Y);
+
+        return new EmailVerifyResponseDto(email, UseYnEnum.Y);
     }
 
     /**
@@ -305,4 +322,139 @@ public class AuthService {
 
         user.withdraw(requestDto.getReasonType().name(), reasonText);
     }
+
+    /**
+     * 임시 비밀번호 발급을 위한 이메일 인증 코드 전송
+     *
+     * @param requestDto 유저 로그인 아이디, 이메일
+     * @return 작성한 유저 로그인 아이디, 이메일
+     */
+    @Transactional
+    public PasswordEmailResponseDto sendPasswordResetEmail(PasswordEmailRequestDto requestDto) {
+
+        String EMAIL_VERIFY_KEY = "password:verify:";
+        String EMAIL_REQUEST_KEY = "password:requested:";
+
+        // 유저 검증 (아이디 + 이메일)
+        User user = myPageRepository.findByUsersIdAndEmail(
+                requestDto.getUsersId(),
+                requestDto.getEmail()
+        ).orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
+
+        String email = user.getEmail();
+        String usersId = user.getUsersId();
+        String code = generateVerificationCode();
+
+        // Redis 저장
+        redisTemplate.opsForValue().set(
+                EMAIL_VERIFY_KEY + email,
+                code,
+                5,
+                TimeUnit.MINUTES
+        );
+
+        redisTemplate.opsForValue().set(
+                EMAIL_REQUEST_KEY + email,
+                "true",
+                10,
+                TimeUnit.MINUTES
+        );
+
+        // 이메일 전송
+        SimpleMailMessage message = new SimpleMailMessage();
+        message.setTo(email);
+        message.setSubject("비밀번호 재설정 인증 코드");
+        message.setText("인증 코드: " + code);
+
+        try {
+            mailSender.send(message);
+        } catch (Exception e) {
+            throw new BusinessException(ErrorCode.EMAIL_SEND_FAIL);
+        }
+
+        return new PasswordEmailResponseDto(usersId, email);
+    }
+
+    /**
+     * 인증 코드 인증 및 임시 비밀번호 발급
+     * @param requestDto 유저 로그인 아이디, 이메일, 인증 코드
+     * @return 유저 로그인 아이디, 이메일
+     */
+    @Transactional
+    public PasswordResetResponseDto resetPassword(PasswordResetRequestDto requestDto) {
+
+        String EMAIL_VERIFY_KEY = "password:verify:";
+        String EMAIL_REQUEST_KEY = "password:requested:";
+
+        String email = requestDto.getEmail();
+        String usersId = requestDto.getUsersId();
+
+        // 요청 여부 확인 (이메일 틀림)
+        Boolean isRequested = redisTemplate.hasKey(EMAIL_REQUEST_KEY + email);
+        if (!Boolean.TRUE.equals(isRequested)) {
+            throw new BusinessException(ErrorCode.INVALID_EMAIL_REQUEST);
+        }
+
+        // 코드 조회
+        String savedCode = redisTemplate.opsForValue().get(EMAIL_VERIFY_KEY + email);
+
+        // 만료 확인
+        if (savedCode == null) {
+            throw new BusinessException(ErrorCode.EMAIL_CODE_EXPIRED);
+        }
+
+        // 코드 불일치
+        if (!savedCode.equals(requestDto.getCode())) {
+            throw new BusinessException(ErrorCode.INVALID_EMAIL_CODE);
+        }
+
+        // 유저 확인
+        User user = myPageRepository.findByUsersIdAndEmail(
+                requestDto.getUsersId(),
+                requestDto.getEmail()
+        ).orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
+
+        // 임시 비밀번호 생성
+        String tempPassword = generateTempPassword();
+
+        // 임시 비밀번호 저장
+        user.updatePassword(passwordEncoder.encode(tempPassword));
+
+        // Redis 삭제
+        redisTemplate.delete(EMAIL_VERIFY_KEY + email);
+        redisTemplate.delete(EMAIL_REQUEST_KEY + email);
+
+        // 이메일 전송
+        SimpleMailMessage message = new SimpleMailMessage();
+        message.setTo(email);
+        message.setSubject("임시 비밀번호 발급");
+        message.setText("임시 비밀번호: " + tempPassword);
+
+        try {
+            mailSender.send(message);
+        } catch (Exception e) {
+            throw new BusinessException(ErrorCode.EMAIL_SEND_FAIL);
+        }
+        return new PasswordResetResponseDto(usersId, email);
+    }
+
+    /**
+     * 임시 비밀번호 생성
+     * @return 영문 대소문자 + 숫자 조합 10자리 임시 비밀번호
+     */
+    private String generateTempPassword() {
+        String chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+        SecureRandom random = new SecureRandom();
+
+        StringBuilder password = new StringBuilder();
+
+        for (int i = 0; i < 10; i++) {
+            int index = random.nextInt(chars.length());
+            password.append(chars.charAt(index));
+        }
+
+        return password.toString();
+    }
+
+
 }

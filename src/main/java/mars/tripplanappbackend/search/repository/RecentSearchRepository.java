@@ -13,21 +13,20 @@ import java.util.Optional;
 public interface RecentSearchRepository extends JpaRepository<RecentSearch, Long> {
 
     @Query("""
-            select r.keyword as keyword, count(r.recentSearchId) as searchCount
+            select r.keyword as keyword, sum(r.searchCount) as searchCount
             from RecentSearch r
-            where r.isDeleted = false
             group by r.keyword
-            order by count(r.recentSearchId) desc, max(r.createdAt) desc, r.keyword asc
+            order by sum(r.searchCount) desc, max(r.updatedAt) desc, r.keyword asc
             """)
     List<PopularSearchKeywordProjection> findPopularSearchKeywords(Pageable pageable);
 
-    List<RecentSearch> findAllByUser_UsersIdAndIsDeletedFalseOrderByCreatedAtDesc(String usersId, Pageable pageable);
+    List<RecentSearch> findAllByUser_UsersIdAndIsDeletedFalseOrderByUpdatedAtDesc(String usersId, Pageable pageable);
 
-    List<RecentSearch> findAllByUser_UsersIdAndIsDeletedFalseOrderByCreatedAtDesc(String usersId);
+    List<RecentSearch> findAllByUser_UsersIdAndIsDeletedFalseOrderByUpdatedAtDesc(String usersId);
 
     List<RecentSearch> findAllByUser_UsersIdAndIsDeletedFalse(String usersId);
 
-    List<RecentSearch> findAllByUser_UsersIdAndKeywordAndIsDeletedFalse(String usersId, String keyword);
+    List<RecentSearch> findAllByUser_UsersIdAndKeywordOrderByUpdatedAtDesc(String usersId, String keyword);
 
     Optional<RecentSearch> findByRecentSearchIdAndUser_UsersIdAndIsDeletedFalse(Long recentSearchId, String usersId);
 }

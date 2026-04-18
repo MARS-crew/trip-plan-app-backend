@@ -9,4 +9,6 @@ import java.util.List;
 @Repository
 public interface ReviewRepository extends JpaRepository<Review, Long> {
     List<Review> findTop3ByPlace_PlaceIdAndIsDeletedFalseOrderByCreatedAtDesc(Long placeId);
+
+    boolean existsByVisitedPlace_VisitedPlaceIdAndIsDeletedFalse(Long visitedPlaceId);
 }

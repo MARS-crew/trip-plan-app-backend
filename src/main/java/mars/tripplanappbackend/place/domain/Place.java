@@ -20,6 +20,7 @@ import mars.tripplanappbackend.place.enums.PlaceType;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDateTime;
 
 @Entity
@@ -38,6 +39,9 @@ public class Place extends BaseEntity {
 
     @Column(name = "name", length = 80, nullable = false)
     private String name;
+
+    @Column(name = "google_place_id", length = 120)
+    private String googlePlaceId;
 
     @Column(name = "country_name", length = 70, nullable = false)
     private String countryName;
@@ -74,8 +78,11 @@ public class Place extends BaseEntity {
 
     @Enumerated(EnumType.STRING)
     @Builder.Default
-    @Column(name = "place_type", nullable = false,
-            columnDefinition = "ENUM('ATTRACTION','RESTAURANT','BEACH','NATURE','LANDMARK','ACCOMMODATION','SHOPPING','CULTURE')")
+    @Column(
+            name = "place_type",
+            nullable = false,
+            columnDefinition = "ENUM('ATTRACTION','RESTAURANT','BEACH','NATURE','LANDMARK','ACCOMMODATION','SHOPPING','CULTURE')"
+    )
     private PlaceType placeType = PlaceType.ATTRACTION;
 
     @Builder.Default
@@ -84,4 +91,47 @@ public class Place extends BaseEntity {
 
     @Column(name = "deleted_date")
     private LocalDateTime deletedDate;
+
+    /**
+     * Updates core place fields from Google Places sync result.
+     */
+    public void updateFromGoogle(
+            String googlePlaceId,
+            String name,
+            String countryName,
+            String cityName,
+            String address,
+            BigDecimal latitude,
+            BigDecimal longitude,
+            BigDecimal ratingAvg
+    ) {
+        this.googlePlaceId = googlePlaceId;
+        this.name = name;
+        this.countryName = countryName;
+        this.cityName = cityName;
+        this.address = address;
+        this.latitude = latitude;
+        this.longitude = longitude;
+        this.ratingAvg = ratingAvg;
+    }
+
+    /**
+     * Recalculates average rating and review count when a new review is created.
+     */
+    public void updateRating(Integer newRating) {
+        if (this.reviewCount == null) {
+            this.reviewCount = 0;
+        }
+        if (this.ratingAvg == null) {
+            this.ratingAvg = BigDecimal.ZERO;
+        }
+
+        int newCount = this.reviewCount + 1;
+        BigDecimal total = this.ratingAvg
+                .multiply(BigDecimal.valueOf(this.reviewCount))
+                .add(BigDecimal.valueOf(newRating));
+
+        this.ratingAvg = total.divide(BigDecimal.valueOf(newCount), 1, RoundingMode.HALF_UP);
+        this.reviewCount = newCount;
+    }
 }

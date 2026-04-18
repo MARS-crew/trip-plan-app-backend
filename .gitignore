@@ -40,3 +40,5 @@ out/
 bootrun-*.log
 bootrun-*.err
 bootrun-*.err.log
+
+src/main/resources/config/service-account.json

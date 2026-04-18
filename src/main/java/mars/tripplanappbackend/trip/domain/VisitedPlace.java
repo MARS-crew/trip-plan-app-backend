@@ -63,4 +63,13 @@ public class VisitedPlace extends BaseEntity {
     @JoinColumn(name = "place_id", nullable = false)
     private Place place;
 
+    /**
+     * 연결된 여행이 삭제되면 방문 기록도 함께 soft delete 상태로 전환합니다.
+     * 여행을 기준으로 묶여 있는 방문 기록이 별도로 남아 통계나 마이페이지 수치에 영향을 주지 않도록
+     * 삭제 여부와 삭제 시점을 함께 기록합니다.
+     */
+    public void markDeleted() {
+        this.isDeleted = true;
+        this.deletedDate = LocalDateTime.now();
+    }
 }
