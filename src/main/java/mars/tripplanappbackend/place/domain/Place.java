@@ -103,8 +103,7 @@ public class Place extends BaseEntity {
             String address,
             BigDecimal latitude,
             BigDecimal longitude,
-            BigDecimal ratingAvg,
-            Integer reviewCount
+            BigDecimal ratingAvg
     ) {
         this.googlePlaceId = googlePlaceId;
         this.name = name;
@@ -114,7 +113,6 @@ public class Place extends BaseEntity {
         this.latitude = latitude;
         this.longitude = longitude;
         this.ratingAvg = ratingAvg;
-        this.reviewCount = reviewCount;
     }
 
     /**

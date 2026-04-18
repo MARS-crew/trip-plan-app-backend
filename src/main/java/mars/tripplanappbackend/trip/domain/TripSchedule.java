@@ -85,6 +85,41 @@ public class TripSchedule extends BaseEntity {
     }
 
     /**
+     * 일정 수정 API에서 전달된 값으로 일정 정보를 일괄 갱신합니다.
+     * <p>
+     * 수정 시점에 dayNo도 함께 계산하여 저장하므로, 일정 날짜 변경 시 일차 정보도 즉시 일치합니다.
+     * 장소가 없는 일정(place=null)도 허용하며, 이 경우 주소도 null로 저장됩니다.
+     *
+     * @param dayNo 여행 시작일 기준 일차
+     * @param scheduleDate 일정 날짜
+     * @param title 일정명
+     * @param address 일정 주소(장소 연동 주소)
+     * @param startTime 시작 시간
+     * @param endTime 종료 시간
+     * @param memo 메모
+     * @param place 장소 엔티티(nullable)
+     */
+    public void updateSchedule(
+            int dayNo,
+            LocalDate scheduleDate,
+            String title,
+            String address,
+            LocalTime startTime,
+            LocalTime endTime,
+            String memo,
+            Place place
+    ) {
+        this.dayNo = dayNo;
+        this.scheduleDate = scheduleDate;
+        this.title = title;
+        this.address = address;
+        this.startTime = startTime;
+        this.endTime = endTime;
+        this.memo = memo;
+        this.place = place;
+    }
+
+    /**
      * 연결된 여행이 삭제되었을 때 일정도 함께 soft delete 상태로 전환합니다.
      * 여행 상세에서 더 이상 노출되면 안 되므로 삭제 여부와 삭제 시점을 같이 기록합니다.
      */

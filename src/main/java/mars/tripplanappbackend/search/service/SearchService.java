@@ -242,7 +242,6 @@ public class SearchService {
         BigDecimal latitude = normalizeCoordinate(candidate.latitude());
         BigDecimal longitude = normalizeCoordinate(candidate.longitude());
         BigDecimal ratingAvg = normalizeRating(candidate.rating());
-        Integer reviewCount = normalizeReviewCount(candidate.reviewCount());
 
         Place place = placeRepository.findByGooglePlaceIdAndIsDeletedFalse(candidate.googlePlaceId())
                 .or(() -> findByNameAndAddress(name, address))
@@ -258,7 +257,6 @@ public class SearchService {
                     .latitude(latitude)
                     .longitude(longitude)
                     .ratingAvg(ratingAvg)
-                    .reviewCount(reviewCount)
                     .build());
         }
 
@@ -270,8 +268,7 @@ public class SearchService {
                 address,
                 latitude,
                 longitude,
-                ratingAvg,
-                reviewCount
+                ratingAvg
         );
         return place;
     }
@@ -311,13 +308,6 @@ public class SearchService {
             return BigDecimal.ZERO;
         }
         return BigDecimal.valueOf(rating).setScale(1, RoundingMode.HALF_UP);
-    }
-
-    private Integer normalizeReviewCount(Integer reviewCount) {
-        if (reviewCount == null || reviewCount < 0) {
-            return 0;
-        }
-        return reviewCount;
     }
 
     private String extractCountryName(String address) {

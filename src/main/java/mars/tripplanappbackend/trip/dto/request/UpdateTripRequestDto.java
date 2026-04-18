@@ -16,7 +16,7 @@ import java.time.LocalDate;
  */
 @Getter
 @NoArgsConstructor(access = AccessLevel.PRIVATE)
-@Schema(description = "내 일정 수정 요청 DTO")
+@Schema(description = "여행 수정 요청 DTO")
 public class UpdateTripRequestDto {
 
     @Schema(hidden = true)
