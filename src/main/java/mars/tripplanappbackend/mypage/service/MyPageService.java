@@ -9,11 +9,15 @@ import mars.tripplanappbackend.mypage.dto.request.UpdateProfileRequestDto;
 import mars.tripplanappbackend.mypage.dto.resopnse.*;
 import mars.tripplanappbackend.mypage.repository.SavedPlaceRepository;
 import mars.tripplanappbackend.mypage.repository.MyPageRepository;
+import mars.tripplanappbackend.trip.domain.VisitedPlace;
 import mars.tripplanappbackend.trip.repository.TripRepository;
 import mars.tripplanappbackend.trip.repository.VisitedPlaceRepository;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.util.List;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -149,5 +153,20 @@ public class MyPageService {
                 savedPlaceRepository.countByUserAndIsDeletedFalse(user),
                 visitedPlaceRepository.countByUser_UserIdAndIsDeletedFalse(user.getUserId())
         );
+    }
+
+    /**
+     * 내 방문 장소 목록 조회
+     *
+     * @param usersId JWT 토큰에서 추출된 사용자 식별자
+     * @return 방문 장소 목록
+     */
+    public List<VisitedPlaceResponseDto> getMyVisitedPlaces(String usersId) {
+        List<VisitedPlace> visitedPlaces =
+                visitedPlaceRepository.findByUser_UsersIdAndIsDeletedFalseOrderByVisitedAtDesc(usersId);
+
+        return visitedPlaces.stream()
+                .map(VisitedPlaceResponseDto::new)
+                .toList();
     }
 }
