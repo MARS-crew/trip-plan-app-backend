@@ -126,4 +126,16 @@ public class MyPageController {
         );
         return ApiResponse.ok(response);
     }
+
+    @GetMapping("/visited")
+    @Operation(summary = "내 방문 장소 목록 조회",
+            description = "본인의 방문 장소 목록을 최신 방문순으로 조회")
+    @ApiErrorExceptions({ErrorCode.INVALID_TOKEN, ErrorCode.EXPIRED_REFRESH_TOKEN, ErrorCode.INTERNAL_ERROR})
+    public ApiResponse<List<VisitedPlaceResponseDto>> getMyVisitedPlaces(
+            @CurrentUser UserPrincipal userPrincipal
+    ) {
+        String usersId = userPrincipal.getUsersId();
+        List<VisitedPlaceResponseDto> response = myPageService.getMyVisitedPlaces(usersId);
+        return ApiResponse.ok(response);
+    }
 }

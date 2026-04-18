@@ -154,4 +154,19 @@ public class MyPageService {
                 visitedPlaceRepository.countByUser_UserIdAndIsDeletedFalse(user.getUserId())
         );
     }
+
+    /**
+     * 내 방문 장소 목록 조회
+     *
+     * @param usersId JWT 토큰에서 추출된 사용자 식별자
+     * @return 방문 장소 목록
+     */
+    public List<VisitedPlaceResponseDto> getMyVisitedPlaces(String usersId) {
+        List<VisitedPlace> visitedPlaces =
+                visitedPlaceRepository.findByUser_UsersIdAndIsDeletedFalseOrderByVisitedAtDesc(usersId);
+
+        return visitedPlaces.stream()
+                .map(VisitedPlaceResponseDto::new)
+                .toList();
+    }
 }
