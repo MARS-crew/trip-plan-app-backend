@@ -237,8 +237,18 @@ public class SearchService {
 
         String name = truncate(candidate.name().trim(), PLACE_NAME_MAX_LENGTH);
         String address = truncate(nullableTrim(candidate.formattedAddress()), ADDRESS_MAX_LENGTH);
-        String countryName = extractCountryName(address);
-        String cityName = extractCityName(address);
+
+        // 주소 파싱은 "components -> 한국형 fallback -> 일반 fallback" 순서로 처리합니다.
+        GoogleAddressParser.ParsedAddress parsedAddress = GoogleAddressParser.parse(
+                address,
+                candidate.addressComponents()
+        );
+        String countryName = truncate(nullableTrim(parsedAddress.countryName()), COUNTRY_NAME_MAX_LENGTH);
+        if (!hasText(countryName)) {
+            countryName = DEFAULT_COUNTRY_NAME;
+        }
+        String cityName = truncate(nullableTrim(parsedAddress.cityName()), CITY_NAME_MAX_LENGTH);
+
         BigDecimal latitude = normalizeCoordinate(candidate.latitude());
         BigDecimal longitude = normalizeCoordinate(candidate.longitude());
         BigDecimal ratingAvg = normalizeRating(candidate.rating());
@@ -308,36 +318,6 @@ public class SearchService {
             return BigDecimal.ZERO;
         }
         return BigDecimal.valueOf(rating).setScale(1, RoundingMode.HALF_UP);
-    }
-
-    private String extractCountryName(String address) {
-        if (!hasText(address) || !address.contains(",")) {
-            return DEFAULT_COUNTRY_NAME;
-        }
-
-        String[] tokens = address.split(",");
-        String candidate = nullableTrim(tokens[tokens.length - 1]);
-        if (!hasText(candidate)) {
-            return DEFAULT_COUNTRY_NAME;
-        }
-        return truncate(candidate, COUNTRY_NAME_MAX_LENGTH);
-    }
-
-    private String extractCityName(String address) {
-        if (!hasText(address) || !address.contains(",")) {
-            return null;
-        }
-
-        String[] tokens = address.split(",");
-        if (tokens.length < 2) {
-            return null;
-        }
-
-        String candidate = nullableTrim(tokens[tokens.length - 2]);
-        if (!hasText(candidate)) {
-            return null;
-        }
-        return truncate(candidate, CITY_NAME_MAX_LENGTH);
     }
 
     private String truncate(String value, int maxLength) {
