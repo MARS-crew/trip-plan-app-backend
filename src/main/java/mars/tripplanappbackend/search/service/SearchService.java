@@ -30,9 +30,13 @@ import mars.tripplanappbackend.search.enums.SearchCategory;
 import mars.tripplanappbackend.search.repository.PopularSearchKeywordProjection;
 import mars.tripplanappbackend.search.repository.RecentSearchRepository;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
 import java.util.List;
@@ -50,11 +54,22 @@ public class SearchService {
 
     private static final int MAX_TAG_COUNT = 3;
     private static final int MAX_RECENT_SEARCH_COUNT = 5;
+    private static final String DEFAULT_COUNTRY_NAME = "UNKNOWN";
+    private static final int PLACE_NAME_MAX_LENGTH = 80;
+    private static final int COUNTRY_NAME_MAX_LENGTH = 70;
+    private static final int CITY_NAME_MAX_LENGTH = 90;
+    private static final int ADDRESS_MAX_LENGTH = 255;
+    private static final Sort DEFAULT_SEARCH_SORT = Sort.by(
+            Sort.Order.desc("ratingAvg"),
+            Sort.Order.desc("reviewCount"),
+            Sort.Order.asc("placeId")
+    );
 
     private final MyPageRepository myPageRepository;
     private final PlaceRepository placeRepository;
     private final PlaceTagMapRepository placeTagMapRepository;
     private final RecentSearchRepository recentSearchRepository;
+    private final GooglePlaceSearchService googlePlaceSearchService;
 
     /**
      * 검색 페이지 상단에 고정 노출되는 카테고리 목록을 정렬 순서대로 조회합니다.
@@ -82,7 +97,7 @@ public class SearchService {
     public SearchResultListResponseDto getSearchResults(SearchResultListRequestDto requestDto) {
         String keyword = normalizeKeyword(requestDto.getKeyword());
 
-        List<Place> places = placeRepository.searchByKeyword(keyword);
+        List<Place> places = findSortedSearchPlaces(syncGooglePlaces(keyword));
         Map<Long, List<String>> tagsByPlaceId = getTagsByPlaceId(places);
 
         List<SearchResultResponseDto> searchResults = places.stream()
@@ -191,6 +206,168 @@ public class SearchService {
      * @param places 검색된 장소 엔티티 목록
      * @return 장소 PK를 키로 가지는 태그 목록 맵
      */
+    /**
+     * Google Places 결과를 place 테이블과 동기화합니다.
+     */
+    private List<Place> syncGooglePlaces(String keyword) {
+        List<GooglePlaceSearchService.GooglePlaceCandidate> googleCandidates =
+                googlePlaceSearchService.searchPlaces(keyword);
+
+        if (googleCandidates.isEmpty()) {
+            return List.of();
+        }
+
+        List<Place> syncedPlaces = new ArrayList<>();
+        for (GooglePlaceSearchService.GooglePlaceCandidate candidate : googleCandidates) {
+            Place syncedPlace = syncSingleGooglePlace(candidate);
+            if (syncedPlace != null) {
+                syncedPlaces.add(syncedPlace);
+            }
+        }
+        return syncedPlaces;
+    }
+
+    /**
+     * Google Places 단건 결과를 내부 Place 엔티티로 upsert 처리합니다.
+     */
+    private Place syncSingleGooglePlace(GooglePlaceSearchService.GooglePlaceCandidate candidate) {
+        if (candidate == null || !hasText(candidate.googlePlaceId()) || !hasText(candidate.name())) {
+            return null;
+        }
+
+        String name = truncate(candidate.name().trim(), PLACE_NAME_MAX_LENGTH);
+        String address = truncate(nullableTrim(candidate.formattedAddress()), ADDRESS_MAX_LENGTH);
+        String countryName = extractCountryName(address);
+        String cityName = extractCityName(address);
+        BigDecimal latitude = normalizeCoordinate(candidate.latitude());
+        BigDecimal longitude = normalizeCoordinate(candidate.longitude());
+        BigDecimal ratingAvg = normalizeRating(candidate.rating());
+        Integer reviewCount = normalizeReviewCount(candidate.reviewCount());
+
+        Place place = placeRepository.findByGooglePlaceIdAndIsDeletedFalse(candidate.googlePlaceId())
+                .or(() -> findByNameAndAddress(name, address))
+                .orElse(null);
+
+        if (place == null) {
+            return placeRepository.save(Place.builder()
+                    .name(name)
+                    .googlePlaceId(candidate.googlePlaceId())
+                    .countryName(countryName)
+                    .cityName(cityName)
+                    .address(address)
+                    .latitude(latitude)
+                    .longitude(longitude)
+                    .ratingAvg(ratingAvg)
+                    .reviewCount(reviewCount)
+                    .build());
+        }
+
+        place.updateFromGoogle(
+                candidate.googlePlaceId(),
+                name,
+                countryName,
+                cityName,
+                address,
+                latitude,
+                longitude,
+                ratingAvg,
+                reviewCount
+        );
+        return place;
+    }
+
+    /**
+     * 동기화된 장소 목록에 기본 정렬(기존 POPULAR 기준)을 적용합니다.
+     */
+    private List<Place> findSortedSearchPlaces(List<Place> syncedPlaces) {
+        if (syncedPlaces.isEmpty()) {
+            return List.of();
+        }
+
+        List<Long> placeIds = syncedPlaces.stream()
+                .map(Place::getPlaceId)
+                .distinct()
+                .toList();
+
+        return placeRepository.findAllByPlaceIdInAndIsDeletedFalse(placeIds, DEFAULT_SEARCH_SORT);
+    }
+
+    private java.util.Optional<Place> findByNameAndAddress(String name, String address) {
+        if (!hasText(name) || !hasText(address)) {
+            return java.util.Optional.empty();
+        }
+        return placeRepository.findFirstByNameAndAddressAndIsDeletedFalse(name, address);
+    }
+
+    private BigDecimal normalizeCoordinate(Double coordinate) {
+        if (coordinate == null) {
+            return null;
+        }
+        return BigDecimal.valueOf(coordinate).setScale(7, RoundingMode.HALF_UP);
+    }
+
+    private BigDecimal normalizeRating(Double rating) {
+        if (rating == null) {
+            return BigDecimal.ZERO;
+        }
+        return BigDecimal.valueOf(rating).setScale(1, RoundingMode.HALF_UP);
+    }
+
+    private Integer normalizeReviewCount(Integer reviewCount) {
+        if (reviewCount == null || reviewCount < 0) {
+            return 0;
+        }
+        return reviewCount;
+    }
+
+    private String extractCountryName(String address) {
+        if (!hasText(address) || !address.contains(",")) {
+            return DEFAULT_COUNTRY_NAME;
+        }
+
+        String[] tokens = address.split(",");
+        String candidate = nullableTrim(tokens[tokens.length - 1]);
+        if (!hasText(candidate)) {
+            return DEFAULT_COUNTRY_NAME;
+        }
+        return truncate(candidate, COUNTRY_NAME_MAX_LENGTH);
+    }
+
+    private String extractCityName(String address) {
+        if (!hasText(address) || !address.contains(",")) {
+            return null;
+        }
+
+        String[] tokens = address.split(",");
+        if (tokens.length < 2) {
+            return null;
+        }
+
+        String candidate = nullableTrim(tokens[tokens.length - 2]);
+        if (!hasText(candidate)) {
+            return null;
+        }
+        return truncate(candidate, CITY_NAME_MAX_LENGTH);
+    }
+
+    private String truncate(String value, int maxLength) {
+        if (value == null) {
+            return null;
+        }
+        if (value.length() <= maxLength) {
+            return value;
+        }
+        return value.substring(0, maxLength);
+    }
+
+    private String nullableTrim(String value) {
+        if (value == null) {
+            return null;
+        }
+        String trimmed = value.trim();
+        return trimmed.isEmpty() ? null : trimmed;
+    }
+
     private Map<Long, List<String>> getTagsByPlaceId(List<Place> places) {
         if (places.isEmpty()) {
             return Map.of();
@@ -295,6 +472,10 @@ public class SearchService {
      * @param keyword 검색어 입력값
      * @return 공백이 정리된 검색어
      */
+    private boolean hasText(String value) {
+        return value != null && !value.isBlank();
+    }
+
     private String normalizeKeyword(String keyword) {
         if (keyword == null || keyword.isBlank()) {
             throw new BusinessException(ErrorCode.INVALID_INPUT);

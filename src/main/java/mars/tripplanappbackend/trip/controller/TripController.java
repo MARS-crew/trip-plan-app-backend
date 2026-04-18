@@ -23,7 +23,6 @@ import mars.tripplanappbackend.trip.dto.request.MyTripFilterRequestDto;
 import mars.tripplanappbackend.trip.dto.request.MyTripListRequestDto;
 import mars.tripplanappbackend.trip.dto.request.MyTripScheduleByDateRequestDto;
 import mars.tripplanappbackend.trip.dto.request.MyTripDetailRequestDto;
-import mars.tripplanappbackend.trip.dto.request.MyTripMapSearchRequestDto;
 import mars.tripplanappbackend.trip.dto.request.MyTripScheduleListRequestDto;
 import mars.tripplanappbackend.trip.dto.request.MyTripScheduleLocationRequestDto;
 import mars.tripplanappbackend.trip.dto.request.MyTripScheduleRouteRequestDto;
@@ -40,7 +39,6 @@ import mars.tripplanappbackend.trip.dto.response.DeleteTripScheduleResponseDto;
 import mars.tripplanappbackend.trip.dto.response.DeleteWishlistPlaceResponseDto;
 import mars.tripplanappbackend.trip.dto.response.MyTripDetailResponseDto;
 import mars.tripplanappbackend.trip.dto.response.MyTripListResponseDto;
-import mars.tripplanappbackend.trip.dto.response.MyTripMapSearchResponseDto;
 import mars.tripplanappbackend.trip.dto.response.MyTripScheduleByDateResponseDto;
 import mars.tripplanappbackend.trip.dto.response.MyTripScheduleListResponseDto;
 import mars.tripplanappbackend.trip.dto.response.MyTripScheduleLocationResponseDto;
@@ -263,36 +261,6 @@ public class TripController {
         TripPlaceSelectionRequestDto requestDto =
                 TripPlaceSelectionRequestDto.of(tripId, userPrincipal.getUsersId());
         return ApiResponse.ok(tripService.getTripPlaceSelection(requestDto));
-    }
-
-    /**
-     * 내 여행지 상세의 지도 검색창 키워드로 장소 후보를 조회합니다.
-     * 지도 핀 표시를 위한 좌표와 리스트 카드 렌더링 정보를 함께 반환하며,
-     * 현재 여행 위시리스트 담김 여부와 버튼 상태(담기/취소)도 같이 전달합니다.
-     *
-     * @param tripId 조회 대상 여행 PK
-     * @param keyword 지도 검색어(미입력/공백이면 빈 결과 반환)
-     * @param userPrincipal 커스텀 애노테이션으로 주입된 현재 로그인 사용자 정보
-     * @return 공통 응답 형식으로 감싼 내 여행지 상세 지도 검색 결과
-     */
-    @GetMapping("/{tripId}/map-search")
-    @ApiErrorExceptions({ErrorCode.INVALID_INPUT, ErrorCode.USER_NOT_FOUND, ErrorCode.INTERNAL_ERROR})
-    @Operation(
-            summary = "지도 검색 결과",
-            description = "내 여행지 상세의 장소 선택 단계에서 검색어 기준 장소 후보를 조회합니다. " +
-                    "지도 핀 좌표, 카드 정보, 위시리스트 담김 상태를 함께 반환합니다."
-    )
-    public ApiResponse<MyTripMapSearchResponseDto> getMyTripMapSearchResults(
-            @Parameter(description = "조회 대상 여행 PK", example = "5")
-            @PathVariable("tripId") Long tripId,
-            @Parameter(description = "지도 검색어", example = "오사카성")
-            @RequestParam(name = "keyword", required = false) String keyword,
-            @Parameter(hidden = true)
-            @CurrentUser UserPrincipal userPrincipal
-    ) {
-        MyTripMapSearchRequestDto requestDto =
-                MyTripMapSearchRequestDto.of(tripId, userPrincipal.getUsersId(), keyword);
-        return ApiResponse.ok(tripService.getMyTripMapSearchResults(requestDto));
     }
 
     /**

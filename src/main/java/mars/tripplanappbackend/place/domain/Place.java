@@ -39,6 +39,9 @@ public class Place extends BaseEntity {
     @Column(name = "name", length = 80, nullable = false)
     private String name;
 
+    @Column(name = "google_place_id", length = 120)
+    private String googlePlaceId;
+
     @Column(name = "country_name", length = 70, nullable = false)
     private String countryName;
 
@@ -84,4 +87,30 @@ public class Place extends BaseEntity {
 
     @Column(name = "deleted_date")
     private LocalDateTime deletedDate;
+
+    /**
+     * Google Places 응답값으로 장소 핵심 정보를 갱신합니다.
+     * 지도 검색 결과 재호출 시 최신 평점/주소/좌표를 반영하기 위해 사용합니다.
+     */
+    public void updateFromGoogle(
+            String googlePlaceId,
+            String name,
+            String countryName,
+            String cityName,
+            String address,
+            BigDecimal latitude,
+            BigDecimal longitude,
+            BigDecimal ratingAvg,
+            Integer reviewCount
+    ) {
+        this.googlePlaceId = googlePlaceId;
+        this.name = name;
+        this.countryName = countryName;
+        this.cityName = cityName;
+        this.address = address;
+        this.latitude = latitude;
+        this.longitude = longitude;
+        this.ratingAvg = ratingAvg;
+        this.reviewCount = reviewCount;
+    }
 }
