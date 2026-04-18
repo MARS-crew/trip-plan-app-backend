@@ -27,7 +27,9 @@ public class GooglePlaceSearchService {
 
     private static final String GOOGLE_PLACES_TEXT_SEARCH_PATH = "/v1/places:searchText";
     private static final String GOOGLE_PLACES_FIELD_MASK =
-            "places.id,places.displayName,places.formattedAddress,places.location,places.rating";
+            "places.id,places.displayName,places.formattedAddress,places.location,places.rating,"
+                    + "places.addressComponents.longText,places.addressComponents.shortText,"
+                    + "places.addressComponents.types";
     private static final int DEFAULT_MAX_RESULT_COUNT = 20;
     private static final String DEFAULT_LANGUAGE_CODE = "ko";
 
@@ -106,7 +108,22 @@ public class GooglePlaceSearchService {
                         place.getFormattedAddress(),
                         place.getLocation() != null ? place.getLocation().getLatitude() : null,
                         place.getLocation() != null ? place.getLocation().getLongitude() : null,
-                        place.getRating()
+                        place.getRating(),
+                        mapAddressComponents(place.getAddressComponents())
+                ))
+                .toList();
+    }
+
+    private List<GoogleAddressComponentCandidate> mapAddressComponents(List<GoogleAddressComponentPayload> components) {
+        if (components == null || components.isEmpty()) {
+            return List.of();
+        }
+
+        return components.stream()
+                .map(component -> new GoogleAddressComponentCandidate(
+                        component.getLongText(),
+                        component.getShortText(),
+                        component.getTypes() != null ? component.getTypes() : List.of()
                 ))
                 .toList();
     }
@@ -117,7 +134,15 @@ public class GooglePlaceSearchService {
             String formattedAddress,
             Double latitude,
             Double longitude,
-            Double rating
+            Double rating,
+            List<GoogleAddressComponentCandidate> addressComponents
+    ) {
+    }
+
+    public record GoogleAddressComponentCandidate(
+            String longText,
+            String shortText,
+            List<String> types
     ) {
     }
 
@@ -142,6 +167,7 @@ public class GooglePlaceSearchService {
         private String formattedAddress;
         private GoogleLocation location;
         private Double rating;
+        private List<GoogleAddressComponentPayload> addressComponents;
     }
 
     @Getter
@@ -159,5 +185,15 @@ public class GooglePlaceSearchService {
     private static class GoogleLocation {
         private Double latitude;
         private Double longitude;
+    }
+
+    @Getter
+    @Setter
+    @NoArgsConstructor
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    private static class GoogleAddressComponentPayload {
+        private String longText;
+        private String shortText;
+        private List<String> types;
     }
 }
