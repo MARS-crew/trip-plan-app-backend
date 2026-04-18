@@ -20,6 +20,7 @@ import mars.tripplanappbackend.place.enums.PlaceType;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDateTime;
 
 @Entity
@@ -77,8 +78,11 @@ public class Place extends BaseEntity {
 
     @Enumerated(EnumType.STRING)
     @Builder.Default
-    @Column(name = "place_type", nullable = false,
-            columnDefinition = "ENUM('ATTRACTION','RESTAURANT','BEACH','NATURE','LANDMARK','ACCOMMODATION','SHOPPING','CULTURE')")
+    @Column(
+            name = "place_type",
+            nullable = false,
+            columnDefinition = "ENUM('ATTRACTION','RESTAURANT','BEACH','NATURE','LANDMARK','ACCOMMODATION','SHOPPING','CULTURE')"
+    )
     private PlaceType placeType = PlaceType.ATTRACTION;
 
     @Builder.Default
@@ -89,8 +93,7 @@ public class Place extends BaseEntity {
     private LocalDateTime deletedDate;
 
     /**
-     * Google Places 응답값으로 장소 핵심 정보를 갱신합니다.
-     * 지도 검색 결과 재호출 시 최신 평점/주소/좌표를 반영하기 위해 사용합니다.
+     * Updates core place fields from Google Places sync result.
      */
     public void updateFromGoogle(
             String googlePlaceId,
@@ -112,5 +115,25 @@ public class Place extends BaseEntity {
         this.longitude = longitude;
         this.ratingAvg = ratingAvg;
         this.reviewCount = reviewCount;
+    }
+
+    /**
+     * Recalculates average rating and review count when a new review is created.
+     */
+    public void updateRating(Integer newRating) {
+        if (this.reviewCount == null) {
+            this.reviewCount = 0;
+        }
+        if (this.ratingAvg == null) {
+            this.ratingAvg = BigDecimal.ZERO;
+        }
+
+        int newCount = this.reviewCount + 1;
+        BigDecimal total = this.ratingAvg
+                .multiply(BigDecimal.valueOf(this.reviewCount))
+                .add(BigDecimal.valueOf(newRating));
+
+        this.ratingAvg = total.divide(BigDecimal.valueOf(newCount), 1, RoundingMode.HALF_UP);
+        this.reviewCount = newCount;
     }
 }
