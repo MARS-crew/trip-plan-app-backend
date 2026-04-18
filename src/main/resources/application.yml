@@ -68,6 +68,11 @@ openweather:
   api:
     key: ${OPENWEATHER_API_KEY}
 
+google:
+  places:
+    api-key: ${GOOGLE_PLACES_API_KEY:}
+    base-url: ${GOOGLE_PLACES_BASE_URL:https://places.googleapis.com}
+
 minio:
   endpoint: ${MINIO_ENDPOINT}
   accessKey: ${MINIO_ACCESS_KEY}
