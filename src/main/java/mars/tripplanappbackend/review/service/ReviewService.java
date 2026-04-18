@@ -7,10 +7,13 @@ import mars.tripplanappbackend.mypage.domain.User;
 import mars.tripplanappbackend.mypage.repository.MyPageRepository;
 import mars.tripplanappbackend.mypage.service.MyPageService;
 import mars.tripplanappbackend.place.domain.Place;
+import mars.tripplanappbackend.place.repository.PlaceRepository;
 import mars.tripplanappbackend.review.domain.Review;
 import mars.tripplanappbackend.review.domain.ReviewImage;
 import mars.tripplanappbackend.review.dto.request.ReviewCreateRequestDto;
 import mars.tripplanappbackend.review.dto.response.ReviewCreateResponseDto;
+import mars.tripplanappbackend.review.dto.response.ReviewInfoResponseDto;
+import mars.tripplanappbackend.review.dto.response.ReviewListResponseDto;
 import mars.tripplanappbackend.review.dto.response.ReviewPreviewResponseDto;
 import mars.tripplanappbackend.review.repository.ReviewImageRepository;
 import mars.tripplanappbackend.review.repository.ReviewRepository;
@@ -18,6 +21,11 @@ import mars.tripplanappbackend.trip.domain.VisitedPlace;
 import mars.tripplanappbackend.trip.repository.VisitedPlaceRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 @Service
 @RequiredArgsConstructor
@@ -29,6 +37,7 @@ public class ReviewService {
     private final VisitedPlaceRepository visitedPlaceRepository;
     private final MyPageRepository myPageRepository;
     private VisitedPlace visitedPlace;
+    private final PlaceRepository placeRepository;
 
     /**
      * 리뷰 작성 전 방문 장소 및 방문 날짜 사전 조회
@@ -121,5 +130,45 @@ public class ReviewService {
         place.updateRating(requestDto.getRating());
 
         return new ReviewCreateResponseDto(review, images);
+    }
+
+    /**
+     * 특정 장소의 리뷰 목록 및 통계 조회
+     */
+    public ReviewInfoResponseDto getPlaceReviews(Long placeId) {
+        Place place = placeRepository.findById(placeId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.PLACE_NOT_FOUND));
+
+        // 리뷰 리스트 최신순으로 조회
+        List<Review> reviews = reviewRepository.findByPlace_PlaceIdAndIsDeletedFalseOrderByCreatedAtDesc(placeId);
+
+        // 별점 분포 계산 (1~5점 초기화)
+        Map<Integer, Long> distribution = new HashMap<>();
+        for (int i = 1; i <= 5; i++) distribution.put(i, 0L);
+
+        List<Object[]> counts = reviewRepository.countReviewsByRating(placeId);
+        for (Object[] row : counts) {
+            distribution.put((Integer) row[0], (Long) row[1]);
+        }
+
+        // 리뷰 목록
+        List<ReviewListResponseDto> reviewList = reviews.stream()
+                .map(r -> new ReviewListResponseDto(
+                        r.getUser().getNickname(),
+                        r.getRating(),
+                        r.getContent(),
+                        r.getReviewImages().stream()
+                                .map(ReviewImage::getImageUrl)
+                                .toList(),
+                        r.getVisitedDate(),
+                        r.getCreatedAt()
+                )).toList();
+
+        return new ReviewInfoResponseDto(
+                place.getRatingAvg(),
+                place.getReviewCount(),
+                distribution,
+                reviewList
+        );
     }
 }

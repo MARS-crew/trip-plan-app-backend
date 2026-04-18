@@ -11,6 +11,7 @@ import mars.tripplanappbackend.global.dto.ApiResponse;
 import mars.tripplanappbackend.global.enums.ErrorCode;
 import mars.tripplanappbackend.review.dto.request.ReviewCreateRequestDto;
 import mars.tripplanappbackend.review.dto.response.ReviewCreateResponseDto;
+import mars.tripplanappbackend.review.dto.response.ReviewInfoResponseDto;
 import mars.tripplanappbackend.review.dto.response.ReviewPreviewResponseDto;
 import mars.tripplanappbackend.review.service.ReviewService;
 import org.springframework.web.bind.annotation.*;
@@ -49,6 +50,17 @@ public class ReviewController {
     ) {
         String usersId = userPrincipal.getUsersId();
         ReviewCreateResponseDto response = reviewService.createReview(usersId, requestDto);
+        return ApiResponse.ok(response);
+    }
+
+    @GetMapping("/place/{placeId}")
+    @Operation(summary = "장소별 리뷰 목록 조회",
+            description = "특정 장소의 평균 평점, 별점 분포 통계 및 리뷰 목록(최신순)을 조회합니다.")
+    @ApiErrorExceptions({ErrorCode.PLACE_NOT_FOUND, ErrorCode.INTERNAL_ERROR})
+    public ApiResponse<ReviewInfoResponseDto> getPlaceReviews(
+            @PathVariable Long placeId
+    ) {
+        ReviewInfoResponseDto response = reviewService.getPlaceReviews(placeId);
         return ApiResponse.ok(response);
     }
 }
