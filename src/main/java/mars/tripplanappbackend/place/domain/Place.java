@@ -40,6 +40,9 @@ public class Place extends BaseEntity {
     @Column(name = "name", length = 80, nullable = false)
     private String name;
 
+    @Column(name = "google_place_id", length = 120)
+    private String googlePlaceId;
+
     @Column(name = "country_name", length = 70, nullable = false)
     private String countryName;
 
@@ -75,8 +78,11 @@ public class Place extends BaseEntity {
 
     @Enumerated(EnumType.STRING)
     @Builder.Default
-    @Column(name = "place_type", nullable = false,
-            columnDefinition = "ENUM('ATTRACTION','RESTAURANT','BEACH','NATURE','LANDMARK','ACCOMMODATION','SHOPPING','CULTURE')")
+    @Column(
+            name = "place_type",
+            nullable = false,
+            columnDefinition = "ENUM('ATTRACTION','RESTAURANT','BEACH','NATURE','LANDMARK','ACCOMMODATION','SHOPPING','CULTURE')"
+    )
     private PlaceType placeType = PlaceType.ATTRACTION;
 
     @Builder.Default
@@ -86,19 +92,47 @@ public class Place extends BaseEntity {
     @Column(name = "deleted_date")
     private LocalDateTime deletedDate;
 
-    // 리뷰 평점 계산 및 총 리뷰 갯수
+    /**
+     * Updates core place fields from Google Places sync result.
+     */
+    public void updateFromGoogle(
+            String googlePlaceId,
+            String name,
+            String countryName,
+            String cityName,
+            String address,
+            BigDecimal latitude,
+            BigDecimal longitude,
+            BigDecimal ratingAvg,
+            Integer reviewCount
+    ) {
+        this.googlePlaceId = googlePlaceId;
+        this.name = name;
+        this.countryName = countryName;
+        this.cityName = cityName;
+        this.address = address;
+        this.latitude = latitude;
+        this.longitude = longitude;
+        this.ratingAvg = ratingAvg;
+        this.reviewCount = reviewCount;
+    }
+
+    /**
+     * Recalculates average rating and review count when a new review is created.
+     */
     public void updateRating(Integer newRating) {
-        // 첫 리뷰 달릴 때는 null 값일 수도 있는데, 이 null값으로 에러날까 봐 초기값 선언 
-        if (this.reviewCount == null) this.reviewCount = 0;
-        if (this.ratingAvg == null) this.ratingAvg = BigDecimal.ZERO;
-        
-        // 리뷰 새로 달릴 때마다 +1
+        if (this.reviewCount == null) {
+            this.reviewCount = 0;
+        }
+        if (this.ratingAvg == null) {
+            this.ratingAvg = BigDecimal.ZERO;
+        }
+
         int newCount = this.reviewCount + 1;
-        
-        //리뷰 총점 계산
         BigDecimal total = this.ratingAvg
                 .multiply(BigDecimal.valueOf(this.reviewCount))
                 .add(BigDecimal.valueOf(newRating));
+
         this.ratingAvg = total.divide(BigDecimal.valueOf(newCount), 1, RoundingMode.HALF_UP);
         this.reviewCount = newCount;
     }

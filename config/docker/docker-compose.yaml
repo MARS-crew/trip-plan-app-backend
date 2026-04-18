@@ -48,6 +48,9 @@ services:
       SPRING_DATASOURCE_USERNAME: root
       SPRING_DATASOURCE_PASSWORD: "mars2026"
       SPRING_DATA_REDIS_HOST: redis
+      GOOGLE_PLACES_API_KEY: ${GOOGLE_PLACES_API_KEY:?GOOGLE_PLACES_API_KEY is required}
+      GOOGLE_PLACES_BASE_URL: ${GOOGLE_PLACES_BASE_URL:-https://places.googleapis.com}
+
     depends_on:
       - mysql
       - redis
