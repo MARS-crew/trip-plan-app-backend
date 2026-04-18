@@ -29,6 +29,7 @@ import mars.tripplanappbackend.trip.dto.request.MyTripScheduleRouteRequestDto;
 import mars.tripplanappbackend.trip.dto.request.NearbyTripScheduleRequestDto;
 import mars.tripplanappbackend.trip.dto.request.ShareTripRequestDto;
 import mars.tripplanappbackend.trip.dto.request.TripPlaceSelectionRequestDto;
+import mars.tripplanappbackend.trip.dto.request.UpdateTripScheduleRequestDto;
 import mars.tripplanappbackend.trip.dto.request.UpdateTripRequestDto;
 import mars.tripplanappbackend.trip.dto.response.AddVisitedPlaceResponseDto;
 import mars.tripplanappbackend.trip.dto.response.AddTripScheduleResponseDto;
@@ -46,6 +47,7 @@ import mars.tripplanappbackend.trip.dto.response.MyTripScheduleRouteResponseDto;
 import mars.tripplanappbackend.trip.dto.response.NearbyTripScheduleResponseDto;
 import mars.tripplanappbackend.trip.dto.response.ShareTripResponseDto;
 import mars.tripplanappbackend.trip.dto.response.TripPlaceSelectionResponseDto;
+import mars.tripplanappbackend.trip.dto.response.UpdateTripScheduleResponseDto;
 import mars.tripplanappbackend.trip.dto.response.UpdateTripResponseDto;
 import mars.tripplanappbackend.trip.enums.MyTripFilterType;
 import mars.tripplanappbackend.trip.service.TripService;
@@ -106,7 +108,7 @@ public class TripController {
     @PatchMapping("/{tripId}")
     @ApiErrorExceptions({ErrorCode.INVALID_INPUT, ErrorCode.USER_NOT_FOUND, ErrorCode.INTERNAL_ERROR})
     @Operation(
-            summary = "내 일정 수정",
+            summary = "여행 수정",
             description = "내 여행 상세 화면에서 여행 대표 이미지, 여행 제목, 여행 시작일, 여행 종료일을 수정합니다."
     )
     public ApiResponse<UpdateTripResponseDto> updateTrip(
@@ -570,13 +572,64 @@ public class TripController {
     }
 
     /**
-     * 내 여행 상세 화면의 일정 리스트에서 개별 일정 메뉴를 통해 선택한 일정을 삭제합니다.
+     * 여행 상세의 일정 카드에서 기존 일정을 수정합니다.
+     * PATCH 요청으로 수정 로직을 처리하며, 입력값 검증 후 수정된 일정을 반환합니다.
      *
      * @param tripId 일정이 속한 여행 PK
-     * @param tripScheduleId 삭제할 개별 일정 PK
-     * @param userPrincipal 커스텀 어노테이션으로 주입한 현재 로그인 사용자 정보
-     * @return 공통 응답 형식으로 감싼 일정 삭제 결과
+     * @param tripScheduleId 수정할 일정 PK
+     * @param requestDto 일정 수정 본문(일정명, 날짜, 시간, 장소, 메모)
+     * @param userPrincipal @CurrentUser 기반 인증 사용자 정보
+     * @return 공통 응답 포맷으로 감싼 일정 수정 결과
      */
+    @PatchMapping("/{tripId}/schedules/{tripScheduleId}")
+    @ApiErrorExceptions({
+            ErrorCode.INVALID_INPUT,
+            ErrorCode.USER_NOT_FOUND,
+            ErrorCode.PLACE_NOT_FOUND,
+            ErrorCode.INTERNAL_ERROR
+    })
+    @Operation(
+            summary = "일정 수정",
+            description = "여행 상세 화면에서 기존 일정의 일정명, 날짜, 시간, 장소, 메모를 수정합니다."
+    )
+    public ApiResponse<UpdateTripScheduleResponseDto> updateTripSchedule(
+            @Parameter(description = "일정이 속한 여행 PK", example = "5")
+            @PathVariable("tripId") Long tripId,
+            @Parameter(description = "수정할 일정 PK", example = "7")
+            @PathVariable("tripScheduleId") Long tripScheduleId,
+            @io.swagger.v3.oas.annotations.parameters.RequestBody(
+                    description = "일정 수정 화면에서 입력한 정보입니다. scheduleDate는 여행 기간 내 날짜만 선택 가능합니다.",
+                    required = true,
+                    content = @Content(
+                            mediaType = "application/json",
+                            examples = @ExampleObject(
+                                    name = "일정 수정 예시",
+                                    value = """
+                                            {
+                                              "title": "저녁 식사",
+                                              "scheduleDate": "2026-04-20",
+                                              "startTime": "18:00",
+                                              "endTime": "19:30",
+                                              "placeId": 9,
+                                              "memo": "현지 식당 예약 완료"
+                                            }
+                                            """
+                            )
+                    )
+            )
+            @Valid @RequestBody UpdateTripScheduleRequestDto requestDto,
+            @Parameter(hidden = true)
+            @CurrentUser UserPrincipal userPrincipal
+    ) {
+        UpdateTripScheduleRequestDto serviceRequestDto = UpdateTripScheduleRequestDto.of(
+                tripId,
+                tripScheduleId,
+                userPrincipal.getUsersId(),
+                requestDto
+        );
+        return ApiResponse.ok(tripService.updateTripSchedule(serviceRequestDto));
+    }
+
     @DeleteMapping("/{tripId}/schedules/{tripScheduleId}")
     @ApiErrorExceptions({ErrorCode.INVALID_INPUT, ErrorCode.USER_NOT_FOUND, ErrorCode.INTERNAL_ERROR})
     @Operation(

@@ -27,7 +27,7 @@ public class GooglePlaceSearchService {
 
     private static final String GOOGLE_PLACES_TEXT_SEARCH_PATH = "/v1/places:searchText";
     private static final String GOOGLE_PLACES_FIELD_MASK =
-            "places.id,places.displayName,places.formattedAddress,places.location,places.rating,places.userRatingCount";
+            "places.id,places.displayName,places.formattedAddress,places.location,places.rating";
     private static final int DEFAULT_MAX_RESULT_COUNT = 20;
     private static final String DEFAULT_LANGUAGE_CODE = "ko";
 
@@ -106,8 +106,7 @@ public class GooglePlaceSearchService {
                         place.getFormattedAddress(),
                         place.getLocation() != null ? place.getLocation().getLatitude() : null,
                         place.getLocation() != null ? place.getLocation().getLongitude() : null,
-                        place.getRating(),
-                        place.getUserRatingCount()
+                        place.getRating()
                 ))
                 .toList();
     }
@@ -118,8 +117,7 @@ public class GooglePlaceSearchService {
             String formattedAddress,
             Double latitude,
             Double longitude,
-            Double rating,
-            Integer reviewCount
+            Double rating
     ) {
     }
 
@@ -144,7 +142,6 @@ public class GooglePlaceSearchService {
         private String formattedAddress;
         private GoogleLocation location;
         private Double rating;
-        private Integer userRatingCount;
     }
 
     @Getter

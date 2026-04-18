@@ -29,6 +29,7 @@ import mars.tripplanappbackend.trip.dto.request.MyTripScheduleRouteRequestDto;
 import mars.tripplanappbackend.trip.dto.request.NearbyTripScheduleRequestDto;
 import mars.tripplanappbackend.trip.dto.request.ShareTripRequestDto;
 import mars.tripplanappbackend.trip.dto.request.TripPlaceSelectionRequestDto;
+import mars.tripplanappbackend.trip.dto.request.UpdateTripScheduleRequestDto;
 import mars.tripplanappbackend.trip.dto.request.UpdateTripRequestDto;
 import mars.tripplanappbackend.trip.dto.response.AddTripScheduleResponseDto;
 import mars.tripplanappbackend.trip.dto.response.AddVisitedPlaceResponseDto;
@@ -54,6 +55,7 @@ import mars.tripplanappbackend.trip.dto.response.NearbyTripScheduleResponseDto;
 import mars.tripplanappbackend.trip.dto.response.ShareTripResponseDto;
 import mars.tripplanappbackend.trip.dto.response.TripPlaceSelectionItemResponseDto;
 import mars.tripplanappbackend.trip.dto.response.TripPlaceSelectionResponseDto;
+import mars.tripplanappbackend.trip.dto.response.UpdateTripScheduleResponseDto;
 import mars.tripplanappbackend.trip.dto.response.UpdateTripResponseDto;
 import mars.tripplanappbackend.trip.enums.MyTripFilterType;
 import mars.tripplanappbackend.trip.enums.TripStatus;
@@ -656,6 +658,64 @@ public class TripService {
     }
 
     /**
+     * 여행 상세의 "일정 수정" 입력값을 기준으로 기존 일정을 수정합니다.
+     * <p>
+     * 처리 순서는 아래와 같습니다.
+     * 1) 요청 필수값/형식 검증
+     * 2) 사용자 존재 및 여행 소유권 검증
+     * 3) 수정 대상 일정 조회
+     * 4) 일정 날짜가 여행 기간 내인지 검증
+     * 5) placeId 전달 시 장소 유효성 검증
+     * 6) 일정 엔티티 값 갱신 후 응답 DTO 반환
+     *
+     * @param requestDto 여행 PK, 일정 PK, 사용자 계정, 일정 수정 입력값을 포함한 요청 DTO
+     * @return 수정된 일정 상세를 담은 응답 DTO
+     */
+    @Transactional
+    public UpdateTripScheduleResponseDto updateTripSchedule(UpdateTripScheduleRequestDto requestDto) {
+        validateUpdateTripScheduleRequest(requestDto);
+        validateUserExistsByUsersId(requestDto.getUsersId());
+
+        Trip trip = tripRepository.findByTripIdAndUser_UsersIdAndIsDeletedFalse(
+                        requestDto.getTripId(),
+                        requestDto.getUsersId()
+                )
+                .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_INPUT));
+
+        TripSchedule tripSchedule = tripScheduleRepository
+                .findByTripScheduleIdAndTrip_TripIdAndTrip_User_UsersIdAndIsDeletedFalse(
+                        requestDto.getTripScheduleId(),
+                        requestDto.getTripId(),
+                        requestDto.getUsersId()
+                )
+                .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_INPUT));
+
+        validateScheduleDateInTripPeriod(requestDto.getScheduleDate(), trip.getStartDate(), trip.getEndDate());
+
+        Place place = null;
+        if (requestDto.getPlaceId() != null) {
+            place = placeRepository.findByPlaceIdAndIsDeletedFalse(requestDto.getPlaceId())
+                    .orElseThrow(() -> new BusinessException(ErrorCode.PLACE_NOT_FOUND));
+        }
+
+        int dayNo = calculateDayNo(trip.getStartDate(), requestDto.getScheduleDate());
+        String normalizedMemo = normalizeTripScheduleMemo(requestDto.getMemo());
+
+        tripSchedule.updateSchedule(
+                dayNo,
+                requestDto.getScheduleDate(),
+                requestDto.getTitle().trim(),
+                place != null ? place.getAddress() : null,
+                requestDto.getStartTime(),
+                requestDto.getEndTime(),
+                normalizedMemo,
+                place
+        );
+
+        return UpdateTripScheduleResponseDto.from(tripSchedule);
+    }
+
+    /**
      * 내 여행 상세 화면의 날짜별 일정 카드에서 선택한 장소를 여행 위시리스트에 추가합니다.
      * 현재 저장 구조는 여행 단위 위시리스트이므로 선택한 날짜는 저장하지 않고,
      * 요청 유효성 검증과 응답 문맥 정보 계산에만 사용합니다.
@@ -922,6 +982,34 @@ public class TripService {
     private void validateAddTripScheduleRequest(AddTripScheduleRequestDto requestDto) {
         if (requestDto.getTripId() == null
                 || requestDto.getTripId() < 1
+                || requestDto.getUsersId() == null
+                || requestDto.getUsersId().isBlank()
+                || requestDto.getTitle() == null
+                || requestDto.getTitle().isBlank()
+                || requestDto.getTitle().trim().length() > 10
+                || requestDto.getScheduleDate() == null
+                || requestDto.getStartTime() == null
+                || requestDto.getEndTime() == null
+                || !requestDto.getStartTime().isBefore(requestDto.getEndTime())
+                || (requestDto.getPlaceId() != null && requestDto.getPlaceId() < 1)
+                || (requestDto.getMemo() != null && requestDto.getMemo().length() > 100)) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT);
+        }
+    }
+
+    /**
+     * 일정 수정 요청의 기본 입력값을 검증합니다.
+     * <p>
+     * 화면/기획 기준으로 일정명, 날짜, 시작/종료 시간은 필수이며
+     * 일정명(10자), 메모(100자), placeId 형식(양수) 제약을 함께 확인합니다.
+     *
+     * @param requestDto 일정 수정 요청 DTO
+     */
+    private void validateUpdateTripScheduleRequest(UpdateTripScheduleRequestDto requestDto) {
+        if (requestDto.getTripId() == null
+                || requestDto.getTripId() < 1
+                || requestDto.getTripScheduleId() == null
+                || requestDto.getTripScheduleId() < 1
                 || requestDto.getUsersId() == null
                 || requestDto.getUsersId().isBlank()
                 || requestDto.getTitle() == null

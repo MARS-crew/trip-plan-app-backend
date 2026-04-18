@@ -10,12 +10,12 @@ import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 
 /**
- * 내 일정 수정 API 호출 후 화면에서 바로 갱신할 수 있는 여행 요약 정보를 담는 응답 DTO입니다.
+ * 여행 수정 API 호출 후 화면에서 바로 갱신할 수 있는 여행 요약 정보를 담는 응답 DTO입니다.
  * 수정 이후 카드와 상세 화면에서 공통으로 사용할 수 있도록 상태, 일정 개수, 여행 일수까지 함께 반환합니다.
  */
 @Getter
 @Builder
-@Schema(description = "내 일정 수정 응답 DTO")
+@Schema(description = "여행 수정 응답 DTO")
 public class UpdateTripResponseDto {
 
     @Schema(description = "수정된 여행 PK", example = "1")
@@ -55,7 +55,7 @@ public class UpdateTripResponseDto {
      * @param trip 수정이 반영된 여행 엔티티
      * @param tripStatus 현재 날짜 기준으로 다시 계산한 여행 상태
      * @param scheduleCount 수정 후에도 남아 있는 일정 개수
-     * @return 내 일정 수정 응답 DTO
+     * @return 여행 수정 응답 DTO
      */
     public static UpdateTripResponseDto from(Trip trip, TripStatus tripStatus, int scheduleCount) {
         return UpdateTripResponseDto.builder()
