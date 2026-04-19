@@ -110,10 +110,9 @@ public class AuthController {
     }
 
     @PostMapping("/email-verify")
-    @ApiErrorExceptions({ErrorCode.USER_NOT_FOUND, ErrorCode.INVALID_EMAIL_CODE,
+    @ApiErrorExceptions({ErrorCode.INVALID_EMAIL_CODE,
             ErrorCode.EMAIL_CODE_EXPIRED, ErrorCode.INTERNAL_ERROR})
-    @Operation(summary = "이메일 인증", description = "이메일 인증 api, 이메일로 전송된 인증 번호 6자리 입력, " +
-            "해당 이메일로 가입된 유저가 없으면 user_not_found")
+    @Operation(summary = "이메일 인증", description = "이메일 인증 api, 이메일로 전송된 인증 번호 6자리 입력")
     public ApiResponse<EmailVerifyResponseDto> emailVerify(@Valid @RequestBody EmailVerifyRequestDto requestDto) {
         EmailVerifyResponseDto response = authService.verifyEmailCode(requestDto);
         return ApiResponse.ok(response);

@@ -260,6 +260,7 @@ public class AuthService {
         String email = requestDto.getEmail();
         String EMAIL_VERIFY_KEY = "email:verify:";
         String EMAIL_REQUEST_KEY = "email:requested:";
+        String EMAIL_VERIFIED_KEY = "email:verified:";
 
         Boolean isRequested = redisTemplate.hasKey(EMAIL_REQUEST_KEY + email);
         if (!Boolean.TRUE.equals(isRequested)) {
@@ -267,22 +268,22 @@ public class AuthService {
         }
 
         String savedCode = redisTemplate.opsForValue().get(EMAIL_VERIFY_KEY + email);
-
         if (savedCode == null) {
             throw new BusinessException(ErrorCode.EMAIL_CODE_EXPIRED);
         }
-
         if (!savedCode.equals(requestDto.getCode())) {
             throw new BusinessException(ErrorCode.INVALID_EMAIL_CODE);
         }
 
+        redisTemplate.opsForValue().set(
+                EMAIL_VERIFIED_KEY + email,
+                "true",
+                30,
+                TimeUnit.MINUTES
+        );
+
         redisTemplate.delete(EMAIL_VERIFY_KEY + email);
         redisTemplate.delete(EMAIL_REQUEST_KEY + email);
-
-        User user = myPageRepository.findByEmail(email)
-                .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
-
-        user.setEmailVerified(UseYnEnum.Y);
 
         return new EmailVerifyResponseDto(email, UseYnEnum.Y);
     }
