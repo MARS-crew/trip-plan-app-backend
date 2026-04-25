@@ -252,7 +252,7 @@ public class PlaceController {
             description = "장소 상세 화면에 필요한 기본 정보, 태그, 저장 여부, 리뷰 미리보기 정보를 조회합니다."
     )
     public ApiResponse<PlaceDetailResponseDto> findOne(
-            @Parameter(description = "조회할 장소 PK", example = "7")
+            @Parameter(description = "조회할 장소 PK", example = "21")
             @PathVariable("placeId") Long placeId,
             @Parameter(hidden = true)
             @CurrentUser UserPrincipal userPrincipal

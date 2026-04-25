@@ -13,12 +13,12 @@ import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
 import org.springframework.web.reactive.function.client.WebClientResponseException;
+import org.springframework.web.util.UriComponentsBuilder;
 
 import java.util.List;
 
 /**
- * Google Places Text Search(Open API)를 호출해 지도 검색 후보를 조회합니다.
- * API 키는 .env -> application.yml 경로로 주입받아 사용합니다.
+ * Google Places(Text Search / Place Details / Place Photos) 연동 서비스입니다.
  */
 @Service
 @RequiredArgsConstructor
@@ -26,12 +26,30 @@ import java.util.List;
 public class GooglePlaceSearchService {
 
     private static final String GOOGLE_PLACES_TEXT_SEARCH_PATH = "/v1/places:searchText";
-    private static final String GOOGLE_PLACES_FIELD_MASK =
+    private static final String GOOGLE_PLACES_DETAILS_PATH_TEMPLATE = "/v1/places/%s";
+    private static final String GOOGLE_PLACES_PHOTO_MEDIA_PATH_TEMPLATE = "/v1/%s/media";
+
+    /**
+     * Text Search 응답 필드 마스크.
+     * 장소 검색 결과를 DB에 upsert할 때 필요한 핵심 필드 + 화면 메타데이터(이미지/소개/영업시간)를 요청합니다.
+     */
+    private static final String GOOGLE_PLACES_TEXT_SEARCH_FIELD_MASK =
             "places.id,places.displayName,places.formattedAddress,places.location,places.rating,"
-                    + "places.addressComponents.longText,places.addressComponents.shortText,"
-                    + "places.addressComponents.types";
+                    + "places.addressComponents.longText,places.addressComponents.shortText,places.addressComponents.types,"
+                    + "places.editorialSummary,places.regularOpeningHours.weekdayDescriptions,places.photos";
+
+    /**
+     * Place Details 응답 필드 마스크.
+     * Text Search 결과에 메타데이터가 비어있는 경우 fallback으로 사용합니다.
+     */
+    private static final String GOOGLE_PLACES_DETAILS_FIELD_MASK =
+            "id,displayName,formattedAddress,location,rating,"
+                    + "addressComponents.longText,addressComponents.shortText,addressComponents.types,"
+                    + "editorialSummary,regularOpeningHours.weekdayDescriptions,photos";
+
     private static final int DEFAULT_MAX_RESULT_COUNT = 20;
     private static final String DEFAULT_LANGUAGE_CODE = "ko";
+    private static final int DEFAULT_PHOTO_MAX_WIDTH_PX = 900;
 
     @Value("${google.places.api-key:}")
     private String googlePlacesApiKey;
@@ -42,10 +60,10 @@ public class GooglePlaceSearchService {
     private final WebClient webClient = WebClient.builder().build();
 
     /**
-     * Google Places Text Search API를 호출해 지도 검색 후보를 반환합니다.
+     * Google Places Text Search API를 호출해 키워드 검색 결과를 반환합니다.
      *
-     * @param keyword 지도 검색 키워드
-     * @return Google Places 검색 후보 목록
+     * @param keyword 검색 키워드
+     * @return Google Places 검색 결과 목록
      */
     public List<GooglePlaceCandidate> searchPlaces(String keyword) {
         String normalizedKeyword = normalizeKeyword(keyword);
@@ -56,7 +74,7 @@ public class GooglePlaceSearchService {
                     .uri(googlePlacesBaseUrl + GOOGLE_PLACES_TEXT_SEARCH_PATH)
                     .contentType(MediaType.APPLICATION_JSON)
                     .header("X-Goog-Api-Key", googlePlacesApiKey)
-                    .header("X-Goog-FieldMask", GOOGLE_PLACES_FIELD_MASK)
+                    .header("X-Goog-FieldMask", GOOGLE_PLACES_TEXT_SEARCH_FIELD_MASK)
                     .bodyValue(new GoogleTextSearchRequest(
                             normalizedKeyword,
                             DEFAULT_MAX_RESULT_COUNT,
@@ -66,52 +84,143 @@ public class GooglePlaceSearchService {
                     .bodyToMono(GoogleTextSearchResponse.class)
                     .block();
 
-            return mapSearchResults(response);
+            return mapTextSearchResults(response);
         } catch (WebClientResponseException exception) {
             log.error(
-                    "Google Places 검색 API 호출 실패. status={}, response={}",
+                    "Google Places Text Search API 호출 실패. status={}, response={}",
                     exception.getStatusCode(),
                     exception.getResponseBodyAsString()
             );
             throw new BusinessException(ErrorCode.INTERNAL_ERROR);
         } catch (Exception exception) {
-            log.error("Google Places 검색 처리 중 예외 발생: {}", exception.getMessage(), exception);
+            log.error("Google Places Text Search 처리 중 예외 발생: {}", exception.getMessage(), exception);
             throw new BusinessException(ErrorCode.INTERNAL_ERROR);
         }
     }
 
-    private String normalizeKeyword(String keyword) {
-        if (keyword == null || keyword.isBlank()) {
-            throw new BusinessException(ErrorCode.INVALID_INPUT);
+    /**
+     * Place ID 기준으로 Place Details를 조회합니다.
+     * <p>
+     * 본 메서드는 metadata 보강용 fallback API로 사용되며, 조회 실패 시 null을 반환합니다.
+     *
+     * @param googlePlaceId Google Place ID
+     * @return 상세 정보 후보 객체, 실패 시 null
+     */
+    public GooglePlaceCandidate getPlaceDetails(String googlePlaceId) {
+        if (!hasText(googlePlaceId)) {
+            return null;
         }
-        return keyword.trim();
+        validateGooglePlacesApiKey();
+
+        String normalizedPlaceId = normalizePlaceId(googlePlaceId);
+        String requestPath = String.format(GOOGLE_PLACES_DETAILS_PATH_TEMPLATE, normalizedPlaceId);
+
+        try {
+            GooglePlacePayload response = webClient.get()
+                    .uri(googlePlacesBaseUrl + requestPath)
+                    .header("X-Goog-Api-Key", googlePlacesApiKey)
+                    .header("X-Goog-FieldMask", GOOGLE_PLACES_DETAILS_FIELD_MASK)
+                    .retrieve()
+                    .bodyToMono(GooglePlacePayload.class)
+                    .block();
+
+            return response != null ? toCandidate(response) : null;
+        } catch (WebClientResponseException exception) {
+            log.warn(
+                    "Google Place Details 조회 실패. placeId={}, status={}, response={}",
+                    normalizedPlaceId,
+                    exception.getStatusCode(),
+                    exception.getResponseBodyAsString()
+            );
+            return null;
+        } catch (Exception exception) {
+            log.warn(
+                    "Google Place Details 처리 중 예외 발생. placeId={}, message={}",
+                    normalizedPlaceId,
+                    exception.getMessage()
+            );
+            return null;
+        }
     }
 
-    private void validateGooglePlacesApiKey() {
-        if (googlePlacesApiKey == null
-                || googlePlacesApiKey.isBlank()
-                || "REPLACE_WITH_YOUR_GOOGLE_PLACES_API_KEY".equals(googlePlacesApiKey.trim())) {
-            log.error("GOOGLE_PLACES_API_KEY 값이 비어 있거나 placeholder 상태입니다.");
-            throw new BusinessException(ErrorCode.INTERNAL_ERROR);
+    /**
+     * Place Photo 리소스명을 사용해 photoUri를 조회합니다.
+     * <p>
+     * 이미지 URL 조회 실패는 검색 전체를 실패시키지 않기 위해 null로 흡수합니다.
+     *
+     * @param photoName Place Photos 리소스명(ex. places/{placeId}/photos/{photoResource})
+     * @return 이미지 URL(photoUri), 실패 시 null
+     */
+    public String getPhotoUri(String photoName) {
+        if (!hasText(photoName)) {
+            return null;
+        }
+        validateGooglePlacesApiKey();
+
+        String normalizedPhotoName = removeLeadingSlash(photoName.trim());
+        String requestPath = String.format(GOOGLE_PLACES_PHOTO_MEDIA_PATH_TEMPLATE, normalizedPhotoName);
+        String requestUri = UriComponentsBuilder.fromUriString(googlePlacesBaseUrl + requestPath)
+                .queryParam("maxWidthPx", DEFAULT_PHOTO_MAX_WIDTH_PX)
+                .queryParam("skipHttpRedirect", true)
+                .toUriString();
+
+        try {
+            GooglePhotoMediaResponse response = webClient.get()
+                    .uri(requestUri)
+                    .header("X-Goog-Api-Key", googlePlacesApiKey)
+                    .retrieve()
+                    .bodyToMono(GooglePhotoMediaResponse.class)
+                    .block();
+
+            return response != null ? nullableTrim(response.getPhotoUri()) : null;
+        } catch (WebClientResponseException exception) {
+            log.warn(
+                    "Google Place Photo 조회 실패. photoName={}, status={}, response={}",
+                    normalizedPhotoName,
+                    exception.getStatusCode(),
+                    exception.getResponseBodyAsString()
+            );
+            return null;
+        } catch (Exception exception) {
+            log.warn(
+                    "Google Place Photo 처리 중 예외 발생. photoName={}, message={}",
+                    normalizedPhotoName,
+                    exception.getMessage()
+            );
+            return null;
         }
     }
 
-    private List<GooglePlaceCandidate> mapSearchResults(GoogleTextSearchResponse response) {
+    private List<GooglePlaceCandidate> mapTextSearchResults(GoogleTextSearchResponse response) {
         if (response == null || response.getPlaces() == null || response.getPlaces().isEmpty()) {
             return List.of();
         }
 
         return response.getPlaces().stream()
-                .map(place -> new GooglePlaceCandidate(
-                        place.getId(),
-                        place.getDisplayName() != null ? place.getDisplayName().getText() : null,
-                        place.getFormattedAddress(),
-                        place.getLocation() != null ? place.getLocation().getLatitude() : null,
-                        place.getLocation() != null ? place.getLocation().getLongitude() : null,
-                        place.getRating(),
-                        mapAddressComponents(place.getAddressComponents())
-                ))
+                .map(this::toCandidate)
                 .toList();
+    }
+
+    private GooglePlaceCandidate toCandidate(GooglePlacePayload place) {
+        if (place == null) {
+            return null;
+        }
+
+        return new GooglePlaceCandidate(
+                place.getId(),
+                place.getDisplayName() != null ? place.getDisplayName().getText() : null,
+                place.getFormattedAddress(),
+                place.getLocation() != null ? place.getLocation().getLatitude() : null,
+                place.getLocation() != null ? place.getLocation().getLongitude() : null,
+                place.getRating(),
+                mapAddressComponents(place.getAddressComponents()),
+                place.getEditorialSummary() != null ? place.getEditorialSummary().getText() : null,
+                place.getRegularOpeningHours() != null
+                        && place.getRegularOpeningHours().getWeekdayDescriptions() != null
+                        ? place.getRegularOpeningHours().getWeekdayDescriptions()
+                        : List.of(),
+                extractFirstPhotoName(place.getPhotos())
+        );
     }
 
     private List<GoogleAddressComponentCandidate> mapAddressComponents(List<GoogleAddressComponentPayload> components) {
@@ -128,6 +237,65 @@ public class GooglePlaceSearchService {
                 .toList();
     }
 
+    private String extractFirstPhotoName(List<GooglePhotoPayload> photos) {
+        if (photos == null || photos.isEmpty()) {
+            return null;
+        }
+
+        return photos.stream()
+                .map(GooglePhotoPayload::getName)
+                .map(this::nullableTrim)
+                .filter(this::hasText)
+                .findFirst()
+                .orElse(null);
+    }
+
+    private String normalizeKeyword(String keyword) {
+        if (keyword == null || keyword.isBlank()) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT);
+        }
+        return keyword.trim();
+    }
+
+    private String normalizePlaceId(String placeId) {
+        if (placeId == null) {
+            return null;
+        }
+        String trimmed = placeId.trim();
+        if (trimmed.startsWith("places/")) {
+            return trimmed.substring("places/".length());
+        }
+        return trimmed;
+    }
+
+    private String removeLeadingSlash(String value) {
+        if (value == null) {
+            return null;
+        }
+        return value.startsWith("/") ? value.substring(1) : value;
+    }
+
+    private String nullableTrim(String value) {
+        if (value == null) {
+            return null;
+        }
+        String trimmed = value.trim();
+        return trimmed.isEmpty() ? null : trimmed;
+    }
+
+    private boolean hasText(String value) {
+        return value != null && !value.isBlank();
+    }
+
+    private void validateGooglePlacesApiKey() {
+        if (googlePlacesApiKey == null
+                || googlePlacesApiKey.isBlank()
+                || "REPLACE_WITH_YOUR_GOOGLE_PLACES_API_KEY".equals(googlePlacesApiKey.trim())) {
+            log.error("GOOGLE_PLACES_API_KEY 값이 비어 있거나 placeholder 상태입니다.");
+            throw new BusinessException(ErrorCode.INTERNAL_ERROR);
+        }
+    }
+
     public record GooglePlaceCandidate(
             String googlePlaceId,
             String name,
@@ -135,7 +303,10 @@ public class GooglePlaceSearchService {
             Double latitude,
             Double longitude,
             Double rating,
-            List<GoogleAddressComponentCandidate> addressComponents
+            List<GoogleAddressComponentCandidate> addressComponents,
+            String editorialSummary,
+            List<String> regularOpeningWeekdayDescriptions,
+            String firstPhotoName
     ) {
     }
 
@@ -168,6 +339,9 @@ public class GooglePlaceSearchService {
         private GoogleLocation location;
         private Double rating;
         private List<GoogleAddressComponentPayload> addressComponents;
+        private GoogleEditorialSummary editorialSummary;
+        private GoogleRegularOpeningHours regularOpeningHours;
+        private List<GooglePhotoPayload> photos;
     }
 
     @Getter
@@ -195,5 +369,37 @@ public class GooglePlaceSearchService {
         private String longText;
         private String shortText;
         private List<String> types;
+    }
+
+    @Getter
+    @Setter
+    @NoArgsConstructor
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    private static class GoogleEditorialSummary {
+        private String text;
+    }
+
+    @Getter
+    @Setter
+    @NoArgsConstructor
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    private static class GoogleRegularOpeningHours {
+        private List<String> weekdayDescriptions;
+    }
+
+    @Getter
+    @Setter
+    @NoArgsConstructor
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    private static class GooglePhotoPayload {
+        private String name;
+    }
+
+    @Getter
+    @Setter
+    @NoArgsConstructor
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    private static class GooglePhotoMediaResponse {
+        private String photoUri;
     }
 }

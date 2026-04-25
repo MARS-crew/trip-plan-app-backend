@@ -9,17 +9,17 @@ import java.math.BigDecimal;
 import java.util.List;
 
 /**
- * 검색 결과 리스트 단건 응답 DTO입니다.
+ * 검색 결과 리스트의 개별 응답 DTO입니다.
  */
 @Getter
 @Builder
-@Schema(description = "검색 결과 리스트 단건 응답")
+@Schema(description = "검색 결과 리스트의 개별 응답")
 public class SearchResultResponseDto {
 
     @Schema(description = "장소 PK", example = "7")
     private Long placeId;
 
-    @Schema(description = "장소명", example = "후카이도청")
+    @Schema(description = "장소명", example = "삿포로 시계탑")
     private String name;
 
     @Schema(description = "국가명", example = "일본")
@@ -28,13 +28,16 @@ public class SearchResultResponseDto {
     @Schema(description = "도시명", example = "삿포로")
     private String cityName;
 
-    @Schema(description = "대표 이미지 URL", example = "https://cdn.lets-trip.com/place/hokkaido-office.jpg")
+    @Schema(description = "대표 이미지 URL", example = "https://cdn.lets-trip.com/place/sapporo-clock-tower.jpg")
     private String imageUrl;
+
+    @Schema(description = "장소 소개", example = "도심 산책과 야경 감상을 함께 즐길 수 있는 추천 장소")
+    private String description;
 
     @Schema(description = "평균 별점", example = "4.6")
     private BigDecimal ratingAvg;
 
-    @Schema(description = "리뷰 수", example = "56789")
+    @Schema(description = "리뷰 수", example = "128")
     private Integer reviewCount;
 
     @Schema(description = "검색 결과 카드에 노출할 태그 목록")
@@ -45,7 +48,7 @@ public class SearchResultResponseDto {
      *
      * @param place 장소 엔티티
      * @param tags 장소 태그 목록
-     * @return 검색 결과 리스트 단건 응답 DTO
+     * @return 검색 결과 리스트의 개별 응답 DTO
      */
     public static SearchResultResponseDto from(Place place, List<String> tags) {
         return SearchResultResponseDto.builder()
@@ -54,6 +57,7 @@ public class SearchResultResponseDto {
                 .countryName(place.getCountryName())
                 .cityName(place.getCityName())
                 .imageUrl(place.getImageUrl())
+                .description(place.getDescription())
                 .ratingAvg(place.getRatingAvg())
                 .reviewCount(place.getReviewCount())
                 .tags(tags)
