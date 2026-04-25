@@ -93,7 +93,7 @@ public class Place extends BaseEntity {
     private LocalDateTime deletedDate;
 
     /**
-     * Updates core place fields from Google Places sync result.
+     * Google Places 동기화 결과를 기준으로 장소 핵심 필드를 갱신합니다.
      */
     public void updateFromGoogle(
             String googlePlaceId,
@@ -103,7 +103,10 @@ public class Place extends BaseEntity {
             String address,
             BigDecimal latitude,
             BigDecimal longitude,
-            BigDecimal ratingAvg
+            BigDecimal ratingAvg,
+            String description,
+            String openingHours,
+            String imageUrl
     ) {
         this.googlePlaceId = googlePlaceId;
         this.name = name;
@@ -113,10 +116,13 @@ public class Place extends BaseEntity {
         this.latitude = latitude;
         this.longitude = longitude;
         this.ratingAvg = ratingAvg;
+        this.description = description;
+        this.openingHours = openingHours;
+        this.imageUrl = imageUrl;
     }
 
     /**
-     * Recalculates average rating and review count when a new review is created.
+     * 신규 리뷰가 등록될 때 평균 평점과 리뷰 수를 재계산합니다.
      */
     public void updateRating(Integer newRating) {
         if (this.reviewCount == null) {

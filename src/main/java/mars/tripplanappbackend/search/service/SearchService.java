@@ -41,6 +41,7 @@ import java.util.Arrays;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
@@ -59,6 +60,9 @@ public class SearchService {
     private static final int COUNTRY_NAME_MAX_LENGTH = 70;
     private static final int CITY_NAME_MAX_LENGTH = 90;
     private static final int ADDRESS_MAX_LENGTH = 255;
+    private static final int OPENING_HOURS_MAX_LENGTH = 255;
+    private static final int IMAGE_URL_MAX_LENGTH = 500;
+    private static final int DESCRIPTION_MAX_LENGTH = 2000;
     private static final Sort DEFAULT_SEARCH_SORT = Sort.by(
             Sort.Order.desc("ratingAvg"),
             Sort.Order.desc("reviewCount"),
@@ -235,13 +239,15 @@ public class SearchService {
             return null;
         }
 
-        String name = truncate(candidate.name().trim(), PLACE_NAME_MAX_LENGTH);
-        String address = truncate(nullableTrim(candidate.formattedAddress()), ADDRESS_MAX_LENGTH);
+        GooglePlaceSearchService.GooglePlaceCandidate enrichedCandidate = enrichCandidateWithDetails(candidate);
+
+        String name = truncate(enrichedCandidate.name().trim(), PLACE_NAME_MAX_LENGTH);
+        String address = truncate(nullableTrim(enrichedCandidate.formattedAddress()), ADDRESS_MAX_LENGTH);
 
         // 주소 파싱은 "components -> 한국형 fallback -> 일반 fallback" 순서로 처리합니다.
         GoogleAddressParser.ParsedAddress parsedAddress = GoogleAddressParser.parse(
                 address,
-                candidate.addressComponents()
+                enrichedCandidate.addressComponents()
         );
         String countryName = truncate(nullableTrim(parsedAddress.countryName()), COUNTRY_NAME_MAX_LENGTH);
         if (!hasText(countryName)) {
@@ -249,38 +255,172 @@ public class SearchService {
         }
         String cityName = truncate(nullableTrim(parsedAddress.cityName()), CITY_NAME_MAX_LENGTH);
 
-        BigDecimal latitude = normalizeCoordinate(candidate.latitude());
-        BigDecimal longitude = normalizeCoordinate(candidate.longitude());
-        BigDecimal ratingAvg = normalizeRating(candidate.rating());
+        BigDecimal latitude = normalizeCoordinate(enrichedCandidate.latitude());
+        BigDecimal longitude = normalizeCoordinate(enrichedCandidate.longitude());
+        BigDecimal ratingAvg = normalizeRating(enrichedCandidate.rating());
 
-        Place place = placeRepository.findByGooglePlaceIdAndIsDeletedFalse(candidate.googlePlaceId())
+        Place place = placeRepository.findByGooglePlaceIdAndIsDeletedFalse(enrichedCandidate.googlePlaceId())
                 .or(() -> findByNameAndAddress(name, address))
                 .orElse(null);
+
+        String description = resolveDescriptionForSync(place, enrichedCandidate.editorialSummary());
+        String openingHours = resolveOpeningHoursForSync(place, enrichedCandidate.regularOpeningWeekdayDescriptions());
+        String imageUrl = resolveImageUrlForSync(place, enrichedCandidate.firstPhotoName());
 
         if (place == null) {
             return placeRepository.save(Place.builder()
                     .name(name)
-                    .googlePlaceId(candidate.googlePlaceId())
+                    .googlePlaceId(enrichedCandidate.googlePlaceId())
                     .countryName(countryName)
                     .cityName(cityName)
                     .address(address)
+                    .description(description)
                     .latitude(latitude)
                     .longitude(longitude)
                     .ratingAvg(ratingAvg)
+                    .openingHours(openingHours)
+                    .imageUrl(imageUrl)
                     .build());
         }
 
         place.updateFromGoogle(
-                candidate.googlePlaceId(),
+                enrichedCandidate.googlePlaceId(),
                 name,
                 countryName,
                 cityName,
                 address,
                 latitude,
                 longitude,
-                ratingAvg
+                ratingAvg,
+                description,
+                openingHours,
+                imageUrl
         );
         return place;
+    }
+
+    /**
+     * Text Search 응답에는 일부 필드가 누락될 수 있습니다.
+     * 메타데이터 필드가 비어 있으면 Place Details를 1회 조회해 병합합니다.
+     */
+    private GooglePlaceSearchService.GooglePlaceCandidate enrichCandidateWithDetails(
+            GooglePlaceSearchService.GooglePlaceCandidate candidate
+    ) {
+        if (candidate == null || !hasText(candidate.googlePlaceId())) {
+            return candidate;
+        }
+
+        if (!needsDetailsFallback(candidate)) {
+            return candidate;
+        }
+
+        GooglePlaceSearchService.GooglePlaceCandidate details =
+                googlePlaceSearchService.getPlaceDetails(candidate.googlePlaceId());
+        if (details == null) {
+            return candidate;
+        }
+
+        return new GooglePlaceSearchService.GooglePlaceCandidate(
+                firstNonBlank(details.googlePlaceId(), candidate.googlePlaceId()),
+                firstNonBlank(details.name(), candidate.name()),
+                firstNonBlank(details.formattedAddress(), candidate.formattedAddress()),
+                details.latitude() != null ? details.latitude() : candidate.latitude(),
+                details.longitude() != null ? details.longitude() : candidate.longitude(),
+                details.rating() != null ? details.rating() : candidate.rating(),
+                isNullOrEmpty(details.addressComponents())
+                        ? candidate.addressComponents()
+                        : details.addressComponents(),
+                firstNonBlank(details.editorialSummary(), candidate.editorialSummary()),
+                isNullOrEmpty(details.regularOpeningWeekdayDescriptions())
+                        ? candidate.regularOpeningWeekdayDescriptions()
+                        : details.regularOpeningWeekdayDescriptions(),
+                firstNonBlank(details.firstPhotoName(), candidate.firstPhotoName())
+        );
+    }
+
+    /**
+     * Details fallback은 메타데이터 필드가 누락된 경우에만 사용합니다.
+     */
+    private boolean needsDetailsFallback(GooglePlaceSearchService.GooglePlaceCandidate candidate) {
+        return !hasText(candidate.editorialSummary())
+                || isNullOrEmpty(candidate.regularOpeningWeekdayDescriptions())
+                || !hasText(candidate.firstPhotoName())
+                || isNullOrEmpty(candidate.addressComponents());
+    }
+
+    /**
+     * 동기화 과정에서 설명 정보의 우선순위를 결정합니다.
+     * Google 값이 있으면 사용하고, 없으면 기존 DB 값을 유지합니다.
+     */
+    private String resolveDescriptionForSync(Place place, String googleDescription) {
+        String normalizedGoogleValue = normalizeDescription(googleDescription);
+        if (hasText(normalizedGoogleValue)) {
+            return normalizedGoogleValue;
+        }
+        if (place != null) {
+            return normalizeDescription(place.getDescription());
+        }
+        return null;
+    }
+
+    private String resolveOpeningHoursForSync(Place place, List<String> googleOpeningHours) {
+        String normalizedGoogleValue = normalizeOpeningHours(googleOpeningHours);
+        if (hasText(normalizedGoogleValue)) {
+            return normalizedGoogleValue;
+        }
+        if (place != null) {
+            return normalizeOpeningHours(
+                    hasText(place.getOpeningHours()) ? List.of(place.getOpeningHours()) : List.of()
+            );
+        }
+        return null;
+    }
+
+    private String resolveImageUrlForSync(Place place, String photoName) {
+        if (hasText(photoName)) {
+            String photoUri = googlePlaceSearchService.getPhotoUri(photoName);
+            if (hasText(photoUri)) {
+                return truncate(photoUri, IMAGE_URL_MAX_LENGTH);
+            }
+        }
+
+        if (place != null) {
+            return truncate(nullableTrim(place.getImageUrl()), IMAGE_URL_MAX_LENGTH);
+        }
+        return null;
+    }
+
+    private String normalizeDescription(String description) {
+        return truncate(nullableTrim(description), DESCRIPTION_MAX_LENGTH);
+    }
+
+    private String normalizeOpeningHours(List<String> openingHoursLines) {
+        if (isNullOrEmpty(openingHoursLines)) {
+            return null;
+        }
+
+        String normalizedValue = openingHoursLines.stream()
+                .filter(Objects::nonNull)
+                .map(String::trim)
+                .filter(this::hasText)
+                .distinct()
+                .collect(Collectors.joining(" | "));
+
+        return truncate(nullableTrim(normalizedValue), OPENING_HOURS_MAX_LENGTH);
+    }
+
+    private String firstNonBlank(String first, String second) {
+        if (hasText(first)) {
+            return first.trim();
+        }
+        if (hasText(second)) {
+            return second.trim();
+        }
+        return null;
+    }
+
+    private boolean isNullOrEmpty(List<?> list) {
+        return list == null || list.isEmpty();
     }
 
     /**
@@ -453,4 +593,5 @@ public class SearchService {
 
         return keyword.trim();
     }
+
 }
