@@ -2,8 +2,11 @@ package mars.tripplanappbackend.mypage.service;
 
 import lombok.RequiredArgsConstructor;
 import mars.tripplanappbackend.auth.dto.request.EmailRequestDto;
+import mars.tripplanappbackend.auth.dto.request.EmailVerifyRequestDto;
 import mars.tripplanappbackend.auth.dto.response.EmailResponseDto;
+import mars.tripplanappbackend.auth.dto.response.EmailVerifyResponseDto;
 import mars.tripplanappbackend.global.enums.ErrorCode;
+import mars.tripplanappbackend.global.enums.UseYnEnum;
 import mars.tripplanappbackend.global.exception.BusinessException;
 import mars.tripplanappbackend.mypage.domain.User;
 import mars.tripplanappbackend.mypage.dto.request.UpdateAgreeRequestDto;
@@ -233,5 +236,50 @@ public class MyPageService {
     private String generateVerificationCode() {
         int code = (int) (Math.random() * 900000) + 100000;
         return String.valueOf(code);
+    }
+
+
+
+    /**
+     * 이메일 인증
+     *
+     * 전송된 이메일과 인증코드를 입력받고
+     * Redis에 저장된 인증 코드와 비교하여 일치하는지 확인한다.
+     * 일치하지 않으면 INVALID_EMAIL_CODE 에러 처리
+     *
+     * @param requestDto 전송 보낸 이메일, 전송된 인증 코드
+     * @return 인증된 이메일, 인증 여부
+     */
+    @Transactional
+    public EmailVerifyResponseDto verifyEmailCode(EmailVerifyRequestDto requestDto) {
+
+        String email = requestDto.getEmail();
+        String EMAIL_VERIFY_KEY = "email:verify:";
+        String EMAIL_REQUEST_KEY = "email:requested:";
+
+        Boolean isRequested = redisTemplate.hasKey(EMAIL_REQUEST_KEY + email);
+        if (!Boolean.TRUE.equals(isRequested)) {
+            throw new BusinessException(ErrorCode.INVALID_EMAIL_REQUEST);
+        }
+
+        String savedCode = redisTemplate.opsForValue().get(EMAIL_VERIFY_KEY + email);
+
+        if (savedCode == null) {
+            throw new BusinessException(ErrorCode.EMAIL_CODE_EXPIRED);
+        }
+
+        if (!savedCode.equals(requestDto.getCode())) {
+            throw new BusinessException(ErrorCode.INVALID_EMAIL_CODE);
+        }
+
+        redisTemplate.delete(EMAIL_VERIFY_KEY + email);
+        redisTemplate.delete(EMAIL_REQUEST_KEY + email);
+
+        User user = myPageRepository.findByEmail(email)
+                .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
+
+        user.setEmailVerified(UseYnEnum.Y);
+
+        return new EmailVerifyResponseDto(email, UseYnEnum.Y);
     }
 }
