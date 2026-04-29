@@ -4,6 +4,8 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import mars.tripplanappbackend.auth.dto.request.EmailRequestDto;
+import mars.tripplanappbackend.auth.dto.response.EmailResponseDto;
 import mars.tripplanappbackend.global.config.auth.CurrentUser;
 import mars.tripplanappbackend.global.config.auth.UserPrincipal;
 import mars.tripplanappbackend.global.config.swagger.ApiErrorExceptions;
@@ -136,6 +138,14 @@ public class MyPageController {
     ) {
         String usersId = userPrincipal.getUsersId();
         List<VisitedPlaceResponseDto> response = myPageService.getMyVisitedPlaces(usersId);
+        return ApiResponse.ok(response);
+    }
+
+    @PostMapping("/email-request")
+    @ApiErrorExceptions({ErrorCode.INVALID_INPUT, ErrorCode.USER_NOT_FOUND, ErrorCode.INTERNAL_ERROR})
+    @Operation(summary = "이메일 전송", description = "이메일 전송 api, gmail만 가능")
+    public ApiResponse<EmailResponseDto> sendEmail(@Valid @RequestBody EmailRequestDto requestDto) {
+        EmailResponseDto response = myPageService.sendEmail(requestDto);
         return ApiResponse.ok(response);
     }
 }
