@@ -1,6 +1,8 @@
 package mars.tripplanappbackend.mypage.service;
 
 import lombok.RequiredArgsConstructor;
+import mars.tripplanappbackend.auth.dto.request.EmailRequestDto;
+import mars.tripplanappbackend.auth.dto.response.EmailResponseDto;
 import mars.tripplanappbackend.global.enums.ErrorCode;
 import mars.tripplanappbackend.global.exception.BusinessException;
 import mars.tripplanappbackend.mypage.domain.User;
@@ -12,11 +14,15 @@ import mars.tripplanappbackend.mypage.repository.MyPageRepository;
 import mars.tripplanappbackend.trip.domain.VisitedPlace;
 import mars.tripplanappbackend.trip.repository.TripRepository;
 import mars.tripplanappbackend.trip.repository.VisitedPlaceRepository;
+import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.mail.SimpleMailMessage;
+import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 @Service
@@ -29,6 +35,8 @@ public class MyPageService {
     private final BCryptPasswordEncoder passwordEncoder;
     private final TripRepository tripRepository;
     private final VisitedPlaceRepository visitedPlaceRepository;
+    private final JavaMailSender mailSender;
+    private final RedisTemplate<String, String> redisTemplate;
 
     /**
      * 현재 로그인한 사용자의 프로필 정보를 조회
@@ -168,5 +176,62 @@ public class MyPageService {
         return visitedPlaces.stream()
                 .map(VisitedPlaceResponseDto::new)
                 .toList();
+    }
+
+    /**
+     *
+     * 이메일 전송
+     *
+     * 입력된 gmail로 인증 코드 6자리를 전송한다.
+     * 전송에 실패할 경우 EMAIL_SEND_FAIL 에러를 발생시킨다.
+     *
+     * @param requestDto 요청 보낸 이메일 정보
+     * @return 이메일 전송 결과를 담은 응답 DTO
+     */
+
+    @Transactional
+    public EmailResponseDto sendEmail(EmailRequestDto requestDto) {
+
+        String email = requestDto.getEmail();
+        String code = generateVerificationCode();
+
+        String EMAIL_VERIFY_KEY = "email:verify:";
+        String EMAIL_REQUEST_KEY = "email:requested:";
+
+        //redis에 저장되는 내용 ex) email:verify: email@gmail.com
+        // 5분 뒤에 알아서 삭제됨
+        redisTemplate.opsForValue().set(
+                EMAIL_VERIFY_KEY + email,
+                code,
+                5,
+                TimeUnit.MINUTES
+        );
+
+        redisTemplate.opsForValue().set(
+                EMAIL_REQUEST_KEY + email,
+                "true",
+                10,
+                TimeUnit.MINUTES
+        );
+
+        // 사용자에게 전달되는 이메일 내용
+        SimpleMailMessage message = new SimpleMailMessage();
+        message.setTo(email);
+        message.setSubject("PLI 이메일 인증");
+        message.setText("PLI 이메일 인증 코드: " + code);
+
+        try {
+            mailSender.send(message);
+        } catch (Exception e) {
+            throw new BusinessException(ErrorCode.EMAIL_SEND_FAIL);
+        }
+
+        return new EmailResponseDto(email);
+    }
+
+    // 인증 코드 계산 방법
+    private String generateVerificationCode() {
+        int code = (int) (Math.random() * 900000) + 100000;
+        return String.valueOf(code);
     }
 }
