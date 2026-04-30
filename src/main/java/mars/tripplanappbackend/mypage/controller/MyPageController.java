@@ -145,19 +145,25 @@ public class MyPageController {
 
     @PostMapping("/email-request")
     @ApiErrorExceptions({ErrorCode.INVALID_INPUT, ErrorCode.USER_NOT_FOUND, ErrorCode.INTERNAL_ERROR})
-    @Operation(summary = "이메일 전송", description = "이메일 전송 api, gmail만 가능")
-    public ApiResponse<EmailResponseDto> sendEmail(@Valid @RequestBody EmailRequestDto requestDto) {
-        EmailResponseDto response = myPageService.sendEmail(requestDto);
+    @Operation(summary = "프로필 편집용 이메일 전송", description = "이메일 전송 api, gmail만 가능")
+    public ApiResponse<EmailResponseDto> sendEmail(
+            @CurrentUser UserPrincipal userPrincipal,
+            @Valid @RequestBody EmailRequestDto requestDto) {
+        String usersId = userPrincipal.getUsersId();
+        EmailResponseDto response = myPageService.sendEmail(usersId, requestDto);
         return ApiResponse.ok(response);
     }
 
     @PostMapping("/email-verify")
     @ApiErrorExceptions({ErrorCode.USER_NOT_FOUND, ErrorCode.INVALID_EMAIL_CODE,
             ErrorCode.EMAIL_CODE_EXPIRED, ErrorCode.INTERNAL_ERROR})
-    @Operation(summary = "이메일 인증", description = "이메일 인증 api, 이메일로 전송된 인증 번호 6자리 입력, " +
+    @Operation(summary = "프로필 편집용 이메일 인증", description = "이메일 인증 api, 이메일로 전송된 인증 번호 6자리 입력, " +
             "해당 이메일로 가입된 유저가 없으면 user_not_found")
-    public ApiResponse<EmailVerifyResponseDto> emailVerify(@Valid @RequestBody EmailVerifyRequestDto requestDto) {
-        EmailVerifyResponseDto response = myPageService.verifyEmailCode(requestDto);
+    public ApiResponse<EmailVerifyResponseDto> emailVerify(
+            @CurrentUser UserPrincipal userPrincipal,
+            @Valid @RequestBody EmailVerifyRequestDto requestDto) {
+        String usersId = userPrincipal.getUsersId();
+        EmailVerifyResponseDto response = myPageService.verifyEmailCode(usersId, requestDto);
         return ApiResponse.ok(response);
     }
 }

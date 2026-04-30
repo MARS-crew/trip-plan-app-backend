@@ -193,25 +193,32 @@ public class MyPageService {
      */
 
     @Transactional
-    public EmailResponseDto sendEmail(EmailRequestDto requestDto) {
+    public EmailResponseDto sendEmail(String usersId, EmailRequestDto requestDto) {
 
         String email = requestDto.getEmail();
         String code = generateVerificationCode();
 
-        String EMAIL_VERIFY_KEY = "email:verify:";
-        String EMAIL_REQUEST_KEY = "email:requested:";
+        String EMAIL_VERIFY_KEY = "email:verify:" + usersId + ":" + email;
+        String EMAIL_REQUEST_KEY = "email:requested:" + usersId + ":" + email;
 
-        //redis에 저장되는 내용 ex) email:verify: email@gmail.com
+        User user = myPageRepository.findByUsersId(usersId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
+
+        if (!user.getEmail().equals(email)) {
+            throw new BusinessException(ErrorCode.EMAIL_MISMATCH);
+        }
+
+        //redis에 저장되는 내용 ex) email:verify: email@gmail.com : cye4526
         // 5분 뒤에 알아서 삭제됨
         redisTemplate.opsForValue().set(
-                EMAIL_VERIFY_KEY + email,
+                EMAIL_VERIFY_KEY,
                 code,
                 5,
                 TimeUnit.MINUTES
         );
 
         redisTemplate.opsForValue().set(
-                EMAIL_REQUEST_KEY + email,
+                EMAIL_REQUEST_KEY,
                 "true",
                 10,
                 TimeUnit.MINUTES
@@ -239,7 +246,6 @@ public class MyPageService {
     }
 
 
-
     /**
      * 이메일 인증
      *
@@ -251,18 +257,18 @@ public class MyPageService {
      * @return 인증된 이메일, 인증 여부
      */
     @Transactional
-    public EmailVerifyResponseDto verifyEmailCode(EmailVerifyRequestDto requestDto) {
+    public EmailVerifyResponseDto verifyEmailCode(String usersId, EmailVerifyRequestDto requestDto) {
 
         String email = requestDto.getEmail();
-        String EMAIL_VERIFY_KEY = "email:verify:";
-        String EMAIL_REQUEST_KEY = "email:requested:";
+        String EMAIL_VERIFY_KEY = "email:verify:" + usersId + ":" + email;
+        String EMAIL_REQUEST_KEY = "email:requested:" + usersId + ":" + email;
 
-        Boolean isRequested = redisTemplate.hasKey(EMAIL_REQUEST_KEY + email);
+        Boolean isRequested = redisTemplate.hasKey(EMAIL_REQUEST_KEY);
         if (!Boolean.TRUE.equals(isRequested)) {
             throw new BusinessException(ErrorCode.INVALID_EMAIL_REQUEST);
         }
 
-        String savedCode = redisTemplate.opsForValue().get(EMAIL_VERIFY_KEY + email);
+        String savedCode = redisTemplate.opsForValue().get(EMAIL_VERIFY_KEY);
 
         if (savedCode == null) {
             throw new BusinessException(ErrorCode.EMAIL_CODE_EXPIRED);
@@ -272,13 +278,17 @@ public class MyPageService {
             throw new BusinessException(ErrorCode.INVALID_EMAIL_CODE);
         }
 
-        redisTemplate.delete(EMAIL_VERIFY_KEY + email);
-        redisTemplate.delete(EMAIL_REQUEST_KEY + email);
+        redisTemplate.delete(EMAIL_VERIFY_KEY);
+        redisTemplate.delete(EMAIL_REQUEST_KEY);
 
-        User user = myPageRepository.findByEmail(email)
+        User user = myPageRepository.findByUsersId(usersId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
 
-        user.setEmailVerified(UseYnEnum.Y);
+        if (!user.getEmail().equals(email)) {
+            throw new BusinessException(ErrorCode.EMAIL_MISMATCH);
+        }
+
+        user.verifyEmail(email, UseYnEnum.Y);
 
         return new EmailVerifyResponseDto(email, UseYnEnum.Y);
     }
