@@ -103,7 +103,7 @@ public class AuthController {
 
     @PostMapping("/email-request")
     @ApiErrorExceptions({ErrorCode.INVALID_INPUT, ErrorCode.USER_NOT_FOUND, ErrorCode.INTERNAL_ERROR})
-    @Operation(summary = "이메일 전송", description = "이메일 전송 api, gmail만 가능")
+    @Operation(summary = "회원가입용 이메일 전송", description = "이메일 전송 api, gmail만 가능")
     public ApiResponse<EmailResponseDto> sendEmail(@Valid @RequestBody EmailRequestDto requestDto) {
         EmailResponseDto response = authService.sendEmail(requestDto);
         return ApiResponse.ok(response);
@@ -112,7 +112,7 @@ public class AuthController {
     @PostMapping("/email-verify")
     @ApiErrorExceptions({ErrorCode.INVALID_EMAIL_CODE,
             ErrorCode.EMAIL_CODE_EXPIRED, ErrorCode.INTERNAL_ERROR})
-    @Operation(summary = "이메일 인증", description = "이메일 인증 api, 이메일로 전송된 인증 번호 6자리 입력")
+    @Operation(summary = "회원가입용 이메일 인증", description = "이메일 인증 api, 이메일로 전송된 인증 번호 6자리 입력")
     public ApiResponse<EmailVerifyResponseDto> emailVerify(@Valid @RequestBody EmailVerifyRequestDto requestDto) {
         EmailVerifyResponseDto response = authService.verifyEmailCode(requestDto);
         return ApiResponse.ok(response);
