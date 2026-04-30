@@ -201,6 +201,11 @@ public class AuthService {
     public EmailResponseDto sendEmail(EmailRequestDto requestDto) {
 
         String email = requestDto.getEmail();
+
+        if (!email.toLowerCase().endsWith("@gmail.com")) {
+            throw new BusinessException(ErrorCode.INVALID_EMAIL_FORMAT);
+        }
+
         String code = generateVerificationCode();
 
         String EMAIL_VERIFY_KEY = "email:verify:";
@@ -258,6 +263,10 @@ public class AuthService {
     public EmailVerifyResponseDto verifyEmailCode(EmailVerifyRequestDto requestDto) {
 
         String email = requestDto.getEmail();
+        if (!email.toLowerCase().endsWith("@gmail.com")) {
+            throw new BusinessException(ErrorCode.INVALID_EMAIL_FORMAT);
+        }
+
         String EMAIL_VERIFY_KEY = "email:verify:";
         String EMAIL_REQUEST_KEY = "email:requested:";
         String EMAIL_VERIFIED_KEY = "email:verified:";
@@ -343,6 +352,10 @@ public class AuthService {
         ).orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
 
         String email = user.getEmail();
+        if (user.getLoginType() != LoginType.LOCAL) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT);
+        }
+
         String usersId = user.getUsersId();
         String code = generateVerificationCode();
 
