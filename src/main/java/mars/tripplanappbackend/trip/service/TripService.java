@@ -66,6 +66,9 @@ import mars.tripplanappbackend.trip.repository.VisitedPlaceRepository;
 import mars.tripplanappbackend.trip.repository.WishlistPlaceRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import mars.tripplanappbackend.global.config.auth.UserPrincipal;
+import mars.tripplanappbackend.trip.dto.request.UpdateTripDateRequestDto;
+import mars.tripplanappbackend.trip.dto.response.UpdateTripDateResponseDto;
 
 import java.math.BigDecimal;
 import java.net.URLEncoder;
@@ -1905,5 +1908,35 @@ public class TripService {
      */
     private String createTripShareUrl(String shareCode) {
         return String.format(TRIP_SHARE_URL_TEMPLATE, shareCode);
+    }
+
+    /**
+     * 여행 날짜 수정 API
+     */
+    @Transactional
+    public UpdateTripDateResponseDto updateTripDate(
+            UserPrincipal userPrincipal,
+            Long tripId,
+            UpdateTripDateRequestDto requestDto
+    ) {
+        if (requestDto == null ||
+                requestDto.getStartDate() == null ||
+                requestDto.getEndDate() == null) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT);
+        }
+
+        Trip trip = tripRepository.findById(tripId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.TRIP_NOT_FOUND));
+
+        if (requestDto.getStartDate().isAfter(requestDto.getEndDate())) {
+            throw new BusinessException(ErrorCode.INVALID_TRIP_DATE);
+        }
+
+        trip.updateTripDate(
+                requestDto.getStartDate(),
+                requestDto.getEndDate()
+        );
+
+        return UpdateTripDateResponseDto.from(trip);
     }
 }

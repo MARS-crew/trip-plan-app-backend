@@ -61,6 +61,8 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import mars.tripplanappbackend.trip.dto.request.UpdateTripDateRequestDto;
+import mars.tripplanappbackend.trip.dto.response.UpdateTripDateResponseDto;
 
 import java.time.LocalDate;
 
@@ -665,5 +667,31 @@ public class TripController {
             @Valid @RequestBody NearbyTripScheduleRequestDto requestDto
     ) {
         return ApiResponse.ok(tripService.getNearbyTripSchedule(requestDto));
+    }
+
+    /**
+     * 여행 날짜 수정 API
+     *
+     * PATCH /api/v1/trips/{tripId}/date
+     */
+    @PatchMapping("/{tripId}/date")
+    @ApiErrorExceptions({
+            ErrorCode.INVALID_INPUT,
+            ErrorCode.INVALID_TRIP_DATE,
+            ErrorCode.TRIP_NOT_FOUND,
+            ErrorCode.INTERNAL_ERROR
+    })
+    @Operation(
+            summary = "내 여행 날짜 수정",
+            description = "내 여행의 시작일과 종료일을 수정합니다."
+    )
+    public ApiResponse<UpdateTripDateResponseDto> updateTripDate(
+            @CurrentUser UserPrincipal userPrincipal,
+            @PathVariable Long tripId,
+            @RequestBody UpdateTripDateRequestDto requestDto
+    ) {
+        return ApiResponse.ok(
+                tripService.updateTripDate(userPrincipal, tripId, requestDto)
+        );
     }
 }

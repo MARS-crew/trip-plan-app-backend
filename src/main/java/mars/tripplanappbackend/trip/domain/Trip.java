@@ -105,4 +105,13 @@ public class Trip extends BaseEntity {
     public void updateShareCode(String shareCode) {
         this.shareCode = shareCode;
     }
+
+
+    /**
+     * 여행 날짜 수정 메서드
+     */
+    public void updateTripDate(LocalDate startDate, LocalDate endDate) {
+        this.startDate = startDate;
+        this.endDate = endDate;
+    }
 }
