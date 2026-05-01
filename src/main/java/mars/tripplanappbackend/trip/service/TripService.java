@@ -1,5 +1,6 @@
 package mars.tripplanappbackend.trip.service;
 
+import mars.tripplanappbackend.global.config.auth.UserPrincipal;
 import lombok.RequiredArgsConstructor;
 import mars.tripplanappbackend.global.enums.ErrorCode;
 import mars.tripplanappbackend.global.exception.BusinessException;
@@ -8,6 +9,7 @@ import mars.tripplanappbackend.mypage.repository.MyPageRepository;
 import mars.tripplanappbackend.mypage.repository.SavedPlaceRepository;
 import mars.tripplanappbackend.place.domain.Place;
 import mars.tripplanappbackend.place.repository.PlaceRepository;
+import mars.tripplanappbackend.trip.dto.request.AddTripScheduleRequestDto;
 import mars.tripplanappbackend.trip.dto.request.AddVisitedPlaceRequestDto;
 import mars.tripplanappbackend.trip.dto.request.AddWishlistPlaceRequestDto;
 import mars.tripplanappbackend.trip.domain.Trip;
@@ -21,7 +23,6 @@ import mars.tripplanappbackend.trip.dto.request.DeleteWishlistPlaceRequestDto;
 import mars.tripplanappbackend.trip.dto.request.MyTripDetailRequestDto;
 import mars.tripplanappbackend.trip.dto.request.MyTripFilterRequestDto;
 import mars.tripplanappbackend.trip.dto.request.MyTripListRequestDto;
-import mars.tripplanappbackend.trip.dto.request.MyTripMapSearchRequestDto;
 import mars.tripplanappbackend.trip.dto.request.MyTripScheduleByDateRequestDto;
 import mars.tripplanappbackend.trip.dto.request.MyTripScheduleListRequestDto;
 import mars.tripplanappbackend.trip.dto.request.MyTripScheduleLocationRequestDto;
@@ -29,7 +30,10 @@ import mars.tripplanappbackend.trip.dto.request.MyTripScheduleRouteRequestDto;
 import mars.tripplanappbackend.trip.dto.request.NearbyTripScheduleRequestDto;
 import mars.tripplanappbackend.trip.dto.request.ShareTripRequestDto;
 import mars.tripplanappbackend.trip.dto.request.TripPlaceSelectionRequestDto;
+import mars.tripplanappbackend.trip.dto.request.UpdateTripScheduleRequestDto;
 import mars.tripplanappbackend.trip.dto.request.UpdateTripRequestDto;
+import mars.tripplanappbackend.trip.dto.response.*;
+import mars.tripplanappbackend.trip.dto.response.AddTripScheduleResponseDto;
 import mars.tripplanappbackend.trip.dto.response.AddVisitedPlaceResponseDto;
 import mars.tripplanappbackend.trip.dto.response.AddWishlistPlaceResponseDto;
 import mars.tripplanappbackend.trip.dto.response.CreateTripResponseDto;
@@ -40,8 +44,6 @@ import mars.tripplanappbackend.trip.dto.response.MyTripCurrentScheduleResponseDt
 import mars.tripplanappbackend.trip.dto.response.MyTripDailyScheduleResponseDto;
 import mars.tripplanappbackend.trip.dto.response.MyTripDetailResponseDto;
 import mars.tripplanappbackend.trip.dto.response.MyTripListResponseDto;
-import mars.tripplanappbackend.trip.dto.response.MyTripMapSearchItemResponseDto;
-import mars.tripplanappbackend.trip.dto.response.MyTripMapSearchResponseDto;
 import mars.tripplanappbackend.trip.dto.response.MyTripScheduleByDateResponseDto;
 import mars.tripplanappbackend.trip.dto.response.MyTripScheduleDateOptionResponseDto;
 import mars.tripplanappbackend.trip.dto.response.MyTripScheduleItemResponseDto;
@@ -55,6 +57,7 @@ import mars.tripplanappbackend.trip.dto.response.NearbyTripScheduleResponseDto;
 import mars.tripplanappbackend.trip.dto.response.ShareTripResponseDto;
 import mars.tripplanappbackend.trip.dto.response.TripPlaceSelectionItemResponseDto;
 import mars.tripplanappbackend.trip.dto.response.TripPlaceSelectionResponseDto;
+import mars.tripplanappbackend.trip.dto.response.UpdateTripScheduleResponseDto;
 import mars.tripplanappbackend.trip.dto.response.UpdateTripResponseDto;
 import mars.tripplanappbackend.trip.enums.MyTripFilterType;
 import mars.tripplanappbackend.trip.enums.TripStatus;
@@ -66,7 +69,6 @@ import mars.tripplanappbackend.trip.repository.WishlistPlaceRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import mars.tripplanappbackend.trip.dto.request.UpdateTripDateRequestDto;
-import mars.tripplanappbackend.trip.dto.response.UpdateTripDateResponseDto;
 
 
 import java.math.BigDecimal;
@@ -1808,55 +1810,32 @@ public class TripService {
 
 
     /**
-     * 여행 날짜 수정 메서드
-     *
-     * @param tripId 수정할 여행 ID
-     * @param requestDto 수정할 날짜 정보
-     * @return 수정된 여행 날짜 응답 DTO
+     * 여행 날짜 수정 API
      */
     @Transactional
-    public UpdateTripDateResponseDto updateTripDate(Long tripId, UpdateTripDateRequestDto requestDto) {
+    public UpdateTripDateResponseDto updateTripDate(
+            UserPrincipal userPrincipal,
+            Long tripId,
+            UpdateTripDateRequestDto requestDto
+    ) {
+        if (requestDto == null ||
+                requestDto.getStartDate() == null ||
+                requestDto.getEndDate() == null) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT);
+        }
 
-        // 1. 요청값 검증 (null 체크)
-        validateUpdateTripDateRequest(requestDto);
-
-        // 2. DB에서 여행 조회
         Trip trip = tripRepository.findById(tripId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.TRIP_NOT_FOUND));
 
-        // 3. 시작일이 종료일보다 늦으면 잘못된 요청
         if (requestDto.getStartDate().isAfter(requestDto.getEndDate())) {
             throw new BusinessException(ErrorCode.INVALID_TRIP_DATE);
         }
 
-        // 4. 엔티티 값 변경 (JPA Dirty Checking으로 자동 update)
         trip.updateTripDate(
                 requestDto.getStartDate(),
                 requestDto.getEndDate()
         );
 
-        // 5. 응답 DTO 생성 후 반환
-        return UpdateTripDateResponseDto.builder()
-                .tripId(trip.getTripId()) // 여행 ID
-                .startDate(trip.getStartDate().toString()) // 시작일
-                .endDate(trip.getEndDate().toString())     // 종료일
-                .build();
+        return UpdateTripDateResponseDto.from(trip);
     }
-
-    /**
-     * 요청값 검증 메서드
-     * (null 체크)
-     */
-    private void validateUpdateTripDateRequest(UpdateTripDateRequestDto requestDto) {
-
-        // requestDto 자체가 null이거나
-        // 시작일 / 종료일 중 하나라도 null이면 예외 발생
-        if (requestDto == null ||
-                requestDto.getStartDate() == null ||
-                requestDto.getEndDate() == null) {
-
-            throw new BusinessException(ErrorCode.INVALID_INPUT);
-        }
-    }
-
 }
