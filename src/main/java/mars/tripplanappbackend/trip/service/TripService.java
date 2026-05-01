@@ -1,5 +1,6 @@
 package mars.tripplanappbackend.trip.service;
 
+import mars.tripplanappbackend.global.config.auth.UserPrincipal;
 import lombok.RequiredArgsConstructor;
 import mars.tripplanappbackend.global.enums.ErrorCode;
 import mars.tripplanappbackend.global.exception.BusinessException;
@@ -1785,36 +1786,29 @@ public class TripService {
      * 여행 날짜 수정 API
      */
     @Transactional
-    public UpdateTripDateResponseDto updateTripDate(Long tripId, UpdateTripDateRequestDto requestDto) {
-
-        // 1. 요청값 검증
+    public UpdateTripDateResponseDto updateTripDate(
+            UserPrincipal userPrincipal,
+            Long tripId,
+            UpdateTripDateRequestDto requestDto
+    ) {
         if (requestDto == null ||
                 requestDto.getStartDate() == null ||
                 requestDto.getEndDate() == null) {
             throw new BusinessException(ErrorCode.INVALID_INPUT);
         }
 
-        // 2. 여행 조회
         Trip trip = tripRepository.findById(tripId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.TRIP_NOT_FOUND));
 
-        // 3. 날짜 검증 (시작일 > 종료일)
         if (requestDto.getStartDate().isAfter(requestDto.getEndDate())) {
             throw new BusinessException(ErrorCode.INVALID_TRIP_DATE);
         }
 
-        // 4. 날짜 수정
         trip.updateTripDate(
                 requestDto.getStartDate(),
                 requestDto.getEndDate()
         );
 
-        // 5. 응답 반환
-        return UpdateTripDateResponseDto.builder()
-                .tripId(trip.getTripId())
-                .startDate(trip.getStartDate().toString())
-                .endDate(trip.getEndDate().toString())
-                .build();
+        return UpdateTripDateResponseDto.from(trip);
     }
-
 }
