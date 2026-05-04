@@ -74,6 +74,8 @@ import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.time.LocalTime;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
@@ -103,6 +105,7 @@ public class TripService {
     private static final String GOOGLE_DIRECTIONS_COORDINATE_QUERY_TEMPLATE = "%s&destination=%s%%2C%s";
     private static final String GOOGLE_DIRECTIONS_ADDRESS_QUERY_TEMPLATE = "%s&destination=%s";
     private static final DateTimeFormatter SHARE_DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyy.MM.dd");
+    private static final ZoneId APP_ZONE_ID = ZoneId.of("Asia/Seoul");
     private static final int PLACE_NAME_MAX_LENGTH = 80;
     private static final int ADDRESS_MAX_LENGTH = 255;
     private static final int DESCRIPTION_MAX_LENGTH = 2000;
@@ -153,7 +156,7 @@ public class TripService {
 
         validateScheduleDatesWithinTripRange(schedules, requestDto.getStartDate(), requestDto.getEndDate());
 
-        TripStatus tripStatus = resolveTripStatus(requestDto.getStartDate(), requestDto.getEndDate(), LocalDate.now());
+        TripStatus tripStatus = resolveTripStatus(requestDto.getStartDate(), requestDto.getEndDate(), currentDate());
 
         trip.updateTrip(
                 requestDto.getTitle().trim(),
@@ -308,12 +311,12 @@ public class TripService {
                 .startDate(requestDto.getStartDate())
                 .endDate(requestDto.getEndDate())
                 .imageUrl(normalizeImageUrl(requestDto.getImageUrl()))
-                .tripStatus(resolveTripStatus(requestDto.getStartDate(), requestDto.getEndDate(), LocalDate.now()))
+                .tripStatus(resolveTripStatus(requestDto.getStartDate(), requestDto.getEndDate(), currentDate()))
                 .user(user)
                 .build();
 
         Trip savedTrip = tripRepository.save(trip);
-        TripStatus tripStatus = resolveTripStatus(savedTrip, LocalDate.now());
+        TripStatus tripStatus = resolveTripStatus(savedTrip, currentDate());
 
         return CreateTripResponseDto.from(savedTrip, tripStatus);
     }
@@ -343,8 +346,9 @@ public class TripService {
         }
 
         List<MyTripScheduleDateOptionResponseDto> dateOptions = buildDateOptions(trip);
-        LocalDate today = LocalDate.now();
-        LocalTime now = LocalTime.now();
+        ZonedDateTime currentDateTime = currentDateTime();
+        LocalDate today = currentDateTime.toLocalDate();
+        LocalTime now = currentDateTime.toLocalTime();
         Set<Long> visitedPlaceIds = createVisitedPlaceIdSet(trip.getTripId());
 
         List<MyTripScheduleItemResponseDto> schedules = tripScheduleRepository
@@ -387,8 +391,9 @@ public class TripService {
         List<TripSchedule> tripSchedules = tripScheduleRepository
                 .findAllWithPlaceByTrip_TripIdAndIsDeletedFalseOrderByScheduleDateAscStartTimeAsc(trip.getTripId());
 
-        LocalDate today = LocalDate.now();
-        LocalTime now = LocalTime.now();
+        ZonedDateTime currentDateTime = currentDateTime();
+        LocalDate today = currentDateTime.toLocalDate();
+        LocalTime now = currentDateTime.toLocalTime();
         Set<Long> visitedPlaceIds = createVisitedPlaceIdSet(trip.getTripId());
         long tripDayCount = ChronoUnit.DAYS.between(trip.getStartDate(), trip.getEndDate()) + 1;
 
@@ -440,8 +445,9 @@ public class TripService {
         List<TripSchedule> tripSchedules = tripScheduleRepository
                 .findAllWithPlaceByTrip_TripIdAndIsDeletedFalseOrderByScheduleDateAscStartTimeAsc(trip.getTripId());
 
-        LocalDate today = LocalDate.now();
-        LocalTime now = LocalTime.now();
+        ZonedDateTime currentDateTime = currentDateTime();
+        LocalDate today = currentDateTime.toLocalDate();
+        LocalTime now = currentDateTime.toLocalTime();
         TripStatus tripStatus = resolveTripStatus(trip, today);
         Set<Long> visitedPlaceIds = createVisitedPlaceIdSet(trip.getTripId());
         int locationScheduleCount = countLocationSchedules(tripSchedules);
@@ -461,9 +467,11 @@ public class TripService {
         long tripDayCount = ChronoUnit.DAYS.between(trip.getStartDate(), trip.getEndDate()) + 1;
         List<MyTripDailyScheduleResponseDto> dailySchedules =
                 buildDailyScheduleSections(trip, schedulesByDate, tripDayCount);
+        String tripDetailImageUrl = resolveTripDetailImageUrl(trip, tripSchedules);
 
         return MyTripDetailResponseDto.of(
                 trip,
+                tripDetailImageUrl,
                 tripStatus,
                 tripDayCount,
                 tripSchedules.size(),
@@ -497,8 +505,9 @@ public class TripService {
         List<TripSchedule> tripSchedules = tripScheduleRepository
                 .findAllWithPlaceByTrip_TripIdAndIsDeletedFalseOrderByScheduleDateAscStartTimeAsc(trip.getTripId());
 
-        LocalDate today = LocalDate.now();
-        LocalTime now = LocalTime.now();
+        ZonedDateTime currentDateTime = currentDateTime();
+        LocalDate today = currentDateTime.toLocalDate();
+        LocalTime now = currentDateTime.toLocalTime();
         TripStatus tripStatus = resolveTripStatus(trip, today);
         Set<Long> visitedPlaceIds = createVisitedPlaceIdSet(trip.getTripId());
 
@@ -841,8 +850,9 @@ public class TripService {
         validateUserExistsByUserId(requestDto.getUserId());
 
         Long userId = requestDto.getUserId();
-        LocalDate today = LocalDate.now();
-        LocalTime now = LocalTime.now();
+        ZonedDateTime currentDateTime = currentDateTime();
+        LocalDate today = currentDateTime.toLocalDate();
+        LocalTime now = currentDateTime.toLocalTime();
 
         return tripRepository
                 .findFirstByUser_UserIdAndIsDeletedFalseAndStartDateLessThanEqualAndEndDateGreaterThanEqualOrderByStartDateAsc(
@@ -1093,6 +1103,20 @@ public class TripService {
     }
 
     /**
+     * 일정 진행 여부와 여행 상태 계산에 사용할 현재 시각을 애플리케이션 기준 시간대(Asia/Seoul)로 고정합니다.
+     * 서버 JVM 기본 시간대와 무관하게 동일한 결과를 반환하도록 공통 진입점을 둡니다.
+     *
+     * @return 애플리케이션 기준 현재 일시
+     */
+    private ZonedDateTime currentDateTime() {
+        return ZonedDateTime.now(APP_ZONE_ID);
+    }
+
+    private LocalDate currentDate() {
+        return currentDateTime().toLocalDate();
+    }
+
+    /**
      * 여행 추가 요청의 시작일과 종료일이 화면 기획 조건에 맞는지 검증합니다.
      * 시작일이 오늘보다 이전일 수 없고, 종료일은 시작일보다 빠를 수 없습니다.
      *
@@ -1100,7 +1124,7 @@ public class TripService {
      * @param endDate 여행 종료일
      */
     private void validateCreateTripDates(LocalDate startDate, LocalDate endDate) {
-        LocalDate today = LocalDate.now();
+        LocalDate today = currentDate();
 
         if (startDate.isBefore(today) || endDate.isBefore(startDate)) {
             throw new BusinessException(ErrorCode.INVALID_INPUT);
@@ -1202,7 +1226,7 @@ public class TripService {
         }
 
         Map<Long, Integer> scheduleCountMap = createScheduleCountMap(trips);
-        LocalDate today = LocalDate.now();
+        LocalDate today = currentDate();
 
         List<MyTripSummaryResponseDto> tripResponses = trips.stream()
                 .map(trip -> MyTripSummaryResponseDto.of(
@@ -1263,6 +1287,24 @@ public class TripService {
                     );
                 })
                 .toList();
+    }
+
+    private String resolveTripDetailImageUrl(Trip trip, List<TripSchedule> tripSchedules) {
+        Map<Long, ScheduleLocationPlaceSnapshot> placeSnapshots = resolveScheduleLocationPlaceSnapshots(tripSchedules);
+
+        for (TripSchedule tripSchedule : tripSchedules) {
+            Place place = tripSchedule.getPlace();
+            if (place == null || place.getPlaceId() == null) {
+                continue;
+            }
+
+            ScheduleLocationPlaceSnapshot placeSnapshot = placeSnapshots.get(place.getPlaceId());
+            if (placeSnapshot != null && hasText(placeSnapshot.imageUrl())) {
+                return placeSnapshot.imageUrl();
+            }
+        }
+
+        return normalizeImageUrl(trip.getImageUrl());
     }
 
     /**

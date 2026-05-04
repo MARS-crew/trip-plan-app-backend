@@ -202,7 +202,7 @@ public class TripController {
             description = "홈/내 여행 화면에서 선택한 여행의 상세 화면 전체를 구성하기 위한 여행 기본 정보, 현재 진행 중 일정 요약, 액션 가능 상태, 일차별 일정 목록을 조회합니다."
     )
     public ApiResponse<MyTripDetailResponseDto> findOne(
-            @Parameter(description = "조회할 여행 PK", example = "5")
+            @Parameter(description = "조회할 여행 PK", example = "22")
             @PathVariable("tripId") Long tripId,
             @Parameter(hidden = true)
             @CurrentUser UserPrincipal userPrincipal
