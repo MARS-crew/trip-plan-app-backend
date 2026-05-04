@@ -85,6 +85,11 @@ public class AuthService {
         User user = myPageRepository.findByUsersId(requestDto.getUsersId())
                 .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
 
+        // 탈퇴한 회원 조회
+        if (user.getWithdrawn() == UseYnEnum.Y) {
+            throw new BusinessException(ErrorCode.USER_NOT_FOUND);
+        }
+
         // 소셜 가입 회원이 일반 로그인 시도 방지
         if (user.getLoginType() != LoginType.LOCAL) {
             throw new BusinessException(ErrorCode.INVALID_INPUT);
@@ -129,6 +134,11 @@ public class AuthService {
 
         User user = myPageRepository.findByRefreshToken(refreshToken)
                 .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_TOKEN));
+
+        // 탈퇴한 회원 조회
+        if (user.getWithdrawn() == UseYnEnum.Y) {
+            throw new BusinessException(ErrorCode.USER_NOT_FOUND);
+        }
 
         // 서버에 저장된 만료시간 기준으로 RefreshToken 만료 여부 확인
         if (user.isRefreshTokenExpired()) {
