@@ -122,6 +122,15 @@ public class Place extends BaseEntity {
     }
 
     /**
+     * 검색 캐시 재조회 시 비어 있던 대표 이미지 URL만 별도로 보강합니다.
+     *
+     * @param imageUrl Google Place Photo API로 다시 조회한 대표 이미지 URL
+     */
+    public void updateImageUrlFromGoogle(String imageUrl) {
+        this.imageUrl = imageUrl;
+    }
+
+    /**
      * 신규 리뷰가 등록될 때 평균 평점과 리뷰 수를 재계산합니다.
      */
     public void updateRating(Integer newRating) {

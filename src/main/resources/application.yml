@@ -73,6 +73,11 @@ google:
     api-key: ${GOOGLE_PLACES_API_KEY:}
     base-url: ${GOOGLE_PLACES_BASE_URL:https://places.googleapis.com}
 
+search:
+  cache:
+    retention-months: ${SEARCH_CACHE_RETENTION_MONTHS:3}
+    cleanup-cron: ${SEARCH_CACHE_CLEANUP_CRON:0 30 3 * * *}
+
 minio:
   endpoint: ${MINIO_ENDPOINT}
   accessKey: ${MINIO_ACCESS_KEY}
