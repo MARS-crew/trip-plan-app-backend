@@ -206,6 +206,10 @@ public class AuthService {
             throw new BusinessException(ErrorCode.INVALID_EMAIL_FORMAT);
         }
 
+        if (myPageRepository.existsByEmail(email)) {
+            throw new BusinessException(ErrorCode.DUPLICATE_EMAIL);
+        }
+
         String code = generateVerificationCode();
 
         String EMAIL_VERIFY_KEY = "email:verify:";

@@ -102,7 +102,8 @@ public class AuthController {
     }
 
     @PostMapping("/email-request")
-    @ApiErrorExceptions({ErrorCode.INVALID_INPUT, ErrorCode.USER_NOT_FOUND, ErrorCode.INTERNAL_ERROR})
+    @ApiErrorExceptions({ErrorCode.INVALID_INPUT, ErrorCode.USER_NOT_FOUND,
+            ErrorCode.INTERNAL_ERROR, ErrorCode.DUPLICATE_EMAIL})
     @Operation(summary = "회원가입용 이메일 전송", description = "이메일 전송 api, gmail만 가능")
     public ApiResponse<EmailResponseDto> sendEmail(@Valid @RequestBody EmailRequestDto requestDto) {
         EmailResponseDto response = authService.sendEmail(requestDto);
