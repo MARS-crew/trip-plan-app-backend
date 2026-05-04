@@ -7,7 +7,9 @@ import mars.tripplanappbackend.mypage.domain.User;
 import mars.tripplanappbackend.mypage.repository.MyPageRepository;
 import mars.tripplanappbackend.mypage.repository.SavedPlaceRepository;
 import mars.tripplanappbackend.place.domain.Place;
+import mars.tripplanappbackend.place.enums.PlaceType;
 import mars.tripplanappbackend.place.repository.PlaceRepository;
+import mars.tripplanappbackend.search.service.GooglePlaceSearchService;
 import mars.tripplanappbackend.trip.dto.request.AddTripScheduleRequestDto;
 import mars.tripplanappbackend.trip.dto.request.AddVisitedPlaceRequestDto;
 import mars.tripplanappbackend.trip.dto.request.AddWishlistPlaceRequestDto;
@@ -101,10 +103,17 @@ public class TripService {
     private static final String GOOGLE_DIRECTIONS_COORDINATE_QUERY_TEMPLATE = "%s&destination=%s%%2C%s";
     private static final String GOOGLE_DIRECTIONS_ADDRESS_QUERY_TEMPLATE = "%s&destination=%s";
     private static final DateTimeFormatter SHARE_DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyy.MM.dd");
+    private static final int PLACE_NAME_MAX_LENGTH = 80;
+    private static final int ADDRESS_MAX_LENGTH = 255;
+    private static final int DESCRIPTION_MAX_LENGTH = 2000;
+    private static final int IMAGE_URL_MAX_LENGTH = 500;
+    private static final double SCHEDULE_LOCATION_NEARBY_SEARCH_RADIUS_METERS = 500.0d;
+    private static final int SCHEDULE_LOCATION_NEARBY_RESULT_COUNT = 10;
 
     private final MyPageRepository myPageRepository;
     private final SavedPlaceRepository savedPlaceRepository;
     private final PlaceRepository placeRepository;
+    private final GooglePlaceSearchService googlePlaceSearchService;
     private final TripRepository tripRepository;
     private final TripScheduleRepository tripScheduleRepository;
     private final WishlistPlaceRepository wishlistPlaceRepository;
@@ -1470,19 +1479,21 @@ public class TripService {
             Set<Long> visitedPlaceIds
     ) {
         List<MyTripScheduleLocationItemResponseDto> responses = new ArrayList<>(tripSchedules.size());
-        int pinOrder = 0;
+        List<Integer> pinOrders = TripScheduleLocationPinOrderResolver.resolve(tripSchedules);
+        Map<Long, ScheduleLocationPlaceSnapshot> placeSnapshots = resolveScheduleLocationPlaceSnapshots(tripSchedules);
 
         for (int scheduleIndex = 0; scheduleIndex < tripSchedules.size(); scheduleIndex++) {
             TripSchedule tripSchedule = tripSchedules.get(scheduleIndex);
-            boolean hasLocation = tripSchedule.getPlace() != null
-                    && tripSchedule.getPlace().getLatitude() != null
-                    && tripSchedule.getPlace().getLongitude() != null;
-            Integer currentPinOrder = hasLocation ? ++pinOrder : null;
+            Integer currentPinOrder = pinOrders.get(scheduleIndex);
+            Long placeId = tripSchedule.getPlace() != null ? tripSchedule.getPlace().getPlaceId() : null;
+            ScheduleLocationPlaceSnapshot placeSnapshot =
+                    placeId != null ? placeSnapshots.get(placeId) : null;
 
             responses.add(toTripScheduleLocationItemResponse(
                     tripSchedule,
                     scheduleIndex + 1,
                     currentPinOrder,
+                    placeSnapshot,
                     today,
                     now,
                     visitedPlaceIds
@@ -1508,6 +1519,7 @@ public class TripService {
             TripSchedule tripSchedule,
             int scheduleOrder,
             Integer pinOrder,
+            ScheduleLocationPlaceSnapshot placeSnapshot,
             LocalDate today,
             LocalTime now,
             Set<Long> visitedPlaceIds
@@ -1521,6 +1533,10 @@ public class TripService {
                 tripSchedule,
                 scheduleOrder,
                 pinOrder,
+                placeSnapshot != null ? placeSnapshot.placeName() : null,
+                resolveScheduleLocationAddress(tripSchedule, placeSnapshot),
+                placeSnapshot != null ? placeSnapshot.description() : null,
+                placeSnapshot != null ? placeSnapshot.imageUrl() : null,
                 isCurrent,
                 visited,
                 canAddVisitedPlace
@@ -1559,6 +1575,355 @@ public class TripService {
         }
 
         return null;
+    }
+
+    private Map<Long, ScheduleLocationPlaceSnapshot> resolveScheduleLocationPlaceSnapshots(List<TripSchedule> tripSchedules) {
+        Map<Long, ScheduleLocationPlaceSnapshot> snapshotsByPlaceId = new HashMap<>();
+        Map<String, ScheduleLocationPlaceSnapshot> snapshotsByGooglePlaceId = new HashMap<>();
+
+        for (TripSchedule tripSchedule : tripSchedules) {
+            Place place = tripSchedule.getPlace();
+            if (place == null || place.getPlaceId() == null || snapshotsByPlaceId.containsKey(place.getPlaceId())) {
+                continue;
+            }
+
+            ScheduleLocationPlaceSnapshot snapshot = null;
+            String googlePlaceId = nullableTrim(place.getGooglePlaceId());
+
+            if (hasText(googlePlaceId)) {
+                snapshot = snapshotsByGooglePlaceId.computeIfAbsent(
+                        googlePlaceId,
+                        ignored -> resolveScheduleLocationPlaceSnapshot(place)
+                );
+            } else {
+                snapshot = resolveScheduleLocationPlaceSnapshot(place);
+            }
+
+            snapshotsByPlaceId.put(
+                    place.getPlaceId(),
+                    snapshot != null ? snapshot : resolveFallbackScheduleLocationPlaceSnapshot(place)
+            );
+        }
+
+        return snapshotsByPlaceId;
+    }
+
+    private ScheduleLocationPlaceSnapshot resolveScheduleLocationPlaceSnapshot(Place place) {
+        GooglePlaceSearchService.GooglePlaceCandidate googleCandidate = resolveScheduleLocationGoogleCandidate(place);
+        if (googleCandidate == null) {
+            return resolveFallbackScheduleLocationPlaceSnapshot(place);
+        }
+
+        return new ScheduleLocationPlaceSnapshot(
+                firstNonBlank(
+                        truncate(nullableTrim(googleCandidate.name()), PLACE_NAME_MAX_LENGTH),
+                        truncate(nullableTrim(place.getName()), PLACE_NAME_MAX_LENGTH)
+                ),
+                firstNonBlank(
+                        truncate(nullableTrim(googleCandidate.shortFormattedAddress()), ADDRESS_MAX_LENGTH),
+                        truncate(nullableTrim(googleCandidate.formattedAddress()), ADDRESS_MAX_LENGTH),
+                        truncate(nullableTrim(place.getAddress()), ADDRESS_MAX_LENGTH)
+                ),
+                firstNonBlank(
+                        truncate(nullableTrim(googleCandidate.editorialSummary()), DESCRIPTION_MAX_LENGTH),
+                        truncate(nullableTrim(place.getDescription()), DESCRIPTION_MAX_LENGTH)
+                ),
+                resolveScheduleLocationImageUrl(place, googleCandidate.firstPhotoName())
+        );
+    }
+
+    private ScheduleLocationPlaceSnapshot resolveFallbackScheduleLocationPlaceSnapshot(Place place) {
+        return new ScheduleLocationPlaceSnapshot(
+                truncate(nullableTrim(place.getName()), PLACE_NAME_MAX_LENGTH),
+                truncate(nullableTrim(place.getAddress()), ADDRESS_MAX_LENGTH),
+                truncate(nullableTrim(place.getDescription()), DESCRIPTION_MAX_LENGTH),
+                resolveStoredScheduleLocationImageUrl(place)
+        );
+    }
+
+    private String resolveScheduleLocationImageUrl(Place place, String photoName) {
+        if (hasText(photoName)) {
+            String photoUri = googlePlaceSearchService.getPhotoUri(photoName);
+            if (hasText(photoUri)) {
+                return truncate(photoUri, IMAGE_URL_MAX_LENGTH);
+            }
+        }
+
+        return resolveStoredScheduleLocationImageUrl(place);
+    }
+
+    private String resolveScheduleLocationAddress(
+            TripSchedule tripSchedule,
+            ScheduleLocationPlaceSnapshot placeSnapshot
+    ) {
+        if (placeSnapshot != null && hasText(placeSnapshot.address())) {
+            return placeSnapshot.address();
+        }
+
+        return resolveScheduleAddress(tripSchedule);
+    }
+
+    private GooglePlaceSearchService.GooglePlaceCandidate resolveScheduleLocationGoogleCandidate(Place place) {
+        GooglePlaceSearchService.GooglePlaceCandidate detailsCandidate = resolveScheduleLocationDetailsCandidate(place);
+        if (detailsCandidate != null) {
+            return detailsCandidate;
+        }
+
+        GooglePlaceSearchService.GooglePlaceCandidate nearbyCandidate = resolveScheduleLocationNearbyCandidate(place);
+        if (nearbyCandidate != null) {
+            if (hasText(nearbyCandidate.googlePlaceId())) {
+                GooglePlaceSearchService.GooglePlaceCandidate details =
+                        googlePlaceSearchService.getPlaceDetails(nearbyCandidate.googlePlaceId());
+                if (details != null) {
+                    return mergeScheduleLocationCandidates(nearbyCandidate, details);
+                }
+            }
+            return nearbyCandidate;
+        }
+
+        String searchQuery = buildScheduleLocationPlaceSearchQuery(place);
+        if (!hasText(searchQuery)) {
+            return null;
+        }
+
+        List<GooglePlaceSearchService.GooglePlaceCandidate> candidates = googlePlaceSearchService.searchPlaces(searchQuery);
+        if (candidates == null || candidates.isEmpty()) {
+            return null;
+        }
+
+        GooglePlaceSearchService.GooglePlaceCandidate bestCandidate = selectBestScheduleLocationCandidate(place, candidates);
+        if (bestCandidate == null) {
+            return null;
+        }
+
+        if (hasText(bestCandidate.googlePlaceId())) {
+            GooglePlaceSearchService.GooglePlaceCandidate details =
+                    googlePlaceSearchService.getPlaceDetails(bestCandidate.googlePlaceId());
+            if (details != null) {
+                return mergeScheduleLocationCandidates(bestCandidate, details);
+            }
+        }
+
+        return bestCandidate;
+    }
+
+    private GooglePlaceSearchService.GooglePlaceCandidate resolveScheduleLocationDetailsCandidate(Place place) {
+        if (!hasText(place.getGooglePlaceId())) {
+            return null;
+        }
+
+        return googlePlaceSearchService.getPlaceDetails(place.getGooglePlaceId());
+    }
+
+    private GooglePlaceSearchService.GooglePlaceCandidate resolveScheduleLocationNearbyCandidate(Place place) {
+        if (place.getLatitude() == null || place.getLongitude() == null) {
+            return null;
+        }
+
+        List<GooglePlaceSearchService.GooglePlaceCandidate> candidates = googlePlaceSearchService.searchNearbyPlaces(
+                place.getLatitude().doubleValue(),
+                place.getLongitude().doubleValue(),
+                SCHEDULE_LOCATION_NEARBY_SEARCH_RADIUS_METERS,
+                List.of(resolveGoogleIncludedType(place.getPlaceType())),
+                SCHEDULE_LOCATION_NEARBY_RESULT_COUNT
+        );
+
+        if (candidates == null || candidates.isEmpty()) {
+            return null;
+        }
+
+        return selectBestScheduleLocationCandidate(place, candidates);
+    }
+
+    private String buildScheduleLocationPlaceSearchQuery(Place place) {
+        String name = nullableTrim(place.getName());
+        String address = nullableTrim(place.getAddress());
+        String cityName = nullableTrim(place.getCityName());
+        String countryName = nullableTrim(place.getCountryName());
+
+        StringBuilder queryBuilder = new StringBuilder();
+        appendScheduleLocationSearchToken(queryBuilder, name);
+        appendScheduleLocationSearchToken(queryBuilder, address);
+        appendScheduleLocationSearchToken(queryBuilder, cityName);
+        appendScheduleLocationSearchToken(queryBuilder, countryName);
+        return nullableTrim(queryBuilder.toString());
+    }
+
+    private GooglePlaceSearchService.GooglePlaceCandidate selectBestScheduleLocationCandidate(
+            Place place,
+            List<GooglePlaceSearchService.GooglePlaceCandidate> candidates
+    ) {
+        String targetName = normalizeMatchingText(place.getName());
+        String targetAddress = normalizeMatchingText(place.getAddress());
+
+        return candidates.stream()
+                .filter(candidate -> candidate != null)
+                .max((left, right) -> Integer.compare(
+                        calculateScheduleLocationCandidateScore(place, right, targetName, targetAddress),
+                        calculateScheduleLocationCandidateScore(place, left, targetName, targetAddress)
+                ))
+                .orElse(null);
+    }
+
+    private int calculateScheduleLocationCandidateScore(
+            Place place,
+            GooglePlaceSearchService.GooglePlaceCandidate candidate,
+            String targetName,
+            String targetAddress
+    ) {
+        int score = 0;
+        String candidateName = normalizeMatchingText(candidate.name());
+        String candidateShortAddress = normalizeMatchingText(candidate.shortFormattedAddress());
+        String candidateFormattedAddress = normalizeMatchingText(candidate.formattedAddress());
+
+        if (hasText(targetName) && targetName.equals(candidateName)) {
+            score += 100;
+        } else if (hasText(targetName) && hasText(candidateName)) {
+            int nameDistance = calculateLevenshteinDistance(targetName, candidateName);
+            if (nameDistance <= 1) {
+                score += 90;
+            } else if (nameDistance <= 2) {
+                score += 75;
+            } else if (candidateName.contains(targetName) || targetName.contains(candidateName)) {
+                score += 60;
+            }
+        }
+
+        if (hasText(targetAddress) && hasText(candidateShortAddress) && targetAddress.contains(candidateShortAddress)) {
+            score += 40;
+        } else if (hasText(targetAddress)
+                && hasText(candidateFormattedAddress)
+                && (targetAddress.contains(candidateFormattedAddress) || candidateFormattedAddress.contains(targetAddress))) {
+            score += 30;
+        }
+
+        if (place.getLatitude() != null
+                && place.getLongitude() != null
+                && candidate.latitude() != null
+                && candidate.longitude() != null) {
+            double distanceMeters = calculateDistanceMeters(
+                    place.getLatitude().doubleValue(),
+                    place.getLongitude().doubleValue(),
+                    candidate.latitude(),
+                    candidate.longitude()
+            );
+
+            if (distanceMeters <= 50) {
+                score += 40;
+            } else if (distanceMeters <= 150) {
+                score += 25;
+            } else if (distanceMeters <= 300) {
+                score += 10;
+            }
+        }
+
+        return score;
+    }
+
+    private GooglePlaceSearchService.GooglePlaceCandidate mergeScheduleLocationCandidates(
+            GooglePlaceSearchService.GooglePlaceCandidate baseCandidate,
+            GooglePlaceSearchService.GooglePlaceCandidate detailsCandidate
+    ) {
+        return new GooglePlaceSearchService.GooglePlaceCandidate(
+                firstNonBlank(detailsCandidate.googlePlaceId(), baseCandidate.googlePlaceId()),
+                firstNonBlank(detailsCandidate.name(), baseCandidate.name()),
+                firstNonBlank(detailsCandidate.formattedAddress(), baseCandidate.formattedAddress()),
+                firstNonBlank(detailsCandidate.shortFormattedAddress(), baseCandidate.shortFormattedAddress()),
+                detailsCandidate.latitude() != null ? detailsCandidate.latitude() : baseCandidate.latitude(),
+                detailsCandidate.longitude() != null ? detailsCandidate.longitude() : baseCandidate.longitude(),
+                detailsCandidate.rating() != null ? detailsCandidate.rating() : baseCandidate.rating(),
+                detailsCandidate.addressComponents() != null && !detailsCandidate.addressComponents().isEmpty()
+                        ? detailsCandidate.addressComponents()
+                        : baseCandidate.addressComponents(),
+                firstNonBlank(detailsCandidate.editorialSummary(), baseCandidate.editorialSummary()),
+                detailsCandidate.regularOpeningWeekdayDescriptions() != null
+                        && !detailsCandidate.regularOpeningWeekdayDescriptions().isEmpty()
+                        ? detailsCandidate.regularOpeningWeekdayDescriptions()
+                        : baseCandidate.regularOpeningWeekdayDescriptions(),
+                firstNonBlank(detailsCandidate.firstPhotoName(), baseCandidate.firstPhotoName())
+        );
+    }
+
+    private String resolveStoredScheduleLocationImageUrl(Place place) {
+        String imageUrl = truncate(nullableTrim(place.getImageUrl()), IMAGE_URL_MAX_LENGTH);
+        if (isLegacyPlaceholderImageUrl(imageUrl)) {
+            return null;
+        }
+        return imageUrl;
+    }
+
+    private boolean isLegacyPlaceholderImageUrl(String imageUrl) {
+        return hasText(imageUrl) && imageUrl.contains("cdn.lets-trip.com/place/");
+    }
+
+    private void appendScheduleLocationSearchToken(StringBuilder queryBuilder, String token) {
+        if (!hasText(token)) {
+            return;
+        }
+        if (!queryBuilder.isEmpty()) {
+            queryBuilder.append(' ');
+        }
+        queryBuilder.append(token.trim());
+    }
+
+    private String resolveGoogleIncludedType(PlaceType placeType) {
+        if (placeType == null) {
+            return "tourist_attraction";
+        }
+
+        return switch (placeType) {
+            case RESTAURANT -> "restaurant";
+            case ACCOMMODATION -> "lodging";
+            case SHOPPING -> "shopping_mall";
+            case BEACH, NATURE, LANDMARK, CULTURE, ATTRACTION -> "tourist_attraction";
+        };
+    }
+
+    private double calculateDistanceMeters(
+            double latitude1,
+            double longitude1,
+            double latitude2,
+            double longitude2
+    ) {
+        double earthRadiusMeters = 6_371_000d;
+        double latitudeDistance = Math.toRadians(latitude2 - latitude1);
+        double longitudeDistance = Math.toRadians(longitude2 - longitude1);
+
+        double a = Math.sin(latitudeDistance / 2) * Math.sin(latitudeDistance / 2)
+                + Math.cos(Math.toRadians(latitude1))
+                * Math.cos(Math.toRadians(latitude2))
+                * Math.sin(longitudeDistance / 2)
+                * Math.sin(longitudeDistance / 2);
+
+        double c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        return earthRadiusMeters * c;
+    }
+
+    private int calculateLevenshteinDistance(String left, String right) {
+        if (left.equals(right)) {
+            return 0;
+        }
+
+        int[][] distance = new int[left.length() + 1][right.length() + 1];
+
+        for (int i = 0; i <= left.length(); i++) {
+            distance[i][0] = i;
+        }
+        for (int j = 0; j <= right.length(); j++) {
+            distance[0][j] = j;
+        }
+
+        for (int i = 1; i <= left.length(); i++) {
+            for (int j = 1; j <= right.length(); j++) {
+                int cost = left.charAt(i - 1) == right.charAt(j - 1) ? 0 : 1;
+                distance[i][j] = Math.min(
+                        Math.min(distance[i - 1][j] + 1, distance[i][j - 1] + 1),
+                        distance[i - 1][j - 1] + cost
+                );
+            }
+        }
+
+        return distance[left.length()][right.length()];
     }
 
     /**
@@ -1679,6 +2044,53 @@ public class TripService {
      */
     private boolean hasText(String value) {
         return value != null && !value.isBlank();
+    }
+
+    private String firstNonBlank(String... values) {
+        for (String value : values) {
+            if (hasText(value)) {
+                return value.trim();
+            }
+        }
+
+        return null;
+    }
+
+    private String truncate(String value, int maxLength) {
+        if (value == null) {
+            return null;
+        }
+
+        return value.length() <= maxLength ? value : value.substring(0, maxLength);
+    }
+
+    private String nullableTrim(String value) {
+        if (value == null) {
+            return null;
+        }
+
+        String trimmed = value.trim();
+        return trimmed.isEmpty() ? null : trimmed;
+    }
+
+    private String normalizeMatchingText(String value) {
+        String trimmed = nullableTrim(value);
+        if (trimmed == null) {
+            return "";
+        }
+
+        return trimmed
+                .replaceAll("\\s+", "")
+                .replace(",", "")
+                .toLowerCase();
+    }
+
+    private record ScheduleLocationPlaceSnapshot(
+            String placeName,
+            String address,
+            String description,
+            String imageUrl
+    ) {
     }
 
     private List<MyTripScheduleDateOptionResponseDto> buildDateOptions(Trip trip) {
