@@ -83,6 +83,7 @@ public class MyTripDetailResponseDto {
      */
     public static MyTripDetailResponseDto of(
             Trip trip,
+            String imageUrl,
             TripStatus tripStatus,
             long tripDayCount,
             int totalScheduleCount,
@@ -96,7 +97,7 @@ public class MyTripDetailResponseDto {
         return MyTripDetailResponseDto.builder()
                 .tripId(trip.getTripId())
                 .tripTitle(trip.getTitle())
-                .imageUrl(trip.getImageUrl())
+                .imageUrl(imageUrl)
                 .tripStatus(tripStatus)
                 .tripStatusLabel(resolveTripStatusLabel(tripStatus))
                 .startDate(trip.getStartDate())
