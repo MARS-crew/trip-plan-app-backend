@@ -552,6 +552,7 @@ public class SearchService {
                 firstNonBlank(details.googlePlaceId(), candidate.googlePlaceId()),
                 firstNonBlank(details.name(), candidate.name()),
                 firstNonBlank(details.formattedAddress(), candidate.formattedAddress()),
+                firstNonBlank(details.shortFormattedAddress(), candidate.shortFormattedAddress()),
                 details.latitude() != null ? details.latitude() : candidate.latitude(),
                 details.longitude() != null ? details.longitude() : candidate.longitude(),
                 details.rating() != null ? details.rating() : candidate.rating(),

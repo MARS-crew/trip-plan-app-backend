@@ -26,6 +26,7 @@ import java.util.List;
 public class GooglePlaceSearchService {
 
     private static final String GOOGLE_PLACES_TEXT_SEARCH_PATH = "/v1/places:searchText";
+    private static final String GOOGLE_PLACES_NEARBY_SEARCH_PATH = "/v1/places:searchNearby";
     private static final String GOOGLE_PLACES_DETAILS_PATH_TEMPLATE = "/v1/places/%s";
     private static final String GOOGLE_PLACES_PHOTO_MEDIA_PATH_TEMPLATE = "/v1/%s/media";
 
@@ -34,7 +35,7 @@ public class GooglePlaceSearchService {
      * 장소 검색 결과를 DB에 upsert할 때 필요한 핵심 필드 + 화면 메타데이터(이미지/소개/영업시간)를 요청합니다.
      */
     private static final String GOOGLE_PLACES_TEXT_SEARCH_FIELD_MASK =
-            "places.id,places.displayName,places.formattedAddress,places.location,places.rating,"
+            "places.id,places.displayName,places.formattedAddress,places.shortFormattedAddress,places.location,places.rating,"
                     + "places.addressComponents.longText,places.addressComponents.shortText,places.addressComponents.types,"
                     + "places.editorialSummary,places.regularOpeningHours.weekdayDescriptions,places.photos";
 
@@ -43,7 +44,7 @@ public class GooglePlaceSearchService {
      * Text Search 결과에 메타데이터가 비어있는 경우 fallback으로 사용합니다.
      */
     private static final String GOOGLE_PLACES_DETAILS_FIELD_MASK =
-            "id,displayName,formattedAddress,location,rating,"
+            "id,displayName,formattedAddress,shortFormattedAddress,location,rating,"
                     + "addressComponents.longText,addressComponents.shortText,addressComponents.types,"
                     + "editorialSummary,regularOpeningHours.weekdayDescriptions,photos";
 
@@ -98,6 +99,58 @@ public class GooglePlaceSearchService {
         }
     }
 
+    public List<GooglePlaceCandidate> searchNearbyPlaces(
+            double latitude,
+            double longitude,
+            double radiusMeters,
+            List<String> includedTypes,
+            int maxResultCount
+    ) {
+        validateGooglePlacesApiKey();
+
+        try {
+            GoogleTextSearchResponse response = webClient.post()
+                    .uri(googlePlacesBaseUrl + GOOGLE_PLACES_NEARBY_SEARCH_PATH)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .header("X-Goog-Api-Key", googlePlacesApiKey)
+                    .header("X-Goog-FieldMask", GOOGLE_PLACES_TEXT_SEARCH_FIELD_MASK)
+                    .bodyValue(new GoogleNearbySearchRequest(
+                            includedTypes,
+                            maxResultCount,
+                            DEFAULT_LANGUAGE_CODE,
+                            "DISTANCE",
+                            new GoogleLocationRestriction(
+                                    new GoogleCircle(
+                                            new GoogleNearbySearchCenter(latitude, longitude),
+                                            radiusMeters
+                                    )
+                            )
+                    ))
+                    .retrieve()
+                    .bodyToMono(GoogleTextSearchResponse.class)
+                    .block();
+
+            return mapTextSearchResults(response);
+        } catch (WebClientResponseException exception) {
+            log.warn(
+                    "Google Places Nearby Search API 호출 실패. lat={}, lng={}, status={}, response={}",
+                    latitude,
+                    longitude,
+                    exception.getStatusCode(),
+                    exception.getResponseBodyAsString()
+            );
+            return List.of();
+        } catch (Exception exception) {
+            log.warn(
+                    "Google Places Nearby Search 처리 중 예외 발생. lat={}, lng={}, message={}",
+                    latitude,
+                    longitude,
+                    exception.getMessage()
+            );
+            return List.of();
+        }
+    }
+
     /**
      * Place ID 기준으로 Place Details를 조회합니다.
      * <p>
@@ -116,8 +169,12 @@ public class GooglePlaceSearchService {
         String requestPath = String.format(GOOGLE_PLACES_DETAILS_PATH_TEMPLATE, normalizedPlaceId);
 
         try {
+            String requestUri = UriComponentsBuilder.fromUriString(googlePlacesBaseUrl + requestPath)
+                    .queryParam("languageCode", DEFAULT_LANGUAGE_CODE)
+                    .toUriString();
+
             GooglePlacePayload response = webClient.get()
-                    .uri(googlePlacesBaseUrl + requestPath)
+                    .uri(requestUri)
                     .header("X-Goog-Api-Key", googlePlacesApiKey)
                     .header("X-Goog-FieldMask", GOOGLE_PLACES_DETAILS_FIELD_MASK)
                     .retrieve()
@@ -210,6 +267,7 @@ public class GooglePlaceSearchService {
                 place.getId(),
                 place.getDisplayName() != null ? place.getDisplayName().getText() : null,
                 place.getFormattedAddress(),
+                place.getShortFormattedAddress(),
                 place.getLocation() != null ? place.getLocation().getLatitude() : null,
                 place.getLocation() != null ? place.getLocation().getLongitude() : null,
                 place.getRating(),
@@ -300,6 +358,7 @@ public class GooglePlaceSearchService {
             String googlePlaceId,
             String name,
             String formattedAddress,
+            String shortFormattedAddress,
             Double latitude,
             Double longitude,
             Double rating,
@@ -320,6 +379,24 @@ public class GooglePlaceSearchService {
     private record GoogleTextSearchRequest(String textQuery, int maxResultCount, String languageCode) {
     }
 
+    private record GoogleNearbySearchRequest(
+            List<String> includedTypes,
+            int maxResultCount,
+            String languageCode,
+            String rankPreference,
+            GoogleLocationRestriction locationRestriction
+    ) {
+    }
+
+    private record GoogleLocationRestriction(GoogleCircle circle) {
+    }
+
+    private record GoogleCircle(GoogleNearbySearchCenter center, double radius) {
+    }
+
+    private record GoogleNearbySearchCenter(double latitude, double longitude) {
+    }
+
     @Getter
     @Setter
     @NoArgsConstructor
@@ -336,6 +413,7 @@ public class GooglePlaceSearchService {
         private String id;
         private GoogleDisplayName displayName;
         private String formattedAddress;
+        private String shortFormattedAddress;
         private GoogleLocation location;
         private Double rating;
         private List<GoogleAddressComponentPayload> addressComponents;
