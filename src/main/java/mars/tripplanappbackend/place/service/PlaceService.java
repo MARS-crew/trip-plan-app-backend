@@ -326,7 +326,7 @@ public class PlaceService {
             throw new BusinessException(ErrorCode.UNAUTHORIZED);
         }
 
-        myPageRepository.findByUsersId(usersId)
+        myPageRepository.findByUsersIdAndIsDeletedFalse(usersId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
     }
 
@@ -392,7 +392,7 @@ public class PlaceService {
      * @return 사용자 엔티티
      */
     private User findUser(String usersId) {
-        return myPageRepository.findByUsersId(usersId)
+        return myPageRepository.findByUsersIdAndIsDeletedFalse(usersId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
     }
 

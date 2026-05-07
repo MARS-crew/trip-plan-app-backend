@@ -972,7 +972,7 @@ public class SearchService {
             return null;
         }
 
-        return myPageRepository.findByUsersId(usersId).orElse(null);
+        return myPageRepository.findByUsersIdAndIsDeletedFalse(usersId).orElse(null);
     }
 
     /**
@@ -985,7 +985,7 @@ public class SearchService {
             throw new BusinessException(ErrorCode.UNAUTHORIZED);
         }
 
-        myPageRepository.findByUsersId(usersId)
+        myPageRepository.findByUsersIdAndIsDeletedFalse(usersId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
     }
 

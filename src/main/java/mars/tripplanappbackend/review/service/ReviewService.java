@@ -72,7 +72,7 @@ public class ReviewService {
     @Transactional
     public ReviewCreateResponseDto createReview(String usersId, ReviewCreateRequestDto requestDto) {
         // 유저 확인 및 방문지 확인
-        User user = myPageRepository.findByUsersId(usersId)
+        User user = myPageRepository.findByUsersIdAndIsDeletedFalse(usersId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
 
         VisitedPlace visitedPlace = visitedPlaceRepository.findByVisitedPlaceIdAndIsDeletedFalse(requestDto.getVisitedPlaceId())

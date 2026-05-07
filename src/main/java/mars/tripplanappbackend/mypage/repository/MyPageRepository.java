@@ -10,18 +10,15 @@ import java.util.Optional;
 
 @Repository
 public interface MyPageRepository extends JpaRepository<User, Long> {
-    Optional<User> findByUsersId(String usersId);
-    Optional<User> findByRefreshToken(String refreshToken);
-    Optional<User> findByLoginTypeAndSocialProviderId(LoginType loginType, String socialProviderId);
+    Optional<User> findByUsersIdAndIsDeletedFalse(String usersId);
+    Optional<User> findByRefreshTokenAndIsDeletedFalse(String refreshToken);
+    Optional<User> findByLoginTypeAndSocialProviderIdAndIsDeletedFalse(LoginType loginType, String socialProviderId);
+    Optional<User> findByNicknameAndEmailAndIsDeletedFalse(String nickname, String email);
+    Optional<User> findByEmailAndIsDeletedFalse(String email);
+    Optional<User> findByUsersIdAndEmailAndIsDeletedFalse(String usersId, String email);
 
-    boolean existsByUsersId(String usersId);
+    boolean existsByUsersIdAndIsDeletedFalse(String usersId);
 
-    Optional<User> findByNicknameAndEmail(String email, String nickname);
-
-    Optional<User> findByEmail(String email);
-
-    Optional<User> findByUsersIdAndEmail(String email, String UsersId);
-
-    boolean existsByEmail(String Email);
+    boolean existsByEmailAndIsDeletedFalse(String email);
 }
 

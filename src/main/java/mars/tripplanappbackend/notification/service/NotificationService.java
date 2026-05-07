@@ -142,7 +142,7 @@ public class NotificationService {
      */
     @Transactional
     public List<NotificationResponse> getNotifications(String usersId) {
-        User user = myPageRepository.findByUsersId(usersId)
+        User user = myPageRepository.findByUsersIdAndIsDeletedFalse(usersId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
 
         List<Notification> notifications = notificationRepository
@@ -162,7 +162,7 @@ public class NotificationService {
      */
     @Transactional(readOnly = true)
     public boolean hasUnreadNotification(String usersId) {
-        User user = myPageRepository.findByUsersId(usersId)
+        User user = myPageRepository.findByUsersIdAndIsDeletedFalse(usersId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
         return !notificationRepository.existsByUserAndIsReadAndIsDeletedFalse(user, UseYnEnum.N);
     }
