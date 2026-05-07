@@ -3,63 +3,63 @@ package mars.tripplanappbackend.trip.dto.response;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Builder;
 import lombok.Getter;
+import mars.tripplanappbackend.place.domain.Place;
 import mars.tripplanappbackend.trip.domain.TripSchedule;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalTime;
 
-/**
- * 일정 수정 API 성공 응답 DTO입니다.
- * 수정 직후 프론트 화면을 즉시 갱신할 수 있도록 일정 상세 정보를 함께 반환합니다.
- */
 @Getter
 @Builder
-@Schema(description = "일정 수정 응답 DTO")
+@Schema(description = "Response DTO for updating a trip schedule")
 public class UpdateTripScheduleResponseDto {
 
-    @Schema(description = "일정이 속한 여행 PK", example = "5")
+    @Schema(description = "Trip id", example = "5")
     private Long tripId;
 
-    @Schema(description = "수정된 일정 PK", example = "21")
+    @Schema(description = "Trip schedule id", example = "21")
     private Long tripScheduleId;
 
-    @Schema(description = "여행 시작일 기준 일차", example = "2")
+    @Schema(description = "Day number from trip start date", example = "2")
     private int dayNo;
 
-    @Schema(description = "일정 날짜", example = "2026-03-02")
+    @Schema(description = "Schedule date", example = "2026-03-02")
     private LocalDate scheduleDate;
 
-    @Schema(description = "일정명", example = "점심 식사")
+    @Schema(description = "Schedule title", example = "Odori Park walk")
     private String title;
 
-    @Schema(description = "일정 시작 시간", example = "11:30")
+    @Schema(description = "Schedule start time", example = "11:30")
     private LocalTime startTime;
 
-    @Schema(description = "일정 종료 시간", example = "12:30")
+    @Schema(description = "Schedule end time", example = "12:30")
     private LocalTime endTime;
 
-    @Schema(description = "장소 PK", example = "7", nullable = true)
+    @Schema(description = "Place id", example = "7", nullable = true)
     private Long placeId;
 
-    @Schema(description = "장소명", example = "오도리 공원", nullable = true)
+    @Schema(description = "Place name", example = "Odori Park", nullable = true)
     private String placeName;
 
-    @Schema(description = "장소 주소", example = "Odorinishi, Chuo Ward, Sapporo", nullable = true)
+    @Schema(description = "Place latitude", example = "43.0617710", nullable = true)
+    private BigDecimal latitude;
+
+    @Schema(description = "Place longitude", example = "141.3544500", nullable = true)
+    private BigDecimal longitude;
+
+    @Schema(description = "Place address", example = "Odorinishi, Chuo Ward, Sapporo", nullable = true)
     private String address;
 
-    @Schema(description = "메모", example = "현지 맛집 방문", nullable = true)
+    @Schema(description = "Schedule memo", example = "Reservation completed", nullable = true)
     private String memo;
 
-    @Schema(description = "일정 수정 성공 여부", example = "true")
+    @Schema(description = "Whether the schedule was updated successfully", example = "true")
     private boolean updated;
 
-    /**
-     * 수정 완료된 TripSchedule 엔티티를 응답 DTO로 변환합니다.
-     *
-     * @param tripSchedule 수정된 일정 엔티티
-     * @return 일정 수정 응답 DTO
-     */
     public static UpdateTripScheduleResponseDto from(TripSchedule tripSchedule) {
+        Place place = tripSchedule.getPlace();
+
         return UpdateTripScheduleResponseDto.builder()
                 .tripId(tripSchedule.getTrip().getTripId())
                 .tripScheduleId(tripSchedule.getTripScheduleId())
@@ -68,8 +68,10 @@ public class UpdateTripScheduleResponseDto {
                 .title(tripSchedule.getTitle())
                 .startTime(tripSchedule.getStartTime())
                 .endTime(tripSchedule.getEndTime())
-                .placeId(tripSchedule.getPlace() != null ? tripSchedule.getPlace().getPlaceId() : null)
-                .placeName(tripSchedule.getPlace() != null ? tripSchedule.getPlace().getName() : null)
+                .placeId(place != null ? place.getPlaceId() : null)
+                .placeName(place != null ? place.getName() : null)
+                .latitude(place != null ? place.getLatitude() : null)
+                .longitude(place != null ? place.getLongitude() : null)
                 .address(tripSchedule.getAddress())
                 .memo(tripSchedule.getMemo())
                 .updated(true)
