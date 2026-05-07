@@ -2,10 +2,6 @@ package mars.tripplanappbackend.auth.service;
 
 import mars.tripplanappbackend.auth.dto.request.*;
 import mars.tripplanappbackend.auth.dto.response.*;
-import mars.tripplanappbackend.auth.dto.response.CheckIdResponseDto;
-import mars.tripplanappbackend.auth.dto.response.LoginResponseDto;
-import mars.tripplanappbackend.auth.dto.response.SignupResponseDto;
-import mars.tripplanappbackend.auth.dto.response.TokenReissueResponseDto;
 import mars.tripplanappbackend.auth.enums.WithdrawalReasonType;
 import mars.tripplanappbackend.global.config.auth.JwtProvider;
 import mars.tripplanappbackend.global.enums.ErrorCode;
@@ -13,8 +9,10 @@ import mars.tripplanappbackend.global.enums.UseYnEnum;
 import mars.tripplanappbackend.global.exception.BusinessException;
 import lombok.RequiredArgsConstructor;
 import mars.tripplanappbackend.mypage.domain.User;
+import mars.tripplanappbackend.mypage.domain.Withdraw;
 import mars.tripplanappbackend.mypage.enums.LoginType;
 import mars.tripplanappbackend.mypage.repository.MyPageRepository;
+import mars.tripplanappbackend.mypage.repository.WithdrawRepository;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
@@ -32,6 +30,7 @@ import java.util.concurrent.TimeUnit;
 public class AuthService {
 
     private final MyPageRepository myPageRepository;
+    private final WithdrawRepository withdrawRepository;
     private final BCryptPasswordEncoder passwordEncoder;
     private final JwtProvider jwtProvider;
     private final JavaMailSender mailSender;
@@ -82,13 +81,8 @@ public class AuthService {
     @Transactional
     public LoginResponseDto login(LoginRequestDto requestDto) {
 
-        User user = myPageRepository.findByUsersId(requestDto.getUsersId())
+        User user = myPageRepository.findByUsersIdAndIsDeletedFalse(requestDto.getUsersId())
                 .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
-
-        // 탈퇴한 회원 조회
-        if (user.getWithdrawn() == UseYnEnum.Y) {
-            throw new BusinessException(ErrorCode.USER_NOT_FOUND);
-        }
 
         // 소셜 가입 회원이 일반 로그인 시도 방지
         if (user.getLoginType() != LoginType.LOCAL) {
@@ -132,13 +126,8 @@ public class AuthService {
 
         String refreshToken = request.getRefreshToken();
 
-        User user = myPageRepository.findByRefreshToken(refreshToken)
+        User user = myPageRepository.findByRefreshTokenAndIsDeletedFalse(refreshToken)
                 .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_TOKEN));
-
-        // 탈퇴한 회원 조회
-        if (user.getWithdrawn() == UseYnEnum.Y) {
-            throw new BusinessException(ErrorCode.USER_NOT_FOUND);
-        }
 
         // 서버에 저장된 만료시간 기준으로 RefreshToken 만료 여부 확인
         if (user.isRefreshTokenExpired()) {
@@ -174,7 +163,7 @@ public class AuthService {
      * @return 사용 가능 여부 및 아이디 정보를 담은 응답 DTO
      */
     public CheckIdResponseDto checkUsersIdDuplicate(String usersId) {
-        if (myPageRepository.existsByUsersId(usersId)) {
+        if (myPageRepository.existsByUsersIdAndIsDeletedFalse(usersId)) {
             throw new BusinessException(ErrorCode.DUPLICATE_USER);
         }
         return new CheckIdResponseDto(usersId, "사용 가능한 아이디입니다.");
@@ -190,7 +179,7 @@ public class AuthService {
      * @return 조회된 사용자 아이디를 담은 응답 DTO
      */
     public FindIdResponseDto findUsersId(FindIdRequestDto requestDto) {
-        User user = myPageRepository.findByNicknameAndEmail(requestDto.getNickname(), requestDto.getEmail())
+        User user = myPageRepository.findByNicknameAndEmailAndIsDeletedFalse(requestDto.getNickname(), requestDto.getEmail())
                 .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
 
         return new FindIdResponseDto(user.getUsersId());
@@ -216,7 +205,7 @@ public class AuthService {
             throw new BusinessException(ErrorCode.INVALID_EMAIL_FORMAT);
         }
 
-        if (myPageRepository.existsByEmail(email)) {
+        if (myPageRepository.existsByEmailAndIsDeletedFalse(email)) {
             throw new BusinessException(ErrorCode.DUPLICATE_EMAIL);
         }
 
@@ -318,7 +307,7 @@ public class AuthService {
      */
     @Transactional
     public void logout(String usersId) {
-        User user = myPageRepository.findByUsersId(usersId)
+        User user = myPageRepository.findByUsersIdAndIsDeletedFalse(usersId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
         user.updateRefreshToken(null, null);
     }
@@ -330,7 +319,7 @@ public class AuthService {
      */
     @Transactional
     public void withdraw(String usersId, WithdrawRequestDto requestDto) {
-        User user = myPageRepository.findByUsersId(usersId)
+        User user = myPageRepository.findByUsersIdAndIsDeletedFalse(usersId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
 
         // 기타 선택 시 텍스트 필수
@@ -344,7 +333,17 @@ public class AuthService {
                 ? requestDto.getReasonText()
                 : null;
 
-        user.withdraw(requestDto.getReasonType().name(), reasonText);
+        Withdraw withdraw = Withdraw.builder()
+                .user(user)
+                .reasonType(requestDto.getReasonType())
+                .reasonText(reasonText)
+                .withdrawnAt(LocalDateTime.now())
+                .build();
+
+        withdrawRepository.save(withdraw);
+
+        // soft delete 처리
+        user.softDelete();
     }
 
     /**
@@ -360,7 +359,7 @@ public class AuthService {
         String EMAIL_REQUEST_KEY = "password:requested:";
 
         // 유저 검증 (아이디 + 이메일)
-        User user = myPageRepository.findByUsersIdAndEmail(
+        User user = myPageRepository.findByUsersIdAndEmailAndIsDeletedFalse(
                 requestDto.getUsersId(),
                 requestDto.getEmail()
         ).orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
@@ -437,7 +436,7 @@ public class AuthService {
         }
 
         // 유저 확인
-        User user = myPageRepository.findByUsersIdAndEmail(
+        User user = myPageRepository.findByUsersIdAndEmailAndIsDeletedFalse(
                 requestDto.getUsersId(),
                 requestDto.getEmail()
         ).orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));

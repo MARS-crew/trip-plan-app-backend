@@ -51,7 +51,7 @@ public class MyPageService {
     @Transactional(readOnly = true)
     public MyProfileResponseDto getMyProfile(String usersId) {
 
-        User user = myPageRepository.findByUsersId(usersId)
+        User user = myPageRepository.findByUsersIdAndIsDeletedFalse(usersId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
 
         return new MyProfileResponseDto(user);
@@ -67,7 +67,7 @@ public class MyPageService {
      */
     @Transactional
     public UpdateProfileResponseDto updateProfile(String usersId, UpdateProfileRequestDto requestDto) {
-        User user = myPageRepository.findByUsersId(usersId)
+        User user = myPageRepository.findByUsersIdAndIsDeletedFalse(usersId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
 
         String password = requestDto.getPassword();
@@ -109,7 +109,7 @@ public class MyPageService {
      */
     @Transactional(readOnly = true)
     public AgreeResponseDto getAgree(String usersId) {
-        User user = myPageRepository.findByUsersId(usersId)
+        User user = myPageRepository.findByUsersIdAndIsDeletedFalse(usersId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
 
         return new AgreeResponseDto(user);
@@ -123,7 +123,7 @@ public class MyPageService {
      */
     @Transactional
     public AgreeResponseDto updateAgree(String usersId, UpdateAgreeRequestDto requestDto) {
-        User user = myPageRepository.findByUsersId(usersId)
+        User user = myPageRepository.findByUsersIdAndIsDeletedFalse(usersId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
 
         user.updateAgree(
@@ -141,7 +141,7 @@ public class MyPageService {
      */
     @Transactional(readOnly = true)
     public SettingResponseDto getSetting(String usersId) {
-        User user = myPageRepository.findByUsersId(usersId)
+        User user = myPageRepository.findByUsersIdAndIsDeletedFalse(usersId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
 
         return new SettingResponseDto(user);
@@ -154,7 +154,7 @@ public class MyPageService {
      */
     @Transactional(readOnly = true)
     public MyPageResponseDto getMyPage(String usersId) {
-        User user = myPageRepository.findByUsersId(usersId)
+        User user = myPageRepository.findByUsersIdAndIsDeletedFalse(usersId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
 
         return new MyPageResponseDto(
@@ -201,7 +201,7 @@ public class MyPageService {
         String EMAIL_VERIFY_KEY = "email:verify:" + usersId + ":" + email;
         String EMAIL_REQUEST_KEY = "email:requested:" + usersId + ":" + email;
 
-        User user = myPageRepository.findByUsersId(usersId)
+        User user = myPageRepository.findByUsersIdAndIsDeletedFalse(usersId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
 
         if (!user.getEmail().equals(email)) {
@@ -281,7 +281,7 @@ public class MyPageService {
         redisTemplate.delete(EMAIL_VERIFY_KEY);
         redisTemplate.delete(EMAIL_REQUEST_KEY);
 
-        User user = myPageRepository.findByUsersId(usersId)
+        User user = myPageRepository.findByUsersIdAndIsDeletedFalse(usersId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
 
         if (!user.getEmail().equals(email)) {

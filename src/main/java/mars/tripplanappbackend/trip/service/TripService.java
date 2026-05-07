@@ -874,7 +874,7 @@ public class TripService {
      * @param usersId 로그인 사용자 아이디
      */
     private void validateUserExistsByUsersId(String usersId) {
-        if (!myPageRepository.existsByUsersId(usersId)) {
+        if (!myPageRepository.existsByUsersIdAndIsDeletedFalse(usersId)) {
             throw new BusinessException(ErrorCode.USER_NOT_FOUND);
         }
     }
@@ -1098,7 +1098,7 @@ public class TripService {
      * @return 여행 생성 주체가 되는 사용자 엔티티
      */
     private User findUserByUsersId(String usersId) {
-        return myPageRepository.findByUsersId(usersId)
+        return myPageRepository.findByUsersIdAndIsDeletedFalse(usersId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
     }
 

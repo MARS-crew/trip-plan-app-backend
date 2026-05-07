@@ -25,7 +25,7 @@ public class FcmTokenService {
      */
     @Transactional
     public void saveToken(String usersId, FcmTokenRequest request) {
-        User user = myPageRepository.findByUsersId(usersId)
+        User user = myPageRepository.findByUsersIdAndIsDeletedFalse(usersId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
 
         userFcmTokenRepository.findByUser(user)
