@@ -70,6 +70,12 @@ public class Place extends BaseEntity {
     @Column(name = "review_count", nullable = false)
     private Integer reviewCount = 0;
 
+    @Column(name = "google_rating_avg", precision = 2, scale = 1)
+    private BigDecimal googleRatingAvg;
+
+    @Column(name = "google_review_count")
+    private Integer googleReviewCount;
+
     @Column(name = "opening_hours", length = 255)
     private String openingHours;
 
@@ -106,7 +112,9 @@ public class Place extends BaseEntity {
             PlaceType placeType,
             String description,
             String openingHours,
-            String imageUrl
+            String imageUrl,
+            BigDecimal googleRatingAvg,
+            Integer googleReviewCount
     ) {
         this.googlePlaceId = googlePlaceId;
         this.name = name;
@@ -119,6 +127,8 @@ public class Place extends BaseEntity {
         this.description = description;
         this.openingHours = openingHours;
         this.imageUrl = imageUrl;
+        this.googleRatingAvg = googleRatingAvg;
+        this.googleReviewCount = googleReviewCount;
         normalizeReviewStats();
     }
 
