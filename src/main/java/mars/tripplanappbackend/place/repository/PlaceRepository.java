@@ -36,6 +36,12 @@ public interface PlaceRepository extends JpaRepository<Place, Long> {
 
     Optional<Place> findFirstByNameAndAddressAndIsDeletedFalse(String name, String address);
 
+    Optional<Place> findFirstByNameAndCityNameAndCountryNameAndIsDeletedFalse(
+            String name,
+            String cityName,
+            String countryName
+    );
+
     List<Place> findAllByPlaceIdInAndIsDeletedFalse(List<Long> placeIds, Sort sort);
 
     Optional<Place> findByPlaceIdAndIsDeletedFalse(Long placeId);
