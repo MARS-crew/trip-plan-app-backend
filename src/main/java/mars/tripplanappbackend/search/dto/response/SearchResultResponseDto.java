@@ -71,17 +71,24 @@ public class SearchResultResponseDto {
     }
 
     private static BigDecimal resolveRatingAvg(Place place) {
-        Integer reviewCount = resolveReviewCount(place);
-        if (reviewCount == 0 || place.getRatingAvg() == null) {
-            return BigDecimal.ZERO;
+        if (place.getReviewCount() != null && place.getReviewCount() > 0 && place.getRatingAvg() != null) {
+            return place.getRatingAvg();
         }
-        return place.getRatingAvg();
+        if (place.getGoogleReviewCount() != null
+                && place.getGoogleReviewCount() > 0
+                && place.getGoogleRatingAvg() != null) {
+            return place.getGoogleRatingAvg();
+        }
+        return BigDecimal.ZERO;
     }
 
     private static Integer resolveReviewCount(Place place) {
-        if (place.getReviewCount() == null || place.getReviewCount() <= 0) {
-            return 0;
+        if (place.getReviewCount() != null && place.getReviewCount() > 0) {
+            return place.getReviewCount();
         }
-        return place.getReviewCount();
+        if (place.getGoogleReviewCount() != null && place.getGoogleReviewCount() > 0) {
+            return place.getGoogleReviewCount();
+        }
+        return 0;
     }
 }

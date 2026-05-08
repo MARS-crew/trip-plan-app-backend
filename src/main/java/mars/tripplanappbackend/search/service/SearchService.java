@@ -36,7 +36,6 @@ import mars.tripplanappbackend.search.repository.RecentSearchRepository;
 import mars.tripplanappbackend.search.repository.SearchCachePlaceRepository;
 import mars.tripplanappbackend.search.repository.SearchCacheRepository;
 import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -45,6 +44,7 @@ import java.math.RoundingMode;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -87,14 +87,46 @@ public class SearchService {
     private static final int IMAGE_URL_MAX_LENGTH = 500;
     private static final int DESCRIPTION_MAX_LENGTH = 2000;
 
-    /**
-     * 검색 결과 기본 정렬 규칙입니다.
-     * 내부 평점/리뷰 수 기준으로 우선 정렬하고, 마지막 동률 기준으로 placeId를 사용합니다.
-     */
-    private static final Sort DEFAULT_SEARCH_SORT = Sort.by(
-            Sort.Order.desc("ratingAvg"),
-            Sort.Order.desc("reviewCount"),
-            Sort.Order.asc("placeId")
+    private static final int SEARCH_CACHE_KEY_MAX_LENGTH = 150;
+    private static final String SEARCH_CACHE_KEY_PREFIX = "gplaces-v2:";
+    private static final int SEARCH_RESULT_TARGET_COUNT = 12;
+    private static final int NEARBY_EXPANSION_RESULT_COUNT_PER_GROUP = 5;
+    private static final double NEARBY_EXPANSION_RADIUS_METERS = 5_000.0;
+    private static final String GOOGLE_NEARBY_POPULARITY_RANK_PREFERENCE = "POPULARITY";
+    private static final List<List<String>> NEARBY_EXPANSION_INCLUDED_TYPE_GROUPS = List.of(
+            List.of(
+                    "tourist_attraction",
+                    "historical_landmark",
+                    "monument",
+                    "beach",
+                    "park",
+                    "garden",
+                    "museum",
+                    "art_gallery",
+                    "aquarium"
+            ),
+            List.of(
+                    "restaurant",
+                    "korean_restaurant",
+                    "seafood_restaurant",
+                    "cafe",
+                    "bakery",
+                    "bar"
+            ),
+            List.of(
+                    "shopping_mall",
+                    "department_store",
+                    "market",
+                    "gift_shop",
+                    "store"
+            ),
+            List.of(
+                    "hotel",
+                    "resort_hotel",
+                    "guest_house",
+                    "hostel",
+                    "lodging"
+            )
     );
 
     private final MyPageRepository myPageRepository;
@@ -298,8 +330,8 @@ public class SearchService {
      * @return 정렬된 장소 목록
      */
     private List<Place> refreshSearchResults(String keyword, String cacheKey, SearchCache existingCache) {
-        List<Place> sortedPlaces = findSortedSearchPlaces(syncGooglePlaces(keyword));
-        SearchCache searchCache = upsertSearchCache(cacheKey, existingCache, sortedPlaces);
+        List<Place> searchPlaces = deduplicateSearchPlaces(syncGooglePlaces(keyword));
+        SearchCache searchCache = upsertSearchCache(cacheKey, existingCache, searchPlaces);
         return loadCachePlaces(searchCache);
     }
 
@@ -424,9 +456,10 @@ public class SearchService {
      * @return 정규화된 검색 캐시 키
      */
     private String buildCacheKey(String keyword) {
-        return keyword.trim()
+        String normalizedKeyword = keyword.trim()
                 .replaceAll("\\s+", " ")
                 .toLowerCase(Locale.ROOT);
+        return truncate(SEARCH_CACHE_KEY_PREFIX + normalizedKeyword, SEARCH_CACHE_KEY_MAX_LENGTH);
     }
 
     /**
@@ -438,7 +471,7 @@ public class SearchService {
      */
     private List<Place> syncGooglePlaces(String keyword) {
         List<GooglePlaceSearchService.GooglePlaceCandidate> googleCandidates =
-                googlePlaceSearchService.searchPlaces(keyword);
+                collectGoogleSearchCandidates(keyword);
 
         if (googleCandidates.isEmpty()) {
             return List.of();
@@ -452,6 +485,159 @@ public class SearchService {
             }
         }
         return syncedPlaces;
+    }
+
+    private List<GooglePlaceSearchService.GooglePlaceCandidate> collectGoogleSearchCandidates(String keyword) {
+        List<GooglePlaceSearchService.GooglePlaceCandidate> googleCandidates = new ArrayList<>(
+                limitUniqueGoogleCandidates(
+                        googlePlaceSearchService.searchPlaces(keyword),
+                        SEARCH_RESULT_TARGET_COUNT
+                )
+        );
+
+        if (googleCandidates.size() < SEARCH_RESULT_TARGET_COUNT) {
+            appendNearbyExpansionCandidates(googleCandidates);
+        }
+
+        return limitUniqueGoogleCandidates(googleCandidates, SEARCH_RESULT_TARGET_COUNT);
+    }
+
+    private void appendNearbyExpansionCandidates(
+            List<GooglePlaceSearchService.GooglePlaceCandidate> googleCandidates
+    ) {
+        Optional<GooglePlaceSearchService.GooglePlaceCandidate> anchorCandidate =
+                findNearbyExpansionAnchor(googleCandidates);
+        if (anchorCandidate.isEmpty()) {
+            return;
+        }
+
+        List<List<GooglePlaceSearchService.GooglePlaceCandidate>> candidateBuckets =
+                searchNearbyExpansionCandidateBuckets(anchorCandidate.get());
+        appendRoundRobinGoogleCandidates(googleCandidates, candidateBuckets, SEARCH_RESULT_TARGET_COUNT);
+    }
+
+    private Optional<GooglePlaceSearchService.GooglePlaceCandidate> findNearbyExpansionAnchor(
+            List<GooglePlaceSearchService.GooglePlaceCandidate> googleCandidates
+    ) {
+        if (isNullOrEmpty(googleCandidates)) {
+            return Optional.empty();
+        }
+
+        return googleCandidates.stream()
+                .filter(this::hasCoordinate)
+                .findFirst();
+    }
+
+    private List<List<GooglePlaceSearchService.GooglePlaceCandidate>> searchNearbyExpansionCandidateBuckets(
+            GooglePlaceSearchService.GooglePlaceCandidate anchorCandidate
+    ) {
+        List<List<GooglePlaceSearchService.GooglePlaceCandidate>> candidateBuckets = new ArrayList<>();
+
+        for (List<String> includedTypes : NEARBY_EXPANSION_INCLUDED_TYPE_GROUPS) {
+            List<GooglePlaceSearchService.GooglePlaceCandidate> nearbyCandidates =
+                    googlePlaceSearchService.searchNearbyPlaces(
+                            anchorCandidate.latitude(),
+                            anchorCandidate.longitude(),
+                            NEARBY_EXPANSION_RADIUS_METERS,
+                            includedTypes,
+                            NEARBY_EXPANSION_RESULT_COUNT_PER_GROUP,
+                            GOOGLE_NEARBY_POPULARITY_RANK_PREFERENCE
+                    );
+
+            if (!isNullOrEmpty(nearbyCandidates)) {
+                candidateBuckets.add(nearbyCandidates);
+            }
+        }
+
+        return candidateBuckets;
+    }
+
+    private void appendRoundRobinGoogleCandidates(
+            List<GooglePlaceSearchService.GooglePlaceCandidate> targetCandidates,
+            List<List<GooglePlaceSearchService.GooglePlaceCandidate>> candidateBuckets,
+            int maxCount
+    ) {
+        if (isNullOrEmpty(candidateBuckets) || targetCandidates.size() >= maxCount) {
+            return;
+        }
+
+        Map<String, GooglePlaceSearchService.GooglePlaceCandidate> uniqueCandidates = new LinkedHashMap<>();
+        targetCandidates.forEach(candidate -> putUniqueGoogleCandidate(uniqueCandidates, candidate));
+
+        int maxBucketSize = candidateBuckets.stream()
+                .mapToInt(List::size)
+                .max()
+                .orElse(0);
+
+        for (int bucketIndex = 0; bucketIndex < maxBucketSize && uniqueCandidates.size() < maxCount; bucketIndex++) {
+            for (List<GooglePlaceSearchService.GooglePlaceCandidate> candidateBucket : candidateBuckets) {
+                if (bucketIndex >= candidateBucket.size()) {
+                    continue;
+                }
+                putUniqueGoogleCandidate(uniqueCandidates, candidateBucket.get(bucketIndex));
+                if (uniqueCandidates.size() >= maxCount) {
+                    break;
+                }
+            }
+        }
+
+        targetCandidates.clear();
+        targetCandidates.addAll(uniqueCandidates.values().stream().limit(maxCount).toList());
+    }
+
+    private List<GooglePlaceSearchService.GooglePlaceCandidate> limitUniqueGoogleCandidates(
+            List<GooglePlaceSearchService.GooglePlaceCandidate> googleCandidates,
+            int maxCount
+    ) {
+        if (isNullOrEmpty(googleCandidates)) {
+            return List.of();
+        }
+
+        Map<String, GooglePlaceSearchService.GooglePlaceCandidate> uniqueCandidates = new LinkedHashMap<>();
+        for (GooglePlaceSearchService.GooglePlaceCandidate candidate : googleCandidates) {
+            putUniqueGoogleCandidate(uniqueCandidates, candidate);
+            if (uniqueCandidates.size() >= maxCount) {
+                break;
+            }
+        }
+
+        return uniqueCandidates.values().stream().toList();
+    }
+
+    private void putUniqueGoogleCandidate(
+            Map<String, GooglePlaceSearchService.GooglePlaceCandidate> uniqueCandidates,
+            GooglePlaceSearchService.GooglePlaceCandidate candidate
+    ) {
+        String candidateKey = buildGoogleCandidateKey(candidate);
+        if (!hasText(candidateKey)) {
+            return;
+        }
+
+        uniqueCandidates.putIfAbsent(candidateKey, candidate);
+    }
+
+    private String buildGoogleCandidateKey(GooglePlaceSearchService.GooglePlaceCandidate candidate) {
+        if (candidate == null) {
+            return null;
+        }
+
+        String googlePlaceId = nullableTrim(candidate.googlePlaceId());
+        if (hasText(googlePlaceId)) {
+            return "google:" + googlePlaceId;
+        }
+
+        String name = nullableTrim(candidate.name());
+        String address = nullableTrim(candidate.formattedAddress());
+        if (!hasText(name) && !hasText(address)) {
+            return null;
+        }
+
+        return ("fallback:" + Objects.toString(name, "") + "|" + Objects.toString(address, ""))
+                .toLowerCase(Locale.ROOT);
+    }
+
+    private boolean hasCoordinate(GooglePlaceSearchService.GooglePlaceCandidate candidate) {
+        return candidate != null && candidate.latitude() != null && candidate.longitude() != null;
     }
 
     /**
@@ -497,6 +683,8 @@ public class SearchService {
         String description = resolveDescriptionForSync(place, enrichedCandidate.editorialSummary());
         String openingHours = resolveOpeningHoursForSync(place, enrichedCandidate.regularOpeningWeekdayDescriptions());
         String imageUrl = resolveImageUrlForSync(place, enrichedCandidate.firstPhotoName());
+        BigDecimal googleRatingAvg = normalizeGoogleRating(enrichedCandidate.rating(), enrichedCandidate.userRatingCount());
+        Integer googleReviewCount = normalizeGoogleReviewCount(enrichedCandidate.userRatingCount());
 
         if (place == null) {
             return placeRepository.save(Place.builder()
@@ -511,6 +699,8 @@ public class SearchService {
                     .placeType(placeType)
                     .openingHours(openingHours)
                     .imageUrl(imageUrl)
+                    .googleRatingAvg(googleRatingAvg)
+                    .googleReviewCount(googleReviewCount)
                     .build());
         }
 
@@ -525,7 +715,9 @@ public class SearchService {
                 placeType,
                 description,
                 openingHours,
-                imageUrl
+                imageUrl,
+                googleRatingAvg,
+                googleReviewCount
         );
         return place;
     }
@@ -561,6 +753,7 @@ public class SearchService {
                 details.latitude() != null ? details.latitude() : candidate.latitude(),
                 details.longitude() != null ? details.longitude() : candidate.longitude(),
                 details.rating() != null ? details.rating() : candidate.rating(),
+                details.userRatingCount() != null ? details.userRatingCount() : candidate.userRatingCount(),
                 isNullOrEmpty(details.addressComponents())
                         ? candidate.addressComponents()
                         : details.addressComponents(),
@@ -711,22 +904,25 @@ public class SearchService {
     }
 
     /**
-     * 동기화된 place 목록에 기본 검색 정렬을 적용해 다시 읽어옵니다.
+     * Google 응답 순서를 유지하면서 중복 place를 제거합니다.
      *
      * @param syncedPlaces 동기화된 place 목록
-     * @return 정렬된 place 목록
+     * @return 중복 제거된 place 목록
      */
-    private List<Place> findSortedSearchPlaces(List<Place> syncedPlaces) {
+    private List<Place> deduplicateSearchPlaces(List<Place> syncedPlaces) {
         if (syncedPlaces.isEmpty()) {
             return List.of();
         }
 
-        List<Long> placeIds = syncedPlaces.stream()
-                .map(Place::getPlaceId)
-                .distinct()
-                .toList();
+        Map<Long, Place> placesById = new LinkedHashMap<>();
+        for (Place place : syncedPlaces) {
+            if (place == null || place.getPlaceId() == null || Boolean.TRUE.equals(place.getIsDeleted())) {
+                continue;
+            }
+            placesById.putIfAbsent(place.getPlaceId(), place);
+        }
 
-        return placeRepository.findAllByPlaceIdInAndIsDeletedFalse(placeIds, DEFAULT_SEARCH_SORT);
+        return placesById.values().stream().toList();
     }
 
     /**
@@ -868,12 +1064,20 @@ public class SearchService {
         return BigDecimal.valueOf(coordinate).setScale(7, RoundingMode.HALF_UP);
     }
 
-    /**
-     * Google 평점을 내부 저장 포맷으로 정규화합니다.
-     *
-     * @param rating 원본 평점
-     * @return 소수점 1자리 평점, 없으면 0.0
-     */
+    private BigDecimal normalizeGoogleRating(Double rating, Integer userRatingCount) {
+        if (rating == null || userRatingCount == null || userRatingCount <= 0) {
+            return null;
+        }
+        return BigDecimal.valueOf(rating).setScale(1, RoundingMode.HALF_UP);
+    }
+
+    private Integer normalizeGoogleReviewCount(Integer userRatingCount) {
+        if (userRatingCount == null || userRatingCount <= 0) {
+            return null;
+        }
+        return userRatingCount;
+    }
+
     /**
      * 문자열을 최대 길이에 맞게 자릅니다.
      *

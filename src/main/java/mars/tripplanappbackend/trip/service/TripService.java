@@ -1933,6 +1933,9 @@ public class TripService {
                 detailsCandidate.latitude() != null ? detailsCandidate.latitude() : baseCandidate.latitude(),
                 detailsCandidate.longitude() != null ? detailsCandidate.longitude() : baseCandidate.longitude(),
                 detailsCandidate.rating() != null ? detailsCandidate.rating() : baseCandidate.rating(),
+                detailsCandidate.userRatingCount() != null
+                        ? detailsCandidate.userRatingCount()
+                        : baseCandidate.userRatingCount(),
                 detailsCandidate.addressComponents() != null && !detailsCandidate.addressComponents().isEmpty()
                         ? detailsCandidate.addressComponents()
                         : baseCandidate.addressComponents(),

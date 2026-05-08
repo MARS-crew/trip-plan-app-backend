@@ -36,7 +36,7 @@ public class GooglePlaceSearchService {
      */
     private static final String GOOGLE_PLACES_TEXT_SEARCH_FIELD_MASK =
             "places.id,places.displayName,places.formattedAddress,places.shortFormattedAddress,places.location,"
-                    + "places.primaryType,places.types,"
+                    + "places.rating,places.userRatingCount,places.primaryType,places.types,"
                     + "places.addressComponents.longText,places.addressComponents.shortText,places.addressComponents.types,"
                     + "places.editorialSummary,places.regularOpeningHours.weekdayDescriptions,places.photos";
 
@@ -46,13 +46,15 @@ public class GooglePlaceSearchService {
      */
     private static final String GOOGLE_PLACES_DETAILS_FIELD_MASK =
             "id,displayName,formattedAddress,shortFormattedAddress,location,"
-                    + "primaryType,types,"
+                    + "rating,userRatingCount,primaryType,types,"
                     + "addressComponents.longText,addressComponents.shortText,addressComponents.types,"
                     + "editorialSummary,regularOpeningHours.weekdayDescriptions,photos";
 
-    private static final int DEFAULT_MAX_RESULT_COUNT = 20;
+    private static final int GOOGLE_PLACES_MAX_RESULT_COUNT = 20;
+    private static final int DEFAULT_RESULT_COUNT = 20;
     private static final String DEFAULT_LANGUAGE_CODE = "ko";
     private static final int DEFAULT_PHOTO_MAX_WIDTH_PX = 900;
+    private static final String DEFAULT_NEARBY_RANK_PREFERENCE = "DISTANCE";
 
     @Value("${google.places.api-key:}")
     private String googlePlacesApiKey;
@@ -69,8 +71,13 @@ public class GooglePlaceSearchService {
      * @return Google Places 검색 결과 목록
      */
     public List<GooglePlaceCandidate> searchPlaces(String keyword) {
+        return searchPlaces(keyword, DEFAULT_RESULT_COUNT);
+    }
+
+    public List<GooglePlaceCandidate> searchPlaces(String keyword, int resultCount) {
         String normalizedKeyword = normalizeKeyword(keyword);
         validateGooglePlacesApiKey();
+        int pageSize = normalizeResultCount(resultCount);
 
         try {
             GoogleTextSearchResponse response = webClient.post()
@@ -80,7 +87,7 @@ public class GooglePlaceSearchService {
                     .header("X-Goog-FieldMask", GOOGLE_PLACES_TEXT_SEARCH_FIELD_MASK)
                     .bodyValue(new GoogleTextSearchRequest(
                             normalizedKeyword,
-                            DEFAULT_MAX_RESULT_COUNT,
+                            pageSize,
                             DEFAULT_LANGUAGE_CODE
                     ))
                     .retrieve()
@@ -108,7 +115,27 @@ public class GooglePlaceSearchService {
             List<String> includedTypes,
             int maxResultCount
     ) {
+        return searchNearbyPlaces(
+                latitude,
+                longitude,
+                radiusMeters,
+                includedTypes,
+                maxResultCount,
+                DEFAULT_NEARBY_RANK_PREFERENCE
+        );
+    }
+
+    public List<GooglePlaceCandidate> searchNearbyPlaces(
+            double latitude,
+            double longitude,
+            double radiusMeters,
+            List<String> includedTypes,
+            int maxResultCount,
+            String rankPreference
+    ) {
         validateGooglePlacesApiKey();
+        int normalizedMaxResultCount = normalizeResultCount(maxResultCount);
+        String normalizedRankPreference = normalizeRankPreference(rankPreference);
 
         try {
             GoogleTextSearchResponse response = webClient.post()
@@ -118,9 +145,9 @@ public class GooglePlaceSearchService {
                     .header("X-Goog-FieldMask", GOOGLE_PLACES_TEXT_SEARCH_FIELD_MASK)
                     .bodyValue(new GoogleNearbySearchRequest(
                             includedTypes,
-                            maxResultCount,
+                            normalizedMaxResultCount,
                             DEFAULT_LANGUAGE_CODE,
-                            "DISTANCE",
+                            normalizedRankPreference,
                             new GoogleLocationRestriction(
                                     new GoogleCircle(
                                             new GoogleNearbySearchCenter(latitude, longitude),
@@ -273,6 +300,7 @@ public class GooglePlaceSearchService {
                 place.getLocation() != null ? place.getLocation().getLatitude() : null,
                 place.getLocation() != null ? place.getLocation().getLongitude() : null,
                 place.getRating(),
+                place.getUserRatingCount(),
                 mapAddressComponents(place.getAddressComponents()),
                 place.getEditorialSummary() != null ? place.getEditorialSummary().getText() : null,
                 place.getRegularOpeningHours() != null
@@ -337,6 +365,26 @@ public class GooglePlaceSearchService {
         return value.startsWith("/") ? value.substring(1) : value;
     }
 
+    private int normalizeResultCount(int resultCount) {
+        if (resultCount < 1) {
+            return DEFAULT_RESULT_COUNT;
+        }
+        return Math.min(resultCount, GOOGLE_PLACES_MAX_RESULT_COUNT);
+    }
+
+    private String normalizeRankPreference(String rankPreference) {
+        if (!hasText(rankPreference)) {
+            return DEFAULT_NEARBY_RANK_PREFERENCE;
+        }
+
+        String normalizedRankPreference = rankPreference.trim().toUpperCase();
+        if ("POPULARITY".equals(normalizedRankPreference) || "DISTANCE".equals(normalizedRankPreference)) {
+            return normalizedRankPreference;
+        }
+
+        return DEFAULT_NEARBY_RANK_PREFERENCE;
+    }
+
     private String nullableTrim(String value) {
         if (value == null) {
             return null;
@@ -366,6 +414,7 @@ public class GooglePlaceSearchService {
             Double latitude,
             Double longitude,
             Double rating,
+            Integer userRatingCount,
             List<GoogleAddressComponentCandidate> addressComponents,
             String editorialSummary,
             List<String> regularOpeningWeekdayDescriptions,
@@ -382,7 +431,7 @@ public class GooglePlaceSearchService {
     ) {
     }
 
-    private record GoogleTextSearchRequest(String textQuery, int maxResultCount, String languageCode) {
+    private record GoogleTextSearchRequest(String textQuery, int pageSize, String languageCode) {
     }
 
     private record GoogleNearbySearchRequest(
@@ -422,6 +471,7 @@ public class GooglePlaceSearchService {
         private String shortFormattedAddress;
         private GoogleLocation location;
         private Double rating;
+        private Integer userRatingCount;
         private String primaryType;
         private List<String> types;
         private List<GoogleAddressComponentPayload> addressComponents;
