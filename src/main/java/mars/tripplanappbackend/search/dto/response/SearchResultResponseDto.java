@@ -4,36 +4,53 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Builder;
 import lombok.Getter;
 import mars.tripplanappbackend.place.domain.Place;
+import mars.tripplanappbackend.place.enums.PlaceType;
 
+import java.math.BigDecimal;
 import java.util.List;
 
 /**
- * 검색 결과 카드 1건 응답 DTO입니다.
+ * Search result card response DTO.
  */
 @Getter
 @Builder
-@Schema(description = "검색 결과 카드 1건 응답")
+@Schema(description = "Search result item response")
 public class SearchResultResponseDto {
 
-    @Schema(description = "장소 PK", example = "7")
+    @Schema(description = "Place PK", example = "7")
     private Long placeId;
 
-    @Schema(description = "장소명", example = "삿포로 시계탑")
+    @Schema(description = "Place name", example = "Sapporo Clock Tower")
     private String name;
 
-    @Schema(description = "국가명", example = "일본")
+    @Schema(description = "Country name", example = "Japan")
     private String countryName;
 
-    @Schema(description = "도시명", example = "삿포로")
+    @Schema(description = "City name", example = "Sapporo")
     private String cityName;
 
-    @Schema(description = "대표 이미지 URL", example = "https://cdn.lets-trip.com/place/sapporo-clock-tower.jpg")
+    @Schema(description = "Place image URL", example = "https://cdn.lets-trip.com/place/sapporo-clock-tower.jpg")
     private String imageUrl;
 
-    @Schema(description = "장소 소개", example = "삿포로의 대표 랜드마크로 사진 촬영 명소입니다.")
+    @Schema(description = "Place description", example = "A landmark in central Sapporo.")
     private String description;
 
-    @Schema(description = "검색 결과 카드에 노출할 태그 목록")
+    @Schema(description = "App category mapped from Google Places type", example = "ATTRACTION")
+    private PlaceType placeType;
+
+    @Schema(description = "Latitude", example = "43.0621000")
+    private BigDecimal latitude;
+
+    @Schema(description = "Longitude", example = "141.3544000")
+    private BigDecimal longitude;
+
+    @Schema(description = "Average rating", example = "4.5")
+    private BigDecimal ratingAvg;
+
+    @Schema(description = "Review count", example = "1201")
+    private Integer reviewCount;
+
+    @Schema(description = "Tags displayed on the search result card")
     private List<String> tags;
 
     public static SearchResultResponseDto from(Place place, List<String> tags, String description) {
@@ -44,7 +61,27 @@ public class SearchResultResponseDto {
                 .cityName(place.getCityName())
                 .imageUrl(place.getImageUrl())
                 .description(description)
+                .placeType(PlaceType.normalizeForAppCategory(place.getPlaceType()))
+                .latitude(place.getLatitude())
+                .longitude(place.getLongitude())
+                .ratingAvg(resolveRatingAvg(place))
+                .reviewCount(resolveReviewCount(place))
                 .tags(tags)
                 .build();
+    }
+
+    private static BigDecimal resolveRatingAvg(Place place) {
+        Integer reviewCount = resolveReviewCount(place);
+        if (reviewCount == 0 || place.getRatingAvg() == null) {
+            return BigDecimal.ZERO;
+        }
+        return place.getRatingAvg();
+    }
+
+    private static Integer resolveReviewCount(Place place) {
+        if (place.getReviewCount() == null || place.getReviewCount() <= 0) {
+            return 0;
+        }
+        return place.getReviewCount();
     }
 }

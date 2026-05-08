@@ -103,7 +103,7 @@ public class Place extends BaseEntity {
             String address,
             BigDecimal latitude,
             BigDecimal longitude,
-            BigDecimal ratingAvg,
+            PlaceType placeType,
             String description,
             String openingHours,
             String imageUrl
@@ -115,10 +115,11 @@ public class Place extends BaseEntity {
         this.address = address;
         this.latitude = latitude;
         this.longitude = longitude;
-        this.ratingAvg = ratingAvg;
+        this.placeType = PlaceType.normalizeForAppCategory(placeType);
         this.description = description;
         this.openingHours = openingHours;
         this.imageUrl = imageUrl;
+        normalizeReviewStats();
     }
 
     /**
@@ -170,12 +171,7 @@ public class Place extends BaseEntity {
      * 신규 리뷰가 등록될 때 평균 평점과 리뷰 수를 재계산합니다.
      */
     public void updateRating(Integer newRating) {
-        if (this.reviewCount == null) {
-            this.reviewCount = 0;
-        }
-        if (this.ratingAvg == null) {
-            this.ratingAvg = BigDecimal.ZERO;
-        }
+        normalizeReviewStats();
 
         int newCount = this.reviewCount + 1;
         BigDecimal total = this.ratingAvg
@@ -184,6 +180,15 @@ public class Place extends BaseEntity {
 
         this.ratingAvg = total.divide(BigDecimal.valueOf(newCount), 1, RoundingMode.HALF_UP);
         this.reviewCount = newCount;
+    }
+
+    private void normalizeReviewStats() {
+        if (this.reviewCount == null || this.reviewCount < 0) {
+            this.reviewCount = 0;
+        }
+        if (this.reviewCount == 0 || this.ratingAvg == null) {
+            this.ratingAvg = BigDecimal.ZERO;
+        }
     }
 
     private boolean hasText(String value) {

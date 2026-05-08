@@ -8,6 +8,7 @@ import mars.tripplanappbackend.mypage.domain.User;
 import mars.tripplanappbackend.mypage.repository.MyPageRepository;
 import mars.tripplanappbackend.place.domain.Place;
 import mars.tripplanappbackend.place.domain.PlaceTagMap;
+import mars.tripplanappbackend.place.enums.PlaceType;
 import mars.tripplanappbackend.place.repository.PlaceRepository;
 import mars.tripplanappbackend.place.repository.PlaceTagMapRepository;
 import mars.tripplanappbackend.search.domain.RecentSearch;
@@ -483,7 +484,6 @@ public class SearchService {
 
         BigDecimal latitude = normalizeCoordinate(enrichedCandidate.latitude());
         BigDecimal longitude = normalizeCoordinate(enrichedCandidate.longitude());
-        BigDecimal ratingAvg = normalizeRating(enrichedCandidate.rating());
 
         Place place = findExistingPlaceForGoogleSync(
                 enrichedCandidate.googlePlaceId(),
@@ -492,6 +492,7 @@ public class SearchService {
                 cityName,
                 countryName
         ).orElse(null);
+        PlaceType placeType = resolvePlaceTypeForSync(enrichedCandidate, place);
 
         String description = resolveDescriptionForSync(place, enrichedCandidate.editorialSummary());
         String openingHours = resolveOpeningHoursForSync(place, enrichedCandidate.regularOpeningWeekdayDescriptions());
@@ -507,7 +508,7 @@ public class SearchService {
                     .description(description)
                     .latitude(latitude)
                     .longitude(longitude)
-                    .ratingAvg(ratingAvg)
+                    .placeType(placeType)
                     .openingHours(openingHours)
                     .imageUrl(imageUrl)
                     .build());
@@ -521,7 +522,7 @@ public class SearchService {
                 address,
                 latitude,
                 longitude,
-                ratingAvg,
+                placeType,
                 description,
                 openingHours,
                 imageUrl
@@ -567,7 +568,9 @@ public class SearchService {
                 isNullOrEmpty(details.regularOpeningWeekdayDescriptions())
                         ? candidate.regularOpeningWeekdayDescriptions()
                         : details.regularOpeningWeekdayDescriptions(),
-                firstNonBlank(details.firstPhotoName(), candidate.firstPhotoName())
+                firstNonBlank(details.firstPhotoName(), candidate.firstPhotoName()),
+                firstNonBlank(details.primaryType(), candidate.primaryType()),
+                isNullOrEmpty(details.types()) ? candidate.types() : details.types()
         );
     }
 
@@ -780,6 +783,84 @@ public class SearchService {
      * @param coordinate 원본 좌표값
      * @return 소수점 7자리로 정규화된 좌표
      */
+    private PlaceType resolvePlaceTypeForSync(
+            GooglePlaceSearchService.GooglePlaceCandidate candidate,
+            Place existingPlace
+    ) {
+        PlaceType mappedPlaceType = resolvePlaceTypeFromGoogle(candidate);
+        if (mappedPlaceType != null) {
+            return mappedPlaceType;
+        }
+        if (existingPlace != null) {
+            return PlaceType.normalizeForAppCategory(existingPlace.getPlaceType());
+        }
+        return PlaceType.ATTRACTION;
+    }
+
+    private PlaceType resolvePlaceTypeFromGoogle(GooglePlaceSearchService.GooglePlaceCandidate candidate) {
+        if (candidate == null) {
+            return null;
+        }
+
+        PlaceType primaryTypeMatch = mapGoogleTypeToPlaceType(candidate.primaryType());
+        if (primaryTypeMatch != null) {
+            return primaryTypeMatch;
+        }
+
+        if (isNullOrEmpty(candidate.types())) {
+            return null;
+        }
+
+        for (String type : candidate.types()) {
+            PlaceType mappedType = mapGoogleTypeToPlaceType(type);
+            if (mappedType != null) {
+                return mappedType;
+            }
+        }
+
+        return null;
+    }
+
+    private PlaceType mapGoogleTypeToPlaceType(String googleType) {
+        if (!hasText(googleType)) {
+            return null;
+        }
+
+        String normalizedType = googleType.trim().toLowerCase(Locale.ROOT);
+
+        return switch (normalizedType) {
+            case "lodging", "hotel", "motel", "resort_hotel", "hostel", "guest_house",
+                    "bed_and_breakfast", "extended_stay_hotel", "rv_park" -> PlaceType.ACCOMMODATION;
+            case "restaurant", "cafe", "bakery", "bar", "brunch_restaurant", "breakfast_restaurant",
+                    "coffee_shop", "fast_food_restaurant", "hamburger_restaurant", "ice_cream_shop",
+                    "japanese_restaurant", "korean_restaurant", "meal_delivery", "meal_takeaway",
+                    "pizza_restaurant", "ramen_restaurant", "seafood_restaurant", "steak_house" ->
+                    PlaceType.RESTAURANT;
+            case "shopping_mall", "department_store", "supermarket", "convenience_store", "market",
+                    "clothing_store", "book_store", "gift_shop", "souvenir_store", "store" -> PlaceType.SHOPPING;
+            case "museum", "art_gallery", "cultural_center", "performing_arts_theater", "library",
+                    "church", "hindu_temple", "mosque", "synagogue", "buddhist_temple", "shinto_shrine" ->
+                    PlaceType.CULTURE;
+            case "beach", "park", "national_park", "botanical_garden", "garden", "campground",
+                    "hiking_area", "natural_feature" -> PlaceType.NATURE;
+            case "tourist_attraction", "historical_landmark", "monument", "observation_deck",
+                    "amusement_park", "aquarium", "visitor_center", "zoo" -> PlaceType.ATTRACTION;
+            default -> {
+                if (normalizedType.endsWith("_restaurant")
+                        || normalizedType.endsWith("_cafe")
+                        || normalizedType.endsWith("_bar")) {
+                    yield PlaceType.RESTAURANT;
+                }
+                if (normalizedType.endsWith("_store")
+                        || normalizedType.endsWith("_shop")
+                        || normalizedType.endsWith("_market")) {
+                    yield PlaceType.SHOPPING;
+                }
+                yield null;
+            }
+        };
+    }
+
     private BigDecimal normalizeCoordinate(Double coordinate) {
         if (coordinate == null) {
             return null;
@@ -793,13 +874,6 @@ public class SearchService {
      * @param rating 원본 평점
      * @return 소수점 1자리 평점, 없으면 0.0
      */
-    private BigDecimal normalizeRating(Double rating) {
-        if (rating == null) {
-            return BigDecimal.ZERO;
-        }
-        return BigDecimal.valueOf(rating).setScale(1, RoundingMode.HALF_UP);
-    }
-
     /**
      * 문자열을 최대 길이에 맞게 자릅니다.
      *

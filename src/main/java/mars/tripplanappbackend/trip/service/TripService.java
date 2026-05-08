@@ -1941,7 +1941,11 @@ public class TripService {
                         && !detailsCandidate.regularOpeningWeekdayDescriptions().isEmpty()
                         ? detailsCandidate.regularOpeningWeekdayDescriptions()
                         : baseCandidate.regularOpeningWeekdayDescriptions(),
-                firstNonBlank(detailsCandidate.firstPhotoName(), baseCandidate.firstPhotoName())
+                firstNonBlank(detailsCandidate.firstPhotoName(), baseCandidate.firstPhotoName()),
+                firstNonBlank(detailsCandidate.primaryType(), baseCandidate.primaryType()),
+                detailsCandidate.types() != null && !detailsCandidate.types().isEmpty()
+                        ? detailsCandidate.types()
+                        : baseCandidate.types()
         );
     }
 

@@ -8,5 +8,20 @@ public enum PlaceType {
     LANDMARK,
     ACCOMMODATION,
     SHOPPING,
-    CULTURE
+    CULTURE;
+
+    public PlaceType toAppCategory() {
+        return switch (this) {
+            case BEACH -> NATURE;
+            case LANDMARK -> ATTRACTION;
+            default -> this;
+        };
+    }
+
+    public static PlaceType normalizeForAppCategory(PlaceType placeType) {
+        if (placeType == null) {
+            return ATTRACTION;
+        }
+        return placeType.toAppCategory();
+    }
 }
