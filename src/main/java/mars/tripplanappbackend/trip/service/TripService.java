@@ -492,6 +492,7 @@ public class TripService {
      * @param requestDto 여행 PK와 로그인 사용자 아이디를 담은 일정 위치 조회 요청 DTO
      * @return 지도 페이지에서 사용할 일정 위치 조회 응답 DTO
      */
+    @Transactional
     public MyTripScheduleLocationResponseDto getMyTripScheduleLocations(MyTripScheduleLocationRequestDto requestDto) {
         validateTripScheduleLocationRequest(requestDto);
         validateUserExistsByUsersId(requestDto.getUsersId());
@@ -1656,7 +1657,7 @@ public class TripService {
             return resolveFallbackScheduleLocationPlaceSnapshot(place);
         }
 
-        return new ScheduleLocationPlaceSnapshot(
+        ScheduleLocationPlaceSnapshot snapshot = new ScheduleLocationPlaceSnapshot(
                 firstNonBlank(
                         truncate(nullableTrim(googleCandidate.name()), PLACE_NAME_MAX_LENGTH),
                         truncate(nullableTrim(place.getName()), PLACE_NAME_MAX_LENGTH)
@@ -1672,6 +1673,9 @@ public class TripService {
                 ),
                 resolveScheduleLocationImageUrl(place, googleCandidate.firstPhotoName())
         );
+
+        backfillScheduleLocationPlaceFromGoogle(place, googleCandidate, snapshot);
+        return snapshot;
     }
 
     private ScheduleLocationPlaceSnapshot resolveFallbackScheduleLocationPlaceSnapshot(Place place) {
@@ -1733,7 +1737,11 @@ public class TripService {
             return null;
         }
 
-        GooglePlaceSearchService.GooglePlaceCandidate bestCandidate = selectBestScheduleLocationCandidate(place, candidates);
+        GooglePlaceSearchService.GooglePlaceCandidate bestCandidate = selectBestScheduleLocationCandidate(
+                place,
+                candidates,
+                true
+        );
         if (bestCandidate == null) {
             return null;
         }
@@ -1774,7 +1782,7 @@ public class TripService {
             return null;
         }
 
-        return selectBestScheduleLocationCandidate(place, candidates);
+        return selectBestScheduleLocationCandidate(place, candidates, !hasText(place.getGooglePlaceId()));
     }
 
     private String buildScheduleLocationPlaceSearchQuery(Place place) {
@@ -1793,18 +1801,45 @@ public class TripService {
 
     private GooglePlaceSearchService.GooglePlaceCandidate selectBestScheduleLocationCandidate(
             Place place,
-            List<GooglePlaceSearchService.GooglePlaceCandidate> candidates
+            List<GooglePlaceSearchService.GooglePlaceCandidate> candidates,
+            boolean requireStrongNameMatch
     ) {
         String targetName = normalizeMatchingText(place.getName());
         String targetAddress = normalizeMatchingText(place.getAddress());
 
-        return candidates.stream()
+        List<GooglePlaceSearchService.GooglePlaceCandidate> filteredCandidates = candidates.stream()
                 .filter(candidate -> candidate != null)
+                .filter(candidate -> !requireStrongNameMatch || hasStrongScheduleLocationNameMatch(targetName, candidate))
+                .toList();
+
+        if (filteredCandidates.isEmpty()) {
+            return null;
+        }
+
+        return filteredCandidates.stream()
                 .max((left, right) -> Integer.compare(
                         calculateScheduleLocationCandidateScore(place, right, targetName, targetAddress),
                         calculateScheduleLocationCandidateScore(place, left, targetName, targetAddress)
                 ))
                 .orElse(null);
+    }
+
+    private boolean hasStrongScheduleLocationNameMatch(
+            String targetName,
+            GooglePlaceSearchService.GooglePlaceCandidate candidate
+    ) {
+        String candidateName = normalizeMatchingText(candidate.name());
+        if (!hasText(targetName) || !hasText(candidateName)) {
+            return false;
+        }
+        if (targetName.equals(candidateName)) {
+            return true;
+        }
+
+        int nameDistance = calculateLevenshteinDistance(targetName, candidateName);
+        return nameDistance <= 2
+                || candidateName.contains(targetName)
+                || targetName.contains(candidateName);
     }
 
     private int calculateScheduleLocationCandidateScore(
@@ -1860,6 +1895,30 @@ public class TripService {
         }
 
         return score;
+    }
+
+    private void backfillScheduleLocationPlaceFromGoogle(
+            Place place,
+            GooglePlaceSearchService.GooglePlaceCandidate googleCandidate,
+            ScheduleLocationPlaceSnapshot snapshot
+    ) {
+        if (hasText(place.getGooglePlaceId()) || !hasText(googleCandidate.googlePlaceId())) {
+            return;
+        }
+
+        if (!hasStrongScheduleLocationNameMatch(normalizeMatchingText(place.getName()), googleCandidate)) {
+            return;
+        }
+
+        place.backfillGoogleReference(
+                googleCandidate.googlePlaceId(),
+                snapshot.placeName(),
+                snapshot.address(),
+                googleCandidate.latitude() != null ? BigDecimal.valueOf(googleCandidate.latitude()) : null,
+                googleCandidate.longitude() != null ? BigDecimal.valueOf(googleCandidate.longitude()) : null,
+                snapshot.description(),
+                snapshot.imageUrl()
+        );
     }
 
     private GooglePlaceSearchService.GooglePlaceCandidate mergeScheduleLocationCandidates(

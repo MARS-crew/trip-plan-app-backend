@@ -485,9 +485,13 @@ public class SearchService {
         BigDecimal longitude = normalizeCoordinate(enrichedCandidate.longitude());
         BigDecimal ratingAvg = normalizeRating(enrichedCandidate.rating());
 
-        Place place = placeRepository.findByGooglePlaceIdAndIsDeletedFalse(enrichedCandidate.googlePlaceId())
-                .or(() -> findByNameAndAddress(name, address))
-                .orElse(null);
+        Place place = findExistingPlaceForGoogleSync(
+                enrichedCandidate.googlePlaceId(),
+                name,
+                address,
+                cityName,
+                countryName
+        ).orElse(null);
 
         String description = resolveDescriptionForSync(place, enrichedCandidate.editorialSummary());
         String openingHours = resolveOpeningHoursForSync(place, enrichedCandidate.regularOpeningWeekdayDescriptions());
@@ -734,6 +738,40 @@ public class SearchService {
             return Optional.empty();
         }
         return placeRepository.findFirstByNameAndAddressAndIsDeletedFalse(name, address);
+    }
+
+    private Optional<Place> findExistingPlaceForGoogleSync(
+            String googlePlaceId,
+            String name,
+            String address,
+            String cityName,
+            String countryName
+    ) {
+        if (hasText(googlePlaceId)) {
+            Optional<Place> placeByGooglePlaceId = placeRepository.findByGooglePlaceIdAndIsDeletedFalse(googlePlaceId);
+            if (placeByGooglePlaceId.isPresent()) {
+                return placeByGooglePlaceId;
+            }
+        }
+
+        Optional<Place> placeByNameAndAddress = findByNameAndAddress(name, address);
+        if (placeByNameAndAddress.isPresent()) {
+            return placeByNameAndAddress;
+        }
+
+        return findByNameAndRegion(name, cityName, countryName);
+    }
+
+    private Optional<Place> findByNameAndRegion(String name, String cityName, String countryName) {
+        if (!hasText(name) || !hasText(cityName) || !hasText(countryName)) {
+            return Optional.empty();
+        }
+
+        return placeRepository.findFirstByNameAndCityNameAndCountryNameAndIsDeletedFalse(
+                name,
+                cityName,
+                countryName
+        );
     }
 
     /**

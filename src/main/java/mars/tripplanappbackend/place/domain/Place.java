@@ -131,6 +131,42 @@ public class Place extends BaseEntity {
     }
 
     /**
+     * 일정 위치/상세 조회에서 신뢰 가능한 Google Place ID를 확보했을 때
+     * 핵심 식별 정보만 보강합니다.
+     */
+    public void backfillGoogleReference(
+            String googlePlaceId,
+            String name,
+            String address,
+            BigDecimal latitude,
+            BigDecimal longitude,
+            String description,
+            String imageUrl
+    ) {
+        if (hasText(googlePlaceId)) {
+            this.googlePlaceId = googlePlaceId.trim();
+        }
+        if (hasText(name)) {
+            this.name = name.trim();
+        }
+        if (hasText(address)) {
+            this.address = address.trim();
+        }
+        if (latitude != null) {
+            this.latitude = latitude;
+        }
+        if (longitude != null) {
+            this.longitude = longitude;
+        }
+        if (hasText(description)) {
+            this.description = description.trim();
+        }
+        if (hasText(imageUrl)) {
+            this.imageUrl = imageUrl.trim();
+        }
+    }
+
+    /**
      * 신규 리뷰가 등록될 때 평균 평점과 리뷰 수를 재계산합니다.
      */
     public void updateRating(Integer newRating) {
@@ -148,5 +184,9 @@ public class Place extends BaseEntity {
 
         this.ratingAvg = total.divide(BigDecimal.valueOf(newCount), 1, RoundingMode.HALF_UP);
         this.reviewCount = newCount;
+    }
+
+    private boolean hasText(String value) {
+        return value != null && !value.trim().isEmpty();
     }
 }
