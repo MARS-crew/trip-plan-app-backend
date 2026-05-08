@@ -35,7 +35,8 @@ public class GooglePlaceSearchService {
      * 장소 검색 결과를 DB에 upsert할 때 필요한 핵심 필드 + 화면 메타데이터(이미지/소개/영업시간)를 요청합니다.
      */
     private static final String GOOGLE_PLACES_TEXT_SEARCH_FIELD_MASK =
-            "places.id,places.displayName,places.formattedAddress,places.shortFormattedAddress,places.location,places.rating,"
+            "places.id,places.displayName,places.formattedAddress,places.shortFormattedAddress,places.location,"
+                    + "places.primaryType,places.types,"
                     + "places.addressComponents.longText,places.addressComponents.shortText,places.addressComponents.types,"
                     + "places.editorialSummary,places.regularOpeningHours.weekdayDescriptions,places.photos";
 
@@ -44,7 +45,8 @@ public class GooglePlaceSearchService {
      * Text Search 결과에 메타데이터가 비어있는 경우 fallback으로 사용합니다.
      */
     private static final String GOOGLE_PLACES_DETAILS_FIELD_MASK =
-            "id,displayName,formattedAddress,shortFormattedAddress,location,rating,"
+            "id,displayName,formattedAddress,shortFormattedAddress,location,"
+                    + "primaryType,types,"
                     + "addressComponents.longText,addressComponents.shortText,addressComponents.types,"
                     + "editorialSummary,regularOpeningHours.weekdayDescriptions,photos";
 
@@ -277,7 +279,9 @@ public class GooglePlaceSearchService {
                         && place.getRegularOpeningHours().getWeekdayDescriptions() != null
                         ? place.getRegularOpeningHours().getWeekdayDescriptions()
                         : List.of(),
-                extractFirstPhotoName(place.getPhotos())
+                extractFirstPhotoName(place.getPhotos()),
+                nullableTrim(place.getPrimaryType()),
+                place.getTypes() != null ? place.getTypes() : List.of()
         );
     }
 
@@ -365,7 +369,9 @@ public class GooglePlaceSearchService {
             List<GoogleAddressComponentCandidate> addressComponents,
             String editorialSummary,
             List<String> regularOpeningWeekdayDescriptions,
-            String firstPhotoName
+            String firstPhotoName,
+            String primaryType,
+            List<String> types
     ) {
     }
 
@@ -416,6 +422,8 @@ public class GooglePlaceSearchService {
         private String shortFormattedAddress;
         private GoogleLocation location;
         private Double rating;
+        private String primaryType;
+        private List<String> types;
         private List<GoogleAddressComponentPayload> addressComponents;
         private GoogleEditorialSummary editorialSummary;
         private GoogleRegularOpeningHours regularOpeningHours;
