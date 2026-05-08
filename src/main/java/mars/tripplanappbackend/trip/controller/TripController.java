@@ -540,7 +540,7 @@ public class TripController {
             description = "내 여행지 상세의 일정 추가 화면에서 입력한 일정명, 날짜, 시간, 장소, 메모를 기반으로 일정을 생성합니다."
     )
     public ApiResponse<AddTripScheduleResponseDto> addTripSchedule(
-            @Parameter(description = "일정을 추가할 여행 PK", example = "26")
+            @Parameter(description = "일정을 추가할 여행 PK", example = "5")
             @PathVariable("tripId") Long tripId,
             @io.swagger.v3.oas.annotations.parameters.RequestBody(
                     description = "일정 추가 화면에서 입력한 정보입니다. scheduleDate는 여행 기간 내 날짜만 선택 가능합니다.",
@@ -552,12 +552,13 @@ public class TripController {
                                     value = """
                                             {
                                               "title": "시계탑 방문",
-                                              "scheduleDate": "2026-05-08",
-                                              "startTime": "14:00",
-                                              "endTime": "15:00",
+                                              "scheduleDate": "2026-04-22",
+                                              "startTime": "10:00",
+                                              "endTime": "11:00",
                                               "placeId": 7,
-                                              "memo": "석식 전 산책"
+                                              "memo": "오전 일정 테스트"
                                             }
+                                            
                                             """
                             )
                     )
