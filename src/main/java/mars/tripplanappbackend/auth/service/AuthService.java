@@ -38,7 +38,7 @@ public class AuthService {
 
     /**
      * 회원가입 처리
-     *
+     * <p>
      * 소셜 가입은 비밀번호 없이 진행되므로 loginType이 LOCAL인 경우에만 비밀번호를 검증한다.
      * 비밀번호는 평문 저장을 방지하기 위해 BCrypt로 암호화 후 저장한다.
      *
@@ -69,7 +69,7 @@ public class AuthService {
 
     /**
      * 로그인 처리
-     *
+     * <p>
      * 사용자의 ID로 계정을 조회하고, 저장된 해시 비밀번호와 입력 비밀번호를 비교한다.
      * 소셜 가입 회원이 일반 로그인 API를 호출하는 경우 예외를 던진다.
      * 로그인 성공 시 AccessToken + RefreshToken을 발급하며,
@@ -112,7 +112,7 @@ public class AuthService {
 
     /**
      * AccessToken 재발급
-     *
+     * <p>
      * 클라이언트가 RefreshToken을 전달하면
      * 해당 토큰이 DB에 저장된 값과 일치하는지 확인하고,
      * 만료 여부와 토큰 유효성을 검증한 뒤 새로운 토큰을 발급한다.
@@ -154,7 +154,7 @@ public class AuthService {
 
     /**
      * 아이디 중복 확인
-     *
+     * <p>
      * 회원가입 전 사용자가 입력한 아이디의 중복 여부를 확인한다.
      * 이미 존재하는 아이디인 경우 예외를 발생시켜
      * 클라이언트에 즉시 알린다.
@@ -171,7 +171,7 @@ public class AuthService {
 
     /**
      * 아이디 찾기
-     *
+     * <p>
      * 사용자가 입력한 닉네임과 이메일로 계정을 조회한다.
      * 일치하는 계정이 없을 경우 예외를 발생시킨다.
      *
@@ -188,7 +188,7 @@ public class AuthService {
     /**
      *
      * 이메일 전송
-     *
+     * <p>
      * 입력된 gmail로 인증 코드 6자리를 전송한다.
      * 전송에 실패할 경우 EMAIL_SEND_FAIL 에러를 발생시킨다.
      *
@@ -254,7 +254,7 @@ public class AuthService {
 
     /**
      * 이메일 인증
-     *
+     * <p>
      * 전송된 이메일과 인증코드를 입력받고
      * Redis에 저장된 인증 코드와 비교하여 일치하는지 확인한다.
      * 일치하지 않으면 INVALID_EMAIL_CODE 에러 처리
@@ -303,7 +303,7 @@ public class AuthService {
     /**
      *
      * @param usersId JWT 토큰에서 추출된 사용자 식별자
-     * refreshToken을 null로 업데이트하여 로그아웃 처리
+     *                refreshToken을 null로 업데이트하여 로그아웃 처리
      */
     @Transactional
     public void logout(String usersId) {
@@ -314,7 +314,7 @@ public class AuthService {
 
     /**
      *
-     * @param usersId JWT 토큰에서 추출된 사용자 식별자
+     * @param usersId    JWT 토큰에서 추출된 사용자 식별자
      * @param requestDto 탈퇴 유형, 기타 탈퇴 사유
      */
     @Transactional
@@ -408,7 +408,7 @@ public class AuthService {
      * @return 유저 로그인 아이디, 이메일
      */
     @Transactional
-    public PasswordResetResponseDto resetPassword(PasswordResetRequestDto requestDto) {
+    public PasswordResetResponseDto verifyPasswordResetCode(PasswordResetRequestDto requestDto) {
 
         String EMAIL_VERIFY_KEY = "password:verify:";
         String EMAIL_REQUEST_KEY = "password:requested:";
@@ -436,33 +436,81 @@ public class AuthService {
         }
 
         // 유저 확인
-        User user = myPageRepository.findByUsersIdAndEmailAndIsDeletedFalse(
+        myPageRepository.findByUsersIdAndEmailAndIsDeletedFalse(
                 requestDto.getUsersId(),
                 requestDto.getEmail()
         ).orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
 
-        // 임시 비밀번호 생성
-        String tempPassword = generateTempPassword();
+        // 인증 완료 상태 저장
+        redisTemplate.opsForValue().set(
+                "password:verified:" + email,
+                "true",
+                5,
+                TimeUnit.MINUTES
+        );
 
-        // 임시 비밀번호 저장
-        user.updatePassword(passwordEncoder.encode(tempPassword));
-
-        // Redis 삭제
+        // 기존 인증 데이터 삭제
         redisTemplate.delete(EMAIL_VERIFY_KEY + email);
         redisTemplate.delete(EMAIL_REQUEST_KEY + email);
 
+        return new PasswordResetResponseDto(usersId, email);
+    }
+
+    @Transactional
+    public PasswordEmailResponseDto issueTempPassword(
+            PasswordEmailRequestDto requestDto
+    ) {
+
+        String PASSWORD_VERIFIED_KEY =
+                "password:verified:";
+
+        String email = requestDto.getEmail();
+        String usersId = requestDto.getUsersId();
+
+        // 인증 완료 여부 확인
+        Boolean verified = redisTemplate.hasKey(PASSWORD_VERIFIED_KEY + email);
+
+        if (!Boolean.TRUE.equals(verified)) {
+            throw new BusinessException(ErrorCode.INVALID_EMAIL_REQUEST);
+        }
+
+        // 유저 조회
+        User user = myPageRepository.findByUsersIdAndEmailAndIsDeletedFalse(usersId, email).orElseThrow(() ->
+                                new BusinessException(ErrorCode.USER_NOT_FOUND)
+                        );
+
+        // 로컬 로그인 사용자만 허용
+        if (user.getLoginType() != LoginType.LOCAL) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT);
+        }
+
+        // 임시 비밀번호 생성
+        String tempPassword = generateTempPassword();
+
+        // 비밀번호 변경
+        user.updatePassword(passwordEncoder.encode(tempPassword)
+        );
+
         // 이메일 전송
         SimpleMailMessage message = new SimpleMailMessage();
+
         message.setTo(email);
+
         message.setSubject("임시 비밀번호 발급");
+
         message.setText("임시 비밀번호: " + tempPassword);
 
         try {
             mailSender.send(message);
+
         } catch (Exception e) {
             throw new BusinessException(ErrorCode.EMAIL_SEND_FAIL);
         }
-        return new PasswordResetResponseDto(usersId, email);
+
+        // 인증 상태 삭제
+        redisTemplate.delete(PASSWORD_VERIFIED_KEY + email);
+
+        return new PasswordEmailResponseDto(usersId, email);
     }
 
     /**
@@ -470,18 +518,28 @@ public class AuthService {
      * @return 영문 대소문자 + 숫자 조합 10자리 임시 비밀번호
      */
     private String generateTempPassword() {
-        String chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+
+        String chars =
+                "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789@$!%*#?&";
+
+        String specialChars = "@$!%*#?&";
+
         SecureRandom random = new SecureRandom();
 
         StringBuilder password = new StringBuilder();
 
-        for (int i = 0; i < 10; i++) {
+        password.append(
+                specialChars.charAt(
+                        random.nextInt(specialChars.length())
+                )
+        );
+
+        // 나머지 9자리 랜덤
+        for (int i = 1; i < 10; i++) {
             int index = random.nextInt(chars.length());
             password.append(chars.charAt(index));
         }
 
         return password.toString();
     }
-
-
 }
