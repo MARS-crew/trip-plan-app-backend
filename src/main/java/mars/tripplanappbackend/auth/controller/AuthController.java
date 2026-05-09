@@ -155,9 +155,19 @@ public class AuthController {
     @PostMapping("/password/email-verify")
     @ApiErrorExceptions({ErrorCode.INVALID_INPUT, ErrorCode.USER_NOT_FOUND,
             ErrorCode.INTERNAL_ERROR, ErrorCode.EMAIL_SEND_FAIL})
-    @Operation(summary = "임시 비밀번호 발급용 이메일 인증 및 임시 비밀번호 이메일 전송", description = "임시 비밀번호 이메일 인증 및 이메일 전송, 인증이 완료되면 알아서 이메일 전송")
+    @Operation(summary = "임시 비밀번호 발급용 이메일 인증", description = "임시 비밀번호 이메일 인증")
     public ApiResponse<PasswordResetResponseDto> passwordVerify(@Valid @RequestBody PasswordResetRequestDto requestDto){
-        PasswordResetResponseDto response = authService.resetPassword(requestDto);
+        PasswordResetResponseDto response = authService.verifyPasswordResetCode(requestDto);
+        return ApiResponse.ok(response);
+    }
+
+    @PostMapping("/password/reset")
+    @ApiErrorExceptions({ErrorCode.INVALID_INPUT, ErrorCode.USER_NOT_FOUND,
+            ErrorCode.INTERNAL_ERROR, ErrorCode.EMAIL_SEND_FAIL})
+    @Operation(summary = "임시 비밀번호 발급", description = "이메일 인증 완료 후 임시 비밀번호 발급")
+    public ApiResponse<PasswordEmailResponseDto> resetPassword(@Valid @RequestBody PasswordEmailRequestDto requestDto) {
+        PasswordEmailResponseDto response =
+                authService.issueTempPassword(requestDto);
         return ApiResponse.ok(response);
     }
 }
