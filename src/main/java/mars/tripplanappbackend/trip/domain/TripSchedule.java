@@ -20,6 +20,7 @@ import mars.tripplanappbackend.global.entity.BaseEntity;
 import mars.tripplanappbackend.place.domain.Place;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
@@ -48,8 +49,17 @@ public class TripSchedule extends BaseEntity {
     @Column(name = "title", length = 10, nullable = false)
     private String title;
 
+    @Column(name = "place_name", length = 80)
+    private String placeName;
+
     @Column(name = "address", length = 255)
     private String address;
+
+    @Column(name = "latitude", precision = 10, scale = 7)
+    private BigDecimal latitude;
+
+    @Column(name = "longitude", precision = 10, scale = 7)
+    private BigDecimal longitude;
 
     @Column(name = "start_time", nullable = false)
     private LocalTime startTime;
@@ -71,7 +81,7 @@ public class TripSchedule extends BaseEntity {
     @JoinColumn(name = "trip_id", nullable = false)
     private Trip trip;
 
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @ManyToOne(fetch = FetchType.LAZY, optional = true)
     @JoinColumn(name = "place_id", nullable = true)
     private Place place;
 
@@ -103,7 +113,10 @@ public class TripSchedule extends BaseEntity {
             int dayNo,
             LocalDate scheduleDate,
             String title,
+            String placeName,
             String address,
+            BigDecimal latitude,
+            BigDecimal longitude,
             LocalTime startTime,
             LocalTime endTime,
             String memo,
@@ -112,11 +125,49 @@ public class TripSchedule extends BaseEntity {
         this.dayNo = dayNo;
         this.scheduleDate = scheduleDate;
         this.title = title;
+        this.placeName = placeName;
         this.address = address;
+        this.latitude = latitude;
+        this.longitude = longitude;
         this.startTime = startTime;
         this.endTime = endTime;
         this.memo = memo;
         this.place = place;
+    }
+
+    public String resolvePlaceName() {
+        if (place != null && hasText(place.getName())) {
+            return place.getName().trim();
+        }
+        return hasText(placeName) ? placeName.trim() : null;
+    }
+
+    public String resolveAddress() {
+        if (hasText(address)) {
+            return address.trim();
+        }
+        if (place != null && hasText(place.getAddress())) {
+            return place.getAddress().trim();
+        }
+        return null;
+    }
+
+    public BigDecimal resolveLatitude() {
+        if (place != null && place.getLatitude() != null) {
+            return place.getLatitude();
+        }
+        return latitude;
+    }
+
+    public BigDecimal resolveLongitude() {
+        if (place != null && place.getLongitude() != null) {
+            return place.getLongitude();
+        }
+        return longitude;
+    }
+
+    public boolean hasLocation() {
+        return resolveLatitude() != null && resolveLongitude() != null;
     }
 
     /**
@@ -126,5 +177,9 @@ public class TripSchedule extends BaseEntity {
     public void markDeleted() {
         this.isDeleted = true;
         this.deletedDate = LocalDateTime.now();
+    }
+
+    private boolean hasText(String value) {
+        return value != null && !value.trim().isEmpty();
     }
 }

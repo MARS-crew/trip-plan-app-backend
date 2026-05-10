@@ -56,8 +56,8 @@ public class MyTripScheduleRouteResponseDto {
             String destinationAddress,
             String googleDirectionsUrl
     ) {
-        BigDecimal latitude = tripSchedule.getPlace() != null ? tripSchedule.getPlace().getLatitude() : null;
-        BigDecimal longitude = tripSchedule.getPlace() != null ? tripSchedule.getPlace().getLongitude() : null;
+        BigDecimal latitude = tripSchedule.resolveLatitude();
+        BigDecimal longitude = tripSchedule.resolveLongitude();
 
         return MyTripScheduleRouteResponseDto.builder()
                 .tripId(tripSchedule.getTrip().getTripId())
@@ -79,8 +79,9 @@ public class MyTripScheduleRouteResponseDto {
      * @return 화면과 외부 앱에서 표시할 목적지 이름
      */
     private static String resolveDestinationName(TripSchedule tripSchedule) {
-        if (tripSchedule.getPlace() != null && tripSchedule.getPlace().getName() != null) {
-            return tripSchedule.getPlace().getName();
+        String placeName = tripSchedule.resolvePlaceName();
+        if (placeName != null) {
+            return placeName;
         }
         return tripSchedule.getTitle();
     }

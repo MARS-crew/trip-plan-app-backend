@@ -42,6 +42,9 @@ public class AddTripScheduleResponseDto {
     @Schema(description = "Place name", example = "Dotonbori", nullable = true)
     private String placeName;
 
+    @Schema(description = "Place address", example = "1 Chome Dotonbori, Chuo Ward, Osaka", nullable = true)
+    private String address;
+
     @Schema(description = "Place latitude", example = "34.6937249", nullable = true)
     private BigDecimal latitude;
 
@@ -66,9 +69,10 @@ public class AddTripScheduleResponseDto {
                 .startTime(tripSchedule.getStartTime())
                 .endTime(tripSchedule.getEndTime())
                 .placeId(place != null ? place.getPlaceId() : null)
-                .placeName(place != null ? place.getName() : null)
-                .latitude(place != null ? place.getLatitude() : null)
-                .longitude(place != null ? place.getLongitude() : null)
+                .placeName(tripSchedule.resolvePlaceName())
+                .address(tripSchedule.resolveAddress())
+                .latitude(tripSchedule.resolveLatitude())
+                .longitude(tripSchedule.resolveLongitude())
                 .memo(tripSchedule.getMemo())
                 .added(true)
                 .build();

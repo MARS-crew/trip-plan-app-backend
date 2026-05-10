@@ -186,7 +186,7 @@ public class MyTripScheduleListResponseDto {
                     .tripScheduleId(tripSchedule.getTripScheduleId())
                     .placeId(tripSchedule.getPlace() != null ? tripSchedule.getPlace().getPlaceId() : null)
                     .title(tripSchedule.getTitle())
-                    .placeName(tripSchedule.getPlace() != null ? tripSchedule.getPlace().getName() : null)
+                    .placeName(tripSchedule.resolvePlaceName())
                     .address(address)
                     .memo(tripSchedule.getMemo())
                     .startTime(tripSchedule.getStartTime())

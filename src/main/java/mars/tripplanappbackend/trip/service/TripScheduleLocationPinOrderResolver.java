@@ -35,8 +35,6 @@ final class TripScheduleLocationPinOrderResolver {
     }
 
     private static boolean hasLocation(TripSchedule tripSchedule) {
-        return tripSchedule.getPlace() != null
-                && tripSchedule.getPlace().getLatitude() != null
-                && tripSchedule.getPlace().getLongitude() != null;
+        return tripSchedule.hasLocation();
     }
 }
