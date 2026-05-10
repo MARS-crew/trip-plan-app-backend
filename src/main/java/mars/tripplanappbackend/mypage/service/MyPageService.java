@@ -14,6 +14,7 @@ import mars.tripplanappbackend.mypage.dto.request.UpdateProfileRequestDto;
 import mars.tripplanappbackend.mypage.dto.resopnse.*;
 import mars.tripplanappbackend.mypage.repository.SavedPlaceRepository;
 import mars.tripplanappbackend.mypage.repository.MyPageRepository;
+import mars.tripplanappbackend.review.repository.ReviewRepository;
 import mars.tripplanappbackend.trip.domain.VisitedPlace;
 import mars.tripplanappbackend.trip.repository.TripRepository;
 import mars.tripplanappbackend.trip.repository.VisitedPlaceRepository;
@@ -38,6 +39,8 @@ public class MyPageService {
     private final BCryptPasswordEncoder passwordEncoder;
     private final TripRepository tripRepository;
     private final VisitedPlaceRepository visitedPlaceRepository;
+    private final ReviewRepository reviewRepository;
+
     private final JavaMailSender mailSender;
     private final RedisTemplate<String, String> redisTemplate;
 
@@ -177,7 +180,12 @@ public class MyPageService {
                 visitedPlaceRepository.findByUser_UsersIdAndIsDeletedFalseOrderByVisitedAtDesc(usersId);
 
         return visitedPlaces.stream()
-                .map(VisitedPlaceResponseDto::new)
+                .map(visitedPlace -> {
+
+                    boolean exists = reviewRepository.existsByVisitedPlaceAndIsDeletedFalse(visitedPlace);
+
+                    return new VisitedPlaceResponseDto(visitedPlace, exists ? UseYnEnum.Y : UseYnEnum.N);
+                })
                 .toList();
     }
 
