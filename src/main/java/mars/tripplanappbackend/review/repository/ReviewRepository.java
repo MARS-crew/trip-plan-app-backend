@@ -1,6 +1,7 @@
 package mars.tripplanappbackend.review.repository;
 
 import mars.tripplanappbackend.review.domain.Review;
+import mars.tripplanappbackend.trip.domain.VisitedPlace;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -20,4 +21,6 @@ public interface ReviewRepository extends JpaRepository<Review, Long> {
             "WHERE r.place.placeId = :placeId AND r.isDeleted = false " +
             "GROUP BY r.rating")
     List<Object[]> countReviewsByRating(@Param("placeId") Long placeId);
+
+    boolean existsByVisitedPlaceAndIsDeletedFalse(VisitedPlace visitedPlace);
 }

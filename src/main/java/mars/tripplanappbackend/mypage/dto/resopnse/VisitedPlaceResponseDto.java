@@ -1,7 +1,6 @@
 package mars.tripplanappbackend.mypage.dto.resopnse;
 
 import io.swagger.v3.oas.annotations.media.Schema;
-import jakarta.validation.constraints.NotBlank;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -37,7 +36,10 @@ public class VisitedPlaceResponseDto {
     @Schema(description = "장소 유형", example = "LANDMARK")
     private PlaceType placeType;
 
-    public VisitedPlaceResponseDto(VisitedPlace visitedPlace) {
+    @Schema(description = "리뷰 작성 여부", example = "Y")
+    private UseYnEnum reviewWrittenYn;
+
+    public VisitedPlaceResponseDto(VisitedPlace visitedPlace, UseYnEnum reviewWrittenYn) {
         Place place = visitedPlace.getPlace();
 
         this.visitedPlaceId = visitedPlace.getVisitedPlaceId();
@@ -47,5 +49,6 @@ public class VisitedPlaceResponseDto {
         this.countryName = place.getCountryName();
         this.imageUrl = place.getImageUrl();
         this.placeType = place.getPlaceType();
+        this.reviewWrittenYn = reviewWrittenYn;
     }
 }
