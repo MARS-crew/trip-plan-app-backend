@@ -551,12 +551,15 @@ public class TripController {
                                     name = "일정 추가 예시",
                                     value = """
                                             {
-                                              "title": "시계탑 방문",
+                                              "title": "전시 관람",
                                               "scheduleDate": "2026-04-22",
                                               "startTime": "10:00",
                                               "endTime": "11:00",
-                                              "placeId": 7,
-                                              "memo": "오전 일정 테스트"
+                                              "placeName": "팀랩 보더리스",
+                                              "address": "Azabudai Hills, Tokyo",
+                                              "latitude": 35.6605234,
+                                              "longitude": 139.7291880,
+                                              "memo": "입장 시간 확인"
                                             }
                                             
                                             """

@@ -8,6 +8,7 @@ import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalTime;
 
@@ -47,6 +48,20 @@ public class AddTripScheduleRequestDto {
     @Schema(description = "장소 PK(지도 선택 시 전달)", example = "7", nullable = true)
     private Long placeId;
 
+    @Size(max = 80, message = "Place name must be 80 characters or less.")
+    @Schema(description = "Custom place name when placeId is not provided", example = "teamLab Borderless", nullable = true)
+    private String placeName;
+
+    @Size(max = 255, message = "Address must be 255 characters or less.")
+    @Schema(description = "Custom place address when placeId is not provided", example = "Azabudai Hills, Tokyo", nullable = true)
+    private String address;
+
+    @Schema(description = "Custom place latitude when placeId is not provided", example = "35.6605234", nullable = true)
+    private BigDecimal latitude;
+
+    @Schema(description = "Custom place longitude when placeId is not provided", example = "139.7291880", nullable = true)
+    private BigDecimal longitude;
+
     @Size(max = 100, message = "메모는 100자 이내여야 합니다.")
     @Schema(description = "메모(100자 이내)", example = "현지 맛집 방문", nullable = true)
     private String memo;
@@ -68,6 +83,10 @@ public class AddTripScheduleRequestDto {
         serviceRequestDto.startTime = requestDto.startTime;
         serviceRequestDto.endTime = requestDto.endTime;
         serviceRequestDto.placeId = requestDto.placeId;
+        serviceRequestDto.placeName = requestDto.placeName;
+        serviceRequestDto.address = requestDto.address;
+        serviceRequestDto.latitude = requestDto.latitude;
+        serviceRequestDto.longitude = requestDto.longitude;
         serviceRequestDto.memo = requestDto.memo;
         return serviceRequestDto;
     }

@@ -103,8 +103,8 @@ public class MyTripScheduleLocationItemResponseDto {
             boolean canAddVisitedPlace
     ) {
         Place place = tripSchedule.getPlace();
-        BigDecimal latitude = place != null ? place.getLatitude() : null;
-        BigDecimal longitude = place != null ? place.getLongitude() : null;
+        BigDecimal latitude = tripSchedule.resolveLatitude();
+        BigDecimal longitude = tripSchedule.resolveLongitude();
         boolean hasLocation = latitude != null && longitude != null;
 
         return MyTripScheduleLocationItemResponseDto.builder()
@@ -115,7 +115,7 @@ public class MyTripScheduleLocationItemResponseDto {
                 .pinOrder(pinOrder)
                 .placeId(place != null ? place.getPlaceId() : null)
                 .title(tripSchedule.getTitle())
-                .placeName(placeName != null ? placeName : place != null ? place.getName() : null)
+                .placeName(placeName != null ? placeName : tripSchedule.resolvePlaceName())
                 .address(address)
                 .startTime(tripSchedule.getStartTime())
                 .endTime(tripSchedule.getEndTime())

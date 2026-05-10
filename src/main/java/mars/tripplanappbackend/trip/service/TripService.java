@@ -70,6 +70,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
@@ -547,19 +548,16 @@ public class TripService {
                 )
                 .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_INPUT));
 
-        Place place = tripSchedule.getPlace();
-        if (place == null || Boolean.TRUE.equals(place.getIsDeleted())) {
-            throw new BusinessException(ErrorCode.PLACE_NOT_FOUND);
-        }
-
         String destinationAddress = resolveScheduleAddress(tripSchedule);
-        if (place.getLatitude() == null && place.getLongitude() == null && !hasText(destinationAddress)) {
+        BigDecimal destinationLatitude = tripSchedule.resolveLatitude();
+        BigDecimal destinationLongitude = tripSchedule.resolveLongitude();
+        if ((destinationLatitude == null || destinationLongitude == null) && !hasText(destinationAddress)) {
             throw new BusinessException(ErrorCode.INVALID_INPUT);
         }
 
         String googleDirectionsUrl = buildGoogleDirectionsUrl(
-                place.getLatitude(),
-                place.getLongitude(),
+                destinationLatitude,
+                destinationLongitude,
                 destinationAddress
         );
 
@@ -658,6 +656,10 @@ public class TripService {
 
         int dayNo = calculateDayNo(trip.getStartDate(), requestDto.getScheduleDate());
         String normalizedMemo = normalizeTripScheduleMemo(requestDto.getMemo());
+        String schedulePlaceName = resolveTripSchedulePlaceName(place, requestDto.getPlaceName());
+        String scheduleAddress = resolveTripScheduleAddress(place, requestDto.getAddress());
+        BigDecimal scheduleLatitude = resolveTripScheduleLatitude(place, requestDto.getLatitude());
+        BigDecimal scheduleLongitude = resolveTripScheduleLongitude(place, requestDto.getLongitude());
 
         TripSchedule savedTripSchedule = tripScheduleRepository.save(
                 TripSchedule.builder()
@@ -665,7 +667,10 @@ public class TripService {
                         .dayNo(dayNo)
                         .scheduleDate(requestDto.getScheduleDate())
                         .title(requestDto.getTitle().trim())
-                        .address(place != null ? place.getAddress() : null)
+                        .placeName(schedulePlaceName)
+                        .address(scheduleAddress)
+                        .latitude(scheduleLatitude)
+                        .longitude(scheduleLongitude)
                         .startTime(requestDto.getStartTime())
                         .endTime(requestDto.getEndTime())
                         .memo(normalizedMemo)
@@ -719,12 +724,19 @@ public class TripService {
 
         int dayNo = calculateDayNo(trip.getStartDate(), requestDto.getScheduleDate());
         String normalizedMemo = normalizeTripScheduleMemo(requestDto.getMemo());
+        String schedulePlaceName = resolveTripSchedulePlaceName(place, requestDto.getPlaceName());
+        String scheduleAddress = resolveTripScheduleAddress(place, requestDto.getAddress());
+        BigDecimal scheduleLatitude = resolveTripScheduleLatitude(place, requestDto.getLatitude());
+        BigDecimal scheduleLongitude = resolveTripScheduleLongitude(place, requestDto.getLongitude());
 
         tripSchedule.updateSchedule(
                 dayNo,
                 requestDto.getScheduleDate(),
                 requestDto.getTitle().trim(),
-                place != null ? place.getAddress() : null,
+                schedulePlaceName,
+                scheduleAddress,
+                scheduleLatitude,
+                scheduleLongitude,
                 requestDto.getStartTime(),
                 requestDto.getEndTime(),
                 normalizedMemo,
@@ -1012,6 +1024,9 @@ public class TripService {
                 || requestDto.getEndTime() == null
                 || !requestDto.getStartTime().isBefore(requestDto.getEndTime())
                 || (requestDto.getPlaceId() != null && requestDto.getPlaceId() < 1)
+                || (requestDto.getPlaceName() != null && requestDto.getPlaceName().trim().length() > PLACE_NAME_MAX_LENGTH)
+                || (requestDto.getAddress() != null && requestDto.getAddress().trim().length() > ADDRESS_MAX_LENGTH)
+                || hasInvalidScheduleCoordinate(requestDto.getLatitude(), requestDto.getLongitude())
                 || (requestDto.getMemo() != null && requestDto.getMemo().length() > 100)) {
             throw new BusinessException(ErrorCode.INVALID_INPUT);
         }
@@ -1040,6 +1055,9 @@ public class TripService {
                 || requestDto.getEndTime() == null
                 || !requestDto.getStartTime().isBefore(requestDto.getEndTime())
                 || (requestDto.getPlaceId() != null && requestDto.getPlaceId() < 1)
+                || (requestDto.getPlaceName() != null && requestDto.getPlaceName().trim().length() > PLACE_NAME_MAX_LENGTH)
+                || (requestDto.getAddress() != null && requestDto.getAddress().trim().length() > ADDRESS_MAX_LENGTH)
+                || hasInvalidScheduleCoordinate(requestDto.getLatitude(), requestDto.getLongitude())
                 || (requestDto.getMemo() != null && requestDto.getMemo().length() > 100)) {
             throw new BusinessException(ErrorCode.INVALID_INPUT);
         }
@@ -1208,6 +1226,54 @@ public class TripService {
             return null;
         }
         return memo.trim();
+    }
+
+    private String resolveTripSchedulePlaceName(Place place, String placeName) {
+        if (place != null && hasText(place.getName())) {
+            return null;
+        }
+        return truncate(nullableTrim(placeName), PLACE_NAME_MAX_LENGTH);
+    }
+
+    private String resolveTripScheduleAddress(Place place, String address) {
+        if (place != null && hasText(place.getAddress())) {
+            return truncate(nullableTrim(place.getAddress()), ADDRESS_MAX_LENGTH);
+        }
+        return truncate(nullableTrim(address), ADDRESS_MAX_LENGTH);
+    }
+
+    private BigDecimal resolveTripScheduleLatitude(Place place, BigDecimal latitude) {
+        if (place != null && place.getLatitude() != null) {
+            return place.getLatitude();
+        }
+        return normalizeTripScheduleCoordinate(latitude);
+    }
+
+    private BigDecimal resolveTripScheduleLongitude(Place place, BigDecimal longitude) {
+        if (place != null && place.getLongitude() != null) {
+            return place.getLongitude();
+        }
+        return normalizeTripScheduleCoordinate(longitude);
+    }
+
+    private BigDecimal normalizeTripScheduleCoordinate(BigDecimal coordinate) {
+        if (coordinate == null) {
+            return null;
+        }
+        return coordinate.setScale(7, RoundingMode.HALF_UP);
+    }
+
+    private boolean hasInvalidScheduleCoordinate(BigDecimal latitude, BigDecimal longitude) {
+        if (latitude == null && longitude == null) {
+            return false;
+        }
+        if (latitude == null || longitude == null) {
+            return true;
+        }
+        return latitude.compareTo(BigDecimal.valueOf(-90)) < 0
+                || latitude.compareTo(BigDecimal.valueOf(90)) > 0
+                || longitude.compareTo(BigDecimal.valueOf(-180)) < 0
+                || longitude.compareTo(BigDecimal.valueOf(180)) > 0;
     }
 
     /**
@@ -1609,15 +1675,7 @@ public class TripService {
      * @return 화면 노출과 길찾기 판단에 사용할 기준 주소
      */
     private String resolveScheduleAddress(TripSchedule tripSchedule) {
-        if (hasText(tripSchedule.getAddress())) {
-            return tripSchedule.getAddress().trim();
-        }
-
-        if (tripSchedule.getPlace() != null && hasText(tripSchedule.getPlace().getAddress())) {
-            return tripSchedule.getPlace().getAddress().trim();
-        }
-
-        return null;
+        return tripSchedule.resolveAddress();
     }
 
     private Map<Long, ScheduleLocationPlaceSnapshot> resolveScheduleLocationPlaceSnapshots(List<TripSchedule> tripSchedules) {
@@ -2097,9 +2155,7 @@ public class TripService {
      * @return 위도와 경도가 모두 존재하면 true
      */
     private boolean hasLocation(TripSchedule tripSchedule) {
-        return tripSchedule.getPlace() != null
-                && tripSchedule.getPlace().getLatitude() != null
-                && tripSchedule.getPlace().getLongitude() != null;
+        return tripSchedule.hasLocation();
     }
 
     /**
