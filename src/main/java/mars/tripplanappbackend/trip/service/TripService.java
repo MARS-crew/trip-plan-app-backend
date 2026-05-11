@@ -31,34 +31,10 @@ import mars.tripplanappbackend.trip.dto.request.MyTripScheduleRouteRequestDto;
 import mars.tripplanappbackend.trip.dto.request.NearbyTripScheduleRequestDto;
 import mars.tripplanappbackend.trip.dto.request.ShareTripRequestDto;
 import mars.tripplanappbackend.trip.dto.request.TripPlaceSelectionRequestDto;
+import mars.tripplanappbackend.trip.dto.request.UpdateTripDateRequestDto;
 import mars.tripplanappbackend.trip.dto.request.UpdateTripScheduleRequestDto;
 import mars.tripplanappbackend.trip.dto.request.UpdateTripRequestDto;
-import mars.tripplanappbackend.trip.dto.response.AddTripScheduleResponseDto;
-import mars.tripplanappbackend.trip.dto.response.AddVisitedPlaceResponseDto;
-import mars.tripplanappbackend.trip.dto.response.AddWishlistPlaceResponseDto;
-import mars.tripplanappbackend.trip.dto.response.CreateTripResponseDto;
-import mars.tripplanappbackend.trip.dto.response.DeleteTripResponseDto;
-import mars.tripplanappbackend.trip.dto.response.DeleteTripScheduleResponseDto;
-import mars.tripplanappbackend.trip.dto.response.DeleteWishlistPlaceResponseDto;
-import mars.tripplanappbackend.trip.dto.response.MyTripCurrentScheduleResponseDto;
-import mars.tripplanappbackend.trip.dto.response.MyTripDailyScheduleResponseDto;
-import mars.tripplanappbackend.trip.dto.response.MyTripDetailResponseDto;
-import mars.tripplanappbackend.trip.dto.response.MyTripListResponseDto;
-import mars.tripplanappbackend.trip.dto.response.MyTripScheduleByDateResponseDto;
-import mars.tripplanappbackend.trip.dto.response.MyTripScheduleDateOptionResponseDto;
-import mars.tripplanappbackend.trip.dto.response.MyTripScheduleItemResponseDto;
-import mars.tripplanappbackend.trip.dto.response.MyTripScheduleListResponseDto;
-import mars.tripplanappbackend.trip.dto.response.MyTripScheduleLocationItemResponseDto;
-import mars.tripplanappbackend.trip.dto.response.MyTripScheduleLocationResponseDto;
-import mars.tripplanappbackend.trip.dto.response.MyTripScheduleRouteResponseDto;
-import mars.tripplanappbackend.trip.dto.response.MyTripSummaryResponseDto;
-import mars.tripplanappbackend.trip.dto.response.NearbyTripScheduleItemResponseDto;
-import mars.tripplanappbackend.trip.dto.response.NearbyTripScheduleResponseDto;
-import mars.tripplanappbackend.trip.dto.response.ShareTripResponseDto;
-import mars.tripplanappbackend.trip.dto.response.TripPlaceSelectionItemResponseDto;
-import mars.tripplanappbackend.trip.dto.response.TripPlaceSelectionResponseDto;
-import mars.tripplanappbackend.trip.dto.response.UpdateTripScheduleResponseDto;
-import mars.tripplanappbackend.trip.dto.response.UpdateTripResponseDto;
+import mars.tripplanappbackend.trip.dto.response.*;
 import mars.tripplanappbackend.trip.enums.MyTripFilterType;
 import mars.tripplanappbackend.trip.enums.TripStatus;
 import mars.tripplanappbackend.trip.enums.WishlistSourceType;
@@ -68,6 +44,7 @@ import mars.tripplanappbackend.trip.repository.VisitedPlaceRepository;
 import mars.tripplanappbackend.trip.repository.WishlistPlaceRepository;
 import mars.tripplanappbackend.trip.dto.request.UpdateTripTitleRequestDto;
 import mars.tripplanappbackend.trip.dto.response.UpdateTripTitleResponseDto;
+import mars.tripplanappbackend.global.config.auth.UserPrincipal;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -2482,6 +2459,47 @@ public class TripService {
      */
     private String createTripShareUrl(String shareCode) {
         return String.format(TRIP_SHARE_URL_TEMPLATE, shareCode);
+    }
+
+    /**
+     * 여행 날짜 수정 API
+     */
+    @Transactional
+    public UpdateTripDateResponseDto updateTripDate(
+            UserPrincipal userPrincipal,
+            Long tripId,
+            UpdateTripDateRequestDto requestDto
+    ) {
+
+        // 1. 요청값 검증
+        if (requestDto == null ||
+                requestDto.getStartDate() == null ||
+                requestDto.getEndDate() == null) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT);
+        }
+
+        // 2. 여행 조회
+        validateUserExistsByUsersId(userPrincipal.getUsersId());
+
+        Trip trip = tripRepository.findByTripIdAndUser_UsersIdAndIsDeletedFalse(
+                        tripId,
+                        userPrincipal.getUsersId()
+                )
+                .orElseThrow(() -> new BusinessException(ErrorCode.TRIP_NOT_FOUND));
+
+        // 3. 날짜 검증 (시작일 > 종료일)
+        if (requestDto.getStartDate().isAfter(requestDto.getEndDate())) {
+            throw new BusinessException(ErrorCode.INVALID_TRIP_DATE);
+        }
+
+        // 4. 날짜 수정
+        trip.updateTripDate(
+                requestDto.getStartDate(),
+                requestDto.getEndDate()
+        );
+
+        // 5. 응답 반환
+        return UpdateTripDateResponseDto.from(trip);
     }
 
     /**

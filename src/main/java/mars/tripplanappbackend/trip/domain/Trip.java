@@ -18,8 +18,8 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import mars.tripplanappbackend.global.entity.BaseEntity;
-import mars.tripplanappbackend.trip.enums.TripStatus;
 import mars.tripplanappbackend.mypage.domain.User;
+import mars.tripplanappbackend.trip.enums.TripStatus;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 import java.time.LocalDate;
@@ -105,6 +105,14 @@ public class Trip extends BaseEntity {
      */
     public void updateShareCode(String shareCode) {
         this.shareCode = shareCode;
+    }
+
+    /**
+     * 여행 날짜 수정 메서드
+     */
+    public void updateTripDate(LocalDate startDate, LocalDate endDate) {
+        this.startDate = startDate;
+        this.endDate = endDate;
     }
 
     /**
