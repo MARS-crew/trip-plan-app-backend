@@ -2,6 +2,7 @@ package mars.tripplanappbackend.place.repository;
 
 import mars.tripplanappbackend.place.domain.Place;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -28,9 +29,20 @@ public interface PlaceRepository extends JpaRepository<Place, Long> {
                     or lower(coalesce(p.address, '')) like lower(concat('%', :keyword, '%'))
                     or lower(coalesce(pt.tagName, '')) like lower(concat('%', :keyword, '%'))
               )
-            order by p.ratingAvg desc, p.reviewCount desc, p.placeId asc
             """)
-    List<Place> searchByKeyword(@Param("keyword") String keyword);
+    List<Place> searchByKeyword(@Param("keyword") String keyword, Sort sort);
+
+    Optional<Place> findByGooglePlaceIdAndIsDeletedFalse(String googlePlaceId);
+
+    Optional<Place> findFirstByNameAndAddressAndIsDeletedFalse(String name, String address);
+
+    Optional<Place> findFirstByNameAndCityNameAndCountryNameAndIsDeletedFalse(
+            String name,
+            String cityName,
+            String countryName
+    );
+
+    List<Place> findAllByPlaceIdInAndIsDeletedFalse(List<Long> placeIds, Sort sort);
 
     Optional<Place> findByPlaceIdAndIsDeletedFalse(Long placeId);
 

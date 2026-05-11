@@ -4,6 +4,10 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import mars.tripplanappbackend.auth.dto.request.EmailRequestDto;
+import mars.tripplanappbackend.auth.dto.request.EmailVerifyRequestDto;
+import mars.tripplanappbackend.auth.dto.response.EmailResponseDto;
+import mars.tripplanappbackend.auth.dto.response.EmailVerifyResponseDto;
 import mars.tripplanappbackend.global.config.auth.CurrentUser;
 import mars.tripplanappbackend.global.config.auth.UserPrincipal;
 import mars.tripplanappbackend.global.config.swagger.ApiErrorExceptions;
@@ -124,6 +128,42 @@ public class MyPageController {
         ExchangeResponseDto response = exchangeService.getExchangeRate(
                 userPrincipal.getUsersId(), requestDto
         );
+        return ApiResponse.ok(response);
+    }
+
+    @GetMapping("/visited")
+    @Operation(summary = "내 방문 장소 목록 조회",
+            description = "본인의 방문 장소 목록을 최신 방문순으로 조회")
+    @ApiErrorExceptions({ErrorCode.INVALID_TOKEN, ErrorCode.EXPIRED_REFRESH_TOKEN, ErrorCode.INTERNAL_ERROR})
+    public ApiResponse<List<VisitedPlaceResponseDto>> getMyVisitedPlaces(
+            @CurrentUser UserPrincipal userPrincipal
+    ) {
+        String usersId = userPrincipal.getUsersId();
+        List<VisitedPlaceResponseDto> response = myPageService.getMyVisitedPlaces(usersId);
+        return ApiResponse.ok(response);
+    }
+
+    @PostMapping("/email-request")
+    @ApiErrorExceptions({ErrorCode.INVALID_INPUT, ErrorCode.USER_NOT_FOUND, ErrorCode.INTERNAL_ERROR})
+    @Operation(summary = "프로필 편집용 이메일 전송", description = "이메일 전송 api, gmail만 가능")
+    public ApiResponse<EmailResponseDto> sendEmail(
+            @CurrentUser UserPrincipal userPrincipal,
+            @Valid @RequestBody EmailRequestDto requestDto) {
+        String usersId = userPrincipal.getUsersId();
+        EmailResponseDto response = myPageService.sendEmail(usersId, requestDto);
+        return ApiResponse.ok(response);
+    }
+
+    @PostMapping("/email-verify")
+    @ApiErrorExceptions({ErrorCode.USER_NOT_FOUND, ErrorCode.INVALID_EMAIL_CODE,
+            ErrorCode.EMAIL_CODE_EXPIRED, ErrorCode.INTERNAL_ERROR})
+    @Operation(summary = "프로필 편집용 이메일 인증", description = "이메일 인증 api, 이메일로 전송된 인증 번호 6자리 입력, " +
+            "해당 이메일로 가입된 유저가 없으면 user_not_found")
+    public ApiResponse<EmailVerifyResponseDto> emailVerify(
+            @CurrentUser UserPrincipal userPrincipal,
+            @Valid @RequestBody EmailVerifyRequestDto requestDto) {
+        String usersId = userPrincipal.getUsersId();
+        EmailVerifyResponseDto response = myPageService.verifyEmailCode(usersId, requestDto);
         return ApiResponse.ok(response);
     }
 }

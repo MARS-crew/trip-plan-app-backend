@@ -37,7 +37,7 @@ public class ExchangeService {
 
     public ExchangeResponseDto getExchangeRate(String usersId, ExchangeRequestDto requestDto) {
         // 사용자 검증
-        myPageRepository.findByUsersId(usersId)
+        myPageRepository.findByUsersIdAndIsDeletedFalse(usersId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
 
         String today = getRecentBusinessDay();

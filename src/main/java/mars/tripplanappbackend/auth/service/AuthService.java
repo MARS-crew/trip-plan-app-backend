@@ -2,10 +2,6 @@ package mars.tripplanappbackend.auth.service;
 
 import mars.tripplanappbackend.auth.dto.request.*;
 import mars.tripplanappbackend.auth.dto.response.*;
-import mars.tripplanappbackend.auth.dto.response.CheckIdResponseDto;
-import mars.tripplanappbackend.auth.dto.response.LoginResponseDto;
-import mars.tripplanappbackend.auth.dto.response.SignupResponseDto;
-import mars.tripplanappbackend.auth.dto.response.TokenReissueResponseDto;
 import mars.tripplanappbackend.auth.enums.WithdrawalReasonType;
 import mars.tripplanappbackend.global.config.auth.JwtProvider;
 import mars.tripplanappbackend.global.enums.ErrorCode;
@@ -13,8 +9,10 @@ import mars.tripplanappbackend.global.enums.UseYnEnum;
 import mars.tripplanappbackend.global.exception.BusinessException;
 import lombok.RequiredArgsConstructor;
 import mars.tripplanappbackend.mypage.domain.User;
+import mars.tripplanappbackend.mypage.domain.Withdraw;
 import mars.tripplanappbackend.mypage.enums.LoginType;
 import mars.tripplanappbackend.mypage.repository.MyPageRepository;
+import mars.tripplanappbackend.mypage.repository.WithdrawRepository;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
@@ -22,6 +20,7 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.security.SecureRandom;
 import java.time.LocalDateTime;
 import java.util.concurrent.TimeUnit;
 
@@ -31,6 +30,7 @@ import java.util.concurrent.TimeUnit;
 public class AuthService {
 
     private final MyPageRepository myPageRepository;
+    private final WithdrawRepository withdrawRepository;
     private final BCryptPasswordEncoder passwordEncoder;
     private final JwtProvider jwtProvider;
     private final JavaMailSender mailSender;
@@ -81,7 +81,7 @@ public class AuthService {
     @Transactional
     public LoginResponseDto login(LoginRequestDto requestDto) {
 
-        User user = myPageRepository.findByUsersId(requestDto.getUsersId())
+        User user = myPageRepository.findByUsersIdAndIsDeletedFalse(requestDto.getUsersId())
                 .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
 
         // 소셜 가입 회원이 일반 로그인 시도 방지
@@ -126,7 +126,7 @@ public class AuthService {
 
         String refreshToken = request.getRefreshToken();
 
-        User user = myPageRepository.findByRefreshToken(refreshToken)
+        User user = myPageRepository.findByRefreshTokenAndIsDeletedFalse(refreshToken)
                 .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_TOKEN));
 
         // 서버에 저장된 만료시간 기준으로 RefreshToken 만료 여부 확인
@@ -163,7 +163,7 @@ public class AuthService {
      * @return 사용 가능 여부 및 아이디 정보를 담은 응답 DTO
      */
     public CheckIdResponseDto checkUsersIdDuplicate(String usersId) {
-        if (myPageRepository.existsByUsersId(usersId)) {
+        if (myPageRepository.existsByUsersIdAndIsDeletedFalse(usersId)) {
             throw new BusinessException(ErrorCode.DUPLICATE_USER);
         }
         return new CheckIdResponseDto(usersId, "사용 가능한 아이디입니다.");
@@ -179,7 +179,7 @@ public class AuthService {
      * @return 조회된 사용자 아이디를 담은 응답 DTO
      */
     public FindIdResponseDto findUsersId(FindIdRequestDto requestDto) {
-        User user = myPageRepository.findByNicknameAndEmail(requestDto.getNickname(), requestDto.getEmail())
+        User user = myPageRepository.findByNicknameAndEmailAndIsDeletedFalse(requestDto.getNickname(), requestDto.getEmail())
                 .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
 
         return new FindIdResponseDto(user.getUsersId());
@@ -200,6 +200,15 @@ public class AuthService {
     public EmailResponseDto sendEmail(EmailRequestDto requestDto) {
 
         String email = requestDto.getEmail();
+
+        if (!email.toLowerCase().endsWith("@gmail.com")) {
+            throw new BusinessException(ErrorCode.INVALID_EMAIL_FORMAT);
+        }
+
+        if (myPageRepository.existsByEmailAndIsDeletedFalse(email)) {
+            throw new BusinessException(ErrorCode.DUPLICATE_EMAIL);
+        }
+
         String code = generateVerificationCode();
 
         String EMAIL_VERIFY_KEY = "email:verify:";
@@ -245,7 +254,7 @@ public class AuthService {
 
     /**
      * 이메일 인증
-     *
+     * <p>
      * 전송된 이메일과 인증코드를 입력받고
      * Redis에 저장된 인증 코드와 비교하여 일치하는지 확인한다.
      * 일치하지 않으면 INVALID_EMAIL_CODE 에러 처리
@@ -257,8 +266,13 @@ public class AuthService {
     public EmailVerifyResponseDto verifyEmailCode(EmailVerifyRequestDto requestDto) {
 
         String email = requestDto.getEmail();
+        if (!email.toLowerCase().endsWith("@gmail.com")) {
+            throw new BusinessException(ErrorCode.INVALID_EMAIL_FORMAT);
+        }
+
         String EMAIL_VERIFY_KEY = "email:verify:";
         String EMAIL_REQUEST_KEY = "email:requested:";
+        String EMAIL_VERIFIED_KEY = "email:verified:";
 
         Boolean isRequested = redisTemplate.hasKey(EMAIL_REQUEST_KEY + email);
         if (!Boolean.TRUE.equals(isRequested)) {
@@ -266,22 +280,22 @@ public class AuthService {
         }
 
         String savedCode = redisTemplate.opsForValue().get(EMAIL_VERIFY_KEY + email);
-
         if (savedCode == null) {
             throw new BusinessException(ErrorCode.EMAIL_CODE_EXPIRED);
         }
-
         if (!savedCode.equals(requestDto.getCode())) {
             throw new BusinessException(ErrorCode.INVALID_EMAIL_CODE);
         }
 
+        redisTemplate.opsForValue().set(
+                EMAIL_VERIFIED_KEY + email,
+                "true",
+                30,
+                TimeUnit.MINUTES
+        );
+
         redisTemplate.delete(EMAIL_VERIFY_KEY + email);
         redisTemplate.delete(EMAIL_REQUEST_KEY + email);
-
-        User user = myPageRepository.findByEmail(email)
-                .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
-
-        user.setEmailVerified(UseYnEnum.Y);
 
         return new EmailVerifyResponseDto(email, UseYnEnum.Y);
     }
@@ -289,23 +303,23 @@ public class AuthService {
     /**
      *
      * @param usersId JWT 토큰에서 추출된 사용자 식별자
-     * refreshToken을 null로 업데이트하여 로그아웃 처리
+     *                refreshToken을 null로 업데이트하여 로그아웃 처리
      */
     @Transactional
     public void logout(String usersId) {
-        User user = myPageRepository.findByUsersId(usersId)
+        User user = myPageRepository.findByUsersIdAndIsDeletedFalse(usersId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
         user.updateRefreshToken(null, null);
     }
 
     /**
      *
-     * @param usersId JWT 토큰에서 추출된 사용자 식별자
+     * @param usersId    JWT 토큰에서 추출된 사용자 식별자
      * @param requestDto 탈퇴 유형, 기타 탈퇴 사유
      */
     @Transactional
     public void withdraw(String usersId, WithdrawRequestDto requestDto) {
-        User user = myPageRepository.findByUsersId(usersId)
+        User user = myPageRepository.findByUsersIdAndIsDeletedFalse(usersId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
 
         // 기타 선택 시 텍스트 필수
@@ -319,6 +333,213 @@ public class AuthService {
                 ? requestDto.getReasonText()
                 : null;
 
-        user.withdraw(requestDto.getReasonType().name(), reasonText);
+        Withdraw withdraw = Withdraw.builder()
+                .user(user)
+                .reasonType(requestDto.getReasonType())
+                .reasonText(reasonText)
+                .withdrawnAt(LocalDateTime.now())
+                .build();
+
+        withdrawRepository.save(withdraw);
+
+        // soft delete 처리
+        user.softDelete();
+    }
+
+    /**
+     * 임시 비밀번호 발급을 위한 이메일 인증 코드 전송
+     *
+     * @param requestDto 유저 로그인 아이디, 이메일
+     * @return 작성한 유저 로그인 아이디, 이메일
+     */
+    @Transactional
+    public PasswordEmailResponseDto sendPasswordResetEmail(PasswordEmailRequestDto requestDto) {
+
+        String EMAIL_VERIFY_KEY = "password:verify:";
+        String EMAIL_REQUEST_KEY = "password:requested:";
+
+        // 유저 검증 (아이디 + 이메일)
+        User user = myPageRepository.findByUsersIdAndEmailAndIsDeletedFalse(
+                requestDto.getUsersId(),
+                requestDto.getEmail()
+        ).orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
+
+        String email = user.getEmail();
+        if (user.getLoginType() != LoginType.LOCAL) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT);
+        }
+
+        String usersId = user.getUsersId();
+        String code = generateVerificationCode();
+
+        // Redis 저장
+        redisTemplate.opsForValue().set(
+                EMAIL_VERIFY_KEY + email,
+                code,
+                5,
+                TimeUnit.MINUTES
+        );
+
+        redisTemplate.opsForValue().set(
+                EMAIL_REQUEST_KEY + email,
+                "true",
+                10,
+                TimeUnit.MINUTES
+        );
+
+        // 이메일 전송
+        SimpleMailMessage message = new SimpleMailMessage();
+        message.setTo(email);
+        message.setSubject("비밀번호 재설정 인증 코드");
+        message.setText("인증 코드: " + code);
+
+        try {
+            mailSender.send(message);
+        } catch (Exception e) {
+            throw new BusinessException(ErrorCode.EMAIL_SEND_FAIL);
+        }
+
+        return new PasswordEmailResponseDto(usersId, email);
+    }
+
+    /**
+     * 인증 코드 인증 및 임시 비밀번호 발급
+     * @param requestDto 유저 로그인 아이디, 이메일, 인증 코드
+     * @return 유저 로그인 아이디, 이메일
+     */
+    @Transactional
+    public PasswordResetResponseDto verifyPasswordResetCode(PasswordResetRequestDto requestDto) {
+
+        String EMAIL_VERIFY_KEY = "password:verify:";
+        String EMAIL_REQUEST_KEY = "password:requested:";
+
+        String email = requestDto.getEmail();
+        String usersId = requestDto.getUsersId();
+
+        // 요청 여부 확인 (이메일 틀림)
+        Boolean isRequested = redisTemplate.hasKey(EMAIL_REQUEST_KEY + email);
+        if (!Boolean.TRUE.equals(isRequested)) {
+            throw new BusinessException(ErrorCode.INVALID_EMAIL_REQUEST);
+        }
+
+        // 코드 조회
+        String savedCode = redisTemplate.opsForValue().get(EMAIL_VERIFY_KEY + email);
+
+        // 만료 확인
+        if (savedCode == null) {
+            throw new BusinessException(ErrorCode.EMAIL_CODE_EXPIRED);
+        }
+
+        // 코드 불일치
+        if (!savedCode.equals(requestDto.getCode())) {
+            throw new BusinessException(ErrorCode.INVALID_EMAIL_CODE);
+        }
+
+        // 유저 확인
+        myPageRepository.findByUsersIdAndEmailAndIsDeletedFalse(
+                requestDto.getUsersId(),
+                requestDto.getEmail()
+        ).orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
+
+        // 인증 완료 상태 저장
+        redisTemplate.opsForValue().set(
+                "password:verified:" + email,
+                "true",
+                5,
+                TimeUnit.MINUTES
+        );
+
+        // 기존 인증 데이터 삭제
+        redisTemplate.delete(EMAIL_VERIFY_KEY + email);
+        redisTemplate.delete(EMAIL_REQUEST_KEY + email);
+
+        return new PasswordResetResponseDto(usersId, email);
+    }
+
+    @Transactional
+    public PasswordEmailResponseDto issueTempPassword(
+            PasswordEmailRequestDto requestDto
+    ) {
+
+        String PASSWORD_VERIFIED_KEY =
+                "password:verified:";
+
+        String email = requestDto.getEmail();
+        String usersId = requestDto.getUsersId();
+
+        // 인증 완료 여부 확인
+        Boolean verified = redisTemplate.hasKey(PASSWORD_VERIFIED_KEY + email);
+
+        if (!Boolean.TRUE.equals(verified)) {
+            throw new BusinessException(ErrorCode.INVALID_EMAIL_REQUEST);
+        }
+
+        // 유저 조회
+        User user = myPageRepository.findByUsersIdAndEmailAndIsDeletedFalse(usersId, email).orElseThrow(() ->
+                                new BusinessException(ErrorCode.USER_NOT_FOUND)
+                        );
+
+        // 로컬 로그인 사용자만 허용
+        if (user.getLoginType() != LoginType.LOCAL) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT);
+        }
+
+        // 임시 비밀번호 생성
+        String tempPassword = generateTempPassword();
+
+        // 비밀번호 변경
+        user.updatePassword(passwordEncoder.encode(tempPassword)
+        );
+
+        // 이메일 전송
+        SimpleMailMessage message = new SimpleMailMessage();
+
+        message.setTo(email);
+
+        message.setSubject("임시 비밀번호 발급");
+
+        message.setText("임시 비밀번호: " + tempPassword);
+
+        try {
+            mailSender.send(message);
+
+        } catch (Exception e) {
+            throw new BusinessException(ErrorCode.EMAIL_SEND_FAIL);
+        }
+
+        // 인증 상태 삭제
+        redisTemplate.delete(PASSWORD_VERIFIED_KEY + email);
+
+        return new PasswordEmailResponseDto(usersId, email);
+    }
+
+    /**
+     * 임시 비밀번호 생성
+     * @return 영문 대소문자 + 숫자 조합 10자리 임시 비밀번호
+     */
+    private String generateTempPassword() {
+
+        String chars =
+                "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789@$!%*#?&";
+
+        String specialChars = "@$!%*#?&";
+
+        SecureRandom random = new SecureRandom();
+
+        StringBuilder password = new StringBuilder();
+
+        password.append(
+                specialChars.charAt(
+                        random.nextInt(specialChars.length())
+                )
+        );
+
+        // 나머지 9자리 랜덤
+        for (int i = 1; i < 10; i++) {
+            int index = random.nextInt(chars.length());
+            password.append(chars.charAt(index));
+        }
+
+        return password.toString();
     }
 }

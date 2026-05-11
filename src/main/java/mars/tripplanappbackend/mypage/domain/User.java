@@ -95,20 +95,6 @@ public class User extends BaseEntity {
     @Column(nullable = false, name= "agree_night_marketing", columnDefinition = "ENUM('Y','N')")
     private UseYnEnum nightMarketingAgreed = N;
 
-    @Enumerated(EnumType.STRING)
-    @Builder.Default
-    @Column(nullable = false, name = "is_withdrawn", columnDefinition = "ENUM('Y','N')")
-    private UseYnEnum withdrawn = N;
-
-    @Column(name = "withdrawn_at")
-    private LocalDateTime withdrawnAt;
-
-    @Column(name = "withdrawal_reason_type", length = 40)
-    private String withdrawalReasonType;
-
-    @Column(name = "withdrawal_reason_text", length = 70)
-    private String withdrawalReasonText;
-
     @Builder.Default
     @Column(name = "is_deleted", nullable = false)
     private Boolean isDeleted = false;
@@ -123,7 +109,8 @@ public class User extends BaseEntity {
         return this.refreshTokenExpiresAt.isBefore(LocalDateTime.now());
     }
 
-    public void setEmailVerified(UseYnEnum useYnEnum) {
+    public void verifyEmail(String email, UseYnEnum emailVerified) {
+        this.email = email;
         this.emailVerified = UseYnEnum.Y;
     }
 
@@ -147,12 +134,14 @@ public class User extends BaseEntity {
         if (nightMarketingAgreed != null) this.nightMarketingAgreed = nightMarketingAgreed;
     }
 
-    public void withdraw(String reasonType, String reasonText) {
-        this.withdrawn = UseYnEnum.Y;
-        this.withdrawnAt = LocalDateTime.now();
-        this.withdrawalReasonType = reasonType;
-        this.withdrawalReasonText = reasonText;
+    public void softDelete() {
+        this.isDeleted = true;
+        this.deletedDate = LocalDateTime.now();
+
         this.refreshToken = null;
         this.refreshTokenExpiresAt = null;
+
+        this.password = null;
+        this.socialProviderId = null;
     }
 }

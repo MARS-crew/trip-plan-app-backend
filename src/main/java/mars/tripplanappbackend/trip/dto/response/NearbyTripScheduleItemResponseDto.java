@@ -53,8 +53,8 @@ public class NearbyTripScheduleItemResponseDto {
                 .startTime(tripSchedule.getStartTime())
                 .endTime(tripSchedule.getEndTime())
                 .title(tripSchedule.getTitle())
-                .placeName(tripSchedule.getPlace() != null ? tripSchedule.getPlace().getName() : null)
-                .address(tripSchedule.getAddress())
+                .placeName(tripSchedule.resolvePlaceName())
+                .address(tripSchedule.resolveAddress())
                 .memo(tripSchedule.getMemo())
                 .build();
     }

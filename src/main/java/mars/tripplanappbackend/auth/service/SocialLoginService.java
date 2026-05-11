@@ -59,7 +59,7 @@ public class SocialLoginService {
 
         // 이미 로그인했던 사람
         return myPageRepository
-                .findByLoginTypeAndSocialProviderId(loginType, userInfo.getSocialProviderId())
+                .findByLoginTypeAndSocialProviderIdAndIsDeletedFalse(loginType, userInfo.getSocialProviderId())
                 .map(user -> SocialLoginResponseDto.builder()
                         .registered(true)
                         .nextAction("login")

@@ -1,9 +1,16 @@
 package mars.tripplanappbackend.notification.repository;
 
+import mars.tripplanappbackend.global.enums.UseYnEnum;
+import mars.tripplanappbackend.mypage.domain.User;
 import mars.tripplanappbackend.notification.domain.Notification;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
+import java.util.List;
+
 @Repository
 public interface NotificationRepository extends JpaRepository<Notification, Long> {
+    List<Notification> findByUserAndIsDeletedFalseOrderBySendAtDesc(User user);
+
+    boolean existsByUserAndIsReadAndIsDeletedFalse(User user, UseYnEnum isRead);
 }

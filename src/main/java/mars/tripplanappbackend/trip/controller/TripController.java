@@ -13,6 +13,7 @@ import mars.tripplanappbackend.global.config.swagger.ApiErrorExceptions;
 import mars.tripplanappbackend.global.dto.ApiResponse;
 import mars.tripplanappbackend.global.enums.ErrorCode;
 import mars.tripplanappbackend.trip.dto.request.AddVisitedPlaceRequestDto;
+import mars.tripplanappbackend.trip.dto.request.AddTripScheduleRequestDto;
 import mars.tripplanappbackend.trip.dto.request.AddWishlistPlaceRequestDto;
 import mars.tripplanappbackend.trip.dto.request.CreateTripRequestDto;
 import mars.tripplanappbackend.trip.dto.request.DeleteTripRequestDto;
@@ -22,12 +23,17 @@ import mars.tripplanappbackend.trip.dto.request.MyTripFilterRequestDto;
 import mars.tripplanappbackend.trip.dto.request.MyTripListRequestDto;
 import mars.tripplanappbackend.trip.dto.request.MyTripScheduleByDateRequestDto;
 import mars.tripplanappbackend.trip.dto.request.MyTripDetailRequestDto;
+import mars.tripplanappbackend.trip.dto.request.MyTripScheduleListRequestDto;
 import mars.tripplanappbackend.trip.dto.request.MyTripScheduleLocationRequestDto;
+import mars.tripplanappbackend.trip.dto.request.MyTripScheduleRouteRequestDto;
 import mars.tripplanappbackend.trip.dto.request.NearbyTripScheduleRequestDto;
 import mars.tripplanappbackend.trip.dto.request.ShareTripRequestDto;
 import mars.tripplanappbackend.trip.dto.request.TripPlaceSelectionRequestDto;
+import mars.tripplanappbackend.trip.dto.request.UpdateTripScheduleRequestDto;
 import mars.tripplanappbackend.trip.dto.request.UpdateTripRequestDto;
+import mars.tripplanappbackend.trip.dto.request.UpdateTripTitleRequestDto;
 import mars.tripplanappbackend.trip.dto.response.AddVisitedPlaceResponseDto;
+import mars.tripplanappbackend.trip.dto.response.AddTripScheduleResponseDto;
 import mars.tripplanappbackend.trip.dto.response.AddWishlistPlaceResponseDto;
 import mars.tripplanappbackend.trip.dto.response.CreateTripResponseDto;
 import mars.tripplanappbackend.trip.dto.response.DeleteTripResponseDto;
@@ -36,11 +42,15 @@ import mars.tripplanappbackend.trip.dto.response.DeleteWishlistPlaceResponseDto;
 import mars.tripplanappbackend.trip.dto.response.MyTripDetailResponseDto;
 import mars.tripplanappbackend.trip.dto.response.MyTripListResponseDto;
 import mars.tripplanappbackend.trip.dto.response.MyTripScheduleByDateResponseDto;
+import mars.tripplanappbackend.trip.dto.response.MyTripScheduleListResponseDto;
 import mars.tripplanappbackend.trip.dto.response.MyTripScheduleLocationResponseDto;
+import mars.tripplanappbackend.trip.dto.response.MyTripScheduleRouteResponseDto;
 import mars.tripplanappbackend.trip.dto.response.NearbyTripScheduleResponseDto;
 import mars.tripplanappbackend.trip.dto.response.ShareTripResponseDto;
 import mars.tripplanappbackend.trip.dto.response.TripPlaceSelectionResponseDto;
+import mars.tripplanappbackend.trip.dto.response.UpdateTripScheduleResponseDto;
 import mars.tripplanappbackend.trip.dto.response.UpdateTripResponseDto;
+import mars.tripplanappbackend.trip.dto.response.UpdateTripTitleResponseDto;
 import mars.tripplanappbackend.trip.enums.MyTripFilterType;
 import mars.tripplanappbackend.trip.service.TripService;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -53,8 +63,6 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
-import mars.tripplanappbackend.trip.dto.request.UpdateTripTitleRequestDto;
-import mars.tripplanappbackend.trip.dto.response.UpdateTripTitleResponseDto;
 
 import java.time.LocalDate;
 
@@ -102,7 +110,7 @@ public class TripController {
     @PatchMapping("/{tripId}")
     @ApiErrorExceptions({ErrorCode.INVALID_INPUT, ErrorCode.USER_NOT_FOUND, ErrorCode.INTERNAL_ERROR})
     @Operation(
-            summary = "내 일정 수정",
+            summary = "여행 수정",
             description = "내 여행 상세 화면에서 여행 대표 이미지, 여행 제목, 여행 시작일, 여행 종료일을 수정합니다."
     )
     public ApiResponse<UpdateTripResponseDto> updateTrip(
@@ -196,7 +204,7 @@ public class TripController {
             description = "홈/내 여행 화면에서 선택한 여행의 상세 화면 전체를 구성하기 위한 여행 기본 정보, 현재 진행 중 일정 요약, 액션 가능 상태, 일차별 일정 목록을 조회합니다."
     )
     public ApiResponse<MyTripDetailResponseDto> findOne(
-            @Parameter(description = "조회할 여행 PK", example = "5")
+            @Parameter(description = "조회할 여행 PK", example = "22")
             @PathVariable("tripId") Long tripId,
             @Parameter(hidden = true)
             @CurrentUser UserPrincipal userPrincipal
@@ -206,8 +214,37 @@ public class TripController {
     }
 
     /**
+     * 내 여행 상세 화면 진입 시 일차별 일정 리스트를 한 번에 조회합니다.
+     * 여행 기간 전체(1일차 ~ n일차)를 기준으로 섹션을 구성하고, 일정이 없는 날짜도 빈 배열로 유지해
+     * 프론트엔드가 "일정 추가하기" UI를 자연스럽게 렌더링할 수 있도록 합니다.
+     * 또한 일정별 진행 상태(isOngoing), 방문 기록 여부, 방문지 저장 버튼 노출 가능 여부를 함께 반환합니다.
+     *
+     * @param tripId 조회할 여행 PK
+     * @param userPrincipal 커스텀 어노테이션으로 주입한 현재 로그인 사용자 정보
+     * @return 공통 응답 형식으로 감싼 내 여행 상세 일정 리스트 조회 결과
+     */
+    @GetMapping("/{tripId}/schedules")
+    @ApiErrorExceptions({ErrorCode.INVALID_INPUT, ErrorCode.USER_NOT_FOUND, ErrorCode.INTERNAL_ERROR})
+    @Operation(
+            summary = "일정 리스트 조회",
+            description = "여행 상세 화면에서 사용하는 일차별 일정 묶음 데이터를 조회합니다. 여행 기간 전체 날짜를 유지하고, 각 일정의 진행 상태와 방문 기록 상태를 함께 반환합니다."
+    )
+    public ApiResponse<MyTripScheduleListResponseDto> getMyTripSchedules(
+            @Parameter(description = "조회할 여행 PK", example = "5")
+            @PathVariable("tripId") Long tripId,
+            @Parameter(hidden = true)
+            @CurrentUser UserPrincipal userPrincipal
+    ) {
+        MyTripScheduleListRequestDto requestDto =
+                MyTripScheduleListRequestDto.of(tripId, userPrincipal.getUsersId());
+        return ApiResponse.ok(tripService.getMyTripSchedules(requestDto));
+    }
+
+    /**
      * 내 여행 상세의 날짜 카드에서 장소 추가하기 버튼을 눌렀을 때 표시할
-     * 저장한 장소와 위시리스트 목록을 함께 조회합니다.
+     * 저장한 장소/위시리스트 탭 데이터를 함께 조회합니다.
+     * 저장한 장소 탭에서는 현재 여행 위시리스트에 이미 담긴 장소인지 여부와
+     * 버튼 라벨(담기/취소)을 함께 반환하고, 각 탭이 비어 있을 때는 빈 상태 메시지도 함께 반환합니다.
      *
      * @param tripId        조회할 여행 PK
      * @param userPrincipal 커스텀 어노테이션으로 주입한 현재 로그인 사용자 정보
@@ -217,7 +254,7 @@ public class TripController {
     @ApiErrorExceptions({ErrorCode.INVALID_INPUT, ErrorCode.USER_NOT_FOUND, ErrorCode.INTERNAL_ERROR})
     @Operation(
             summary = "저장한 장소/위시리스트 조회",
-            description = "내 여행 상세 화면에서 날짜 카드의 장소 추가하기 버튼을 눌렀을 때 표시할 저장한 장소와 위시리스트 목록을 함께 조회합니다."
+            description = "여행 상세 바텀시트의 저장한 장소/위시리스트 탭 데이터를 함께 조회합니다. 저장한 장소의 위시 담김 상태와 탭별 빈 상태 메시지를 함께 반환합니다."
     )
     public ApiResponse<TripPlaceSelectionResponseDto> getTripPlaceSelection(
             @Parameter(description = "조회할 여행 PK", example = "5")
@@ -328,6 +365,39 @@ public class TripController {
     }
 
     /**
+     * 내 여행 상세 화면의 특정 일정에서 "길찾기"를 눌렀을 때 사용할 목적지 정보를 조회합니다.
+     * 일정에 연결된 장소 데이터를 검증한 뒤, 구글 길찾기 앱으로 연결 가능한 URL을 함께 반환합니다.
+     *
+     * @param tripId 조회할 여행 PK
+     * @param tripScheduleId 길찾기 대상 일정 PK
+     * @param userPrincipal 커스텀 어노테이션으로 주입한 현재 로그인 사용자 정보
+     * @return 공통 응답 형식으로 감싼 길찾기 목적지 정보 응답
+     */
+    @GetMapping("/{tripId}/schedules/{tripScheduleId}/route")
+    @ApiErrorExceptions({
+            ErrorCode.INVALID_INPUT,
+            ErrorCode.USER_NOT_FOUND,
+            ErrorCode.PLACE_NOT_FOUND,
+            ErrorCode.INTERNAL_ERROR
+    })
+    @Operation(
+            summary = "길찾기",
+            description = "여행 상세 일정의 장소 정보를 기반으로 목적지 검증 후 구글 길찾기 연결 정보를 반환합니다."
+    )
+    public ApiResponse<MyTripScheduleRouteResponseDto> getMyTripScheduleRoute(
+            @Parameter(description = "조회할 여행 PK", example = "5")
+            @PathVariable("tripId") Long tripId,
+            @Parameter(description = "길찾기 대상 일정 PK", example = "7")
+            @PathVariable("tripScheduleId") Long tripScheduleId,
+            @Parameter(hidden = true)
+            @CurrentUser UserPrincipal userPrincipal
+    ) {
+        MyTripScheduleRouteRequestDto requestDto =
+                MyTripScheduleRouteRequestDto.of(tripId, tripScheduleId, userPrincipal.getUsersId());
+        return ApiResponse.ok(tripService.getMyTripScheduleRoute(requestDto));
+    }
+
+    /**
      * 내 여행지 상세 화면에서 현재 장소를 방문 인증 기록으로 저장합니다.
      * 단순 저장 탭용 찜이 아니라 여행 중 실제로 방문한 장소를 기록하는 용도이며,
      * 여행 PK, 일정 PK, 장소 PK, 로그인 사용자 정보가 모두 맞을 때만 저장합니다.
@@ -409,8 +479,7 @@ public class TripController {
                                     name = "위시리스트 장소 추가 예시",
                                     value = """
                                             {
-                                              "placeId": 7,
-                                              "scheduleDate": "2026-04-20"
+                                              "placeId": 7
                                             }
                                             """
                             )
@@ -453,13 +522,120 @@ public class TripController {
     }
 
     /**
-     * 내 여행 상세 화면의 일정 리스트에서 개별 일정 메뉴를 통해 선택한 일정을 삭제합니다.
+     * 내 여행지 상세 화면에서 날짜별 "일정 추가하기"를 통해 입력한 일정 데이터를 등록합니다.
+     * 일정명/날짜/시간/장소/메모를 전달받아 일정을 생성하고, 생성 결과를 응답합니다.
      *
-     * @param tripId         일정이 속한 여행 PK
-     * @param tripScheduleId 삭제할 개별 일정 PK
-     * @param userPrincipal  커스텀 어노테이션으로 주입한 현재 로그인 사용자 정보
-     * @return 공통 응답 형식으로 감싼 일정 삭제 결과
+     * @param tripId 일정을 추가할 여행 PK
+     * @param requestDto 일정 추가 입력값(일정명, 날짜, 시간, 장소, 메모)
+     * @param userPrincipal @CurrentUser 기반 인증 사용자 정보
+     * @return 공통 응답 포맷으로 감싼 일정 추가 결과
      */
+    @PostMapping("/{tripId}/schedules")
+    @ApiErrorExceptions({
+            ErrorCode.INVALID_INPUT,
+            ErrorCode.USER_NOT_FOUND,
+            ErrorCode.PLACE_NOT_FOUND,
+            ErrorCode.INTERNAL_ERROR
+    })
+    @Operation(
+            summary = "일정 추가",
+            description = "내 여행지 상세의 일정 추가 화면에서 입력한 일정명, 날짜, 시간, 장소, 메모를 기반으로 일정을 생성합니다."
+    )
+    public ApiResponse<AddTripScheduleResponseDto> addTripSchedule(
+            @Parameter(description = "일정을 추가할 여행 PK", example = "5")
+            @PathVariable("tripId") Long tripId,
+            @io.swagger.v3.oas.annotations.parameters.RequestBody(
+                    description = "일정 추가 화면에서 입력한 정보입니다. scheduleDate는 여행 기간 내 날짜만 선택 가능합니다.",
+                    required = true,
+                    content = @Content(
+                            mediaType = "application/json",
+                            examples = @ExampleObject(
+                                    name = "일정 추가 예시",
+                                    value = """
+                                            {
+                                              "title": "전시 관람",
+                                              "scheduleDate": "2026-04-22",
+                                              "startTime": "10:00",
+                                              "endTime": "11:00",
+                                              "placeName": "팀랩 보더리스",
+                                              "address": "Azabudai Hills, Tokyo",
+                                              "latitude": 35.6605234,
+                                              "longitude": 139.7291880,
+                                              "memo": "입장 시간 확인"
+                                            }
+                                            
+                                            """
+                            )
+                    )
+            )
+            @Valid @RequestBody AddTripScheduleRequestDto requestDto,
+            @Parameter(hidden = true)
+            @CurrentUser UserPrincipal userPrincipal
+    ) {
+        AddTripScheduleRequestDto serviceRequestDto =
+                AddTripScheduleRequestDto.of(tripId, userPrincipal.getUsersId(), requestDto);
+        return ApiResponse.ok(tripService.addTripSchedule(serviceRequestDto));
+    }
+
+    /**
+     * 여행 상세의 일정 카드에서 기존 일정을 수정합니다.
+     * PATCH 요청으로 수정 로직을 처리하며, 입력값 검증 후 수정된 일정을 반환합니다.
+     *
+     * @param tripId 일정이 속한 여행 PK
+     * @param tripScheduleId 수정할 일정 PK
+     * @param requestDto 일정 수정 본문(일정명, 날짜, 시간, 장소, 메모)
+     * @param userPrincipal @CurrentUser 기반 인증 사용자 정보
+     * @return 공통 응답 포맷으로 감싼 일정 수정 결과
+     */
+    @PatchMapping("/{tripId}/schedules/{tripScheduleId}")
+    @ApiErrorExceptions({
+            ErrorCode.INVALID_INPUT,
+            ErrorCode.USER_NOT_FOUND,
+            ErrorCode.PLACE_NOT_FOUND,
+            ErrorCode.INTERNAL_ERROR
+    })
+    @Operation(
+            summary = "일정 수정",
+            description = "여행 상세 화면에서 기존 일정의 일정명, 날짜, 시간, 장소, 메모를 수정합니다."
+    )
+    public ApiResponse<UpdateTripScheduleResponseDto> updateTripSchedule(
+            @Parameter(description = "일정이 속한 여행 PK", example = "5")
+            @PathVariable("tripId") Long tripId,
+            @Parameter(description = "수정할 일정 PK", example = "7")
+            @PathVariable("tripScheduleId") Long tripScheduleId,
+            @io.swagger.v3.oas.annotations.parameters.RequestBody(
+                    description = "일정 수정 화면에서 입력한 정보입니다. scheduleDate는 여행 기간 내 날짜만 선택 가능합니다.",
+                    required = true,
+                    content = @Content(
+                            mediaType = "application/json",
+                            examples = @ExampleObject(
+                                    name = "일정 수정 예시",
+                                    value = """
+                                            {
+                                              "title": "저녁 식사",
+                                              "scheduleDate": "2026-04-20",
+                                              "startTime": "18:00",
+                                              "endTime": "19:30",
+                                              "placeId": 9,
+                                              "memo": "현지 식당 예약 완료"
+                                            }
+                                            """
+                            )
+                    )
+            )
+            @Valid @RequestBody UpdateTripScheduleRequestDto requestDto,
+            @Parameter(hidden = true)
+            @CurrentUser UserPrincipal userPrincipal
+    ) {
+        UpdateTripScheduleRequestDto serviceRequestDto = UpdateTripScheduleRequestDto.of(
+                tripId,
+                tripScheduleId,
+                userPrincipal.getUsersId(),
+                requestDto
+        );
+        return ApiResponse.ok(tripService.updateTripSchedule(serviceRequestDto));
+    }
+
     @DeleteMapping("/{tripId}/schedules/{tripScheduleId}")
     @ApiErrorExceptions({ErrorCode.INVALID_INPUT, ErrorCode.USER_NOT_FOUND, ErrorCode.INTERNAL_ERROR})
     @Operation(
@@ -496,6 +672,7 @@ public class TripController {
     ) {
         return ApiResponse.ok(tripService.getNearbyTripSchedule(requestDto));
     }
+
     /**
      * 내 여행 상세 화면에서 여행 제목을 즉시 수정합니다.
      *

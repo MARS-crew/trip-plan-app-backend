@@ -1,0 +1,64 @@
+version: "3.8"
+
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: trip-mysql
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: mars2026
+      MYSQL_DATABASE: trip
+      TZ: Asia/Seoul
+    ports:
+      - "3307:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+
+  redis:
+    image: redis:7
+    container_name: trip-redis
+    restart: always
+    ports:
+      - "6379:6379"
+
+  minio:
+    image: minio/minio
+    container_name: trip-minio
+    restart: always
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: qwer1595
+      MINIO_BROWSER_REDIRECT_URL: "https://minio.mars-pli.kro.kr:26443/minio/ui/"
+      MINIO_SERVER_URL: "https://minio.mars-pli.kro.kr:26443"
+    command: server /data --console-address ":51235" --address ":51234"
+    ports:
+      - "127.0.0.1:51234:51234"
+      - "127.0.0.1:51235:51235"
+    volumes:
+      - minio-data:/data
+
+  trip-backend:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    container_name: trip-backend
+    restart: always
+    ports:
+      - "8080:8080"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/trip?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Seoul
+      SPRING_DATASOURCE_USERNAME: root
+      SPRING_DATASOURCE_PASSWORD: "mars2026"
+      SPRING_DATA_REDIS_HOST: redis
+      GOOGLE_PLACES_API_KEY: ${GOOGLE_PLACES_API_KEY:?GOOGLE_PLACES_API_KEY is required}
+      GOOGLE_PLACES_BASE_URL: ${GOOGLE_PLACES_BASE_URL:-https://places.googleapis.com}
+
+
+    depends_on:
+      - mysql
+      - redis
+      - minio
+
+volumes:
+  mysql-data:
+  minio-data:
