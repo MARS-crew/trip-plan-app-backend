@@ -33,6 +33,7 @@ spring:
       client-key: ${PAPAGO_CLIENT_ID}
       client-secret: ${PAPAGO_CLIENT_SECRET}
 
+
     exchange:
       auth-key: ${EXCHANGE_API_KEY:}
 

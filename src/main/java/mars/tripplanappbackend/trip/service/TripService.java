@@ -66,6 +66,8 @@ import mars.tripplanappbackend.trip.repository.TripRepository;
 import mars.tripplanappbackend.trip.repository.TripScheduleRepository;
 import mars.tripplanappbackend.trip.repository.VisitedPlaceRepository;
 import mars.tripplanappbackend.trip.repository.WishlistPlaceRepository;
+import mars.tripplanappbackend.trip.dto.request.UpdateTripTitleRequestDto;
+import mars.tripplanappbackend.trip.dto.response.UpdateTripTitleResponseDto;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -171,7 +173,6 @@ public class TripService {
 
         return UpdateTripResponseDto.from(trip, tripStatus, schedules.size());
     }
-
     /**
      * 내 여행 상세 화면 상단 더보기 메뉴에서 선택한 여행을 삭제합니다.
      * 여행만 숨기면 연결된 일정과 장소 데이터가 남아 이후 조회 흐름과 충돌할 수 있으므로,
@@ -2481,5 +2482,44 @@ public class TripService {
      */
     private String createTripShareUrl(String shareCode) {
         return String.format(TRIP_SHARE_URL_TEMPLATE, shareCode);
+    }
+
+    /**
+     * 내 여행 상세 화면에서 여행 제목을 즉시 수정합니다.
+     *
+     * @param requestDto 여행 PK, 로그인 사용자 아이디, 수정할 제목을 담은 요청 DTO
+     * @return 수정된 여행 제목 응답 DTO
+     */
+    @Transactional
+    public UpdateTripTitleResponseDto updateTripTitle(UpdateTripTitleRequestDto requestDto) {
+        validateUpdateTripTitleRequest(requestDto);
+        validateUserExistsByUsersId(requestDto.getUsersId());
+
+        Trip trip = tripRepository.findByTripIdAndUser_UsersIdAndIsDeletedFalse(
+                        requestDto.getTripId(),
+                        requestDto.getUsersId()
+                )
+                .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_INPUT));
+
+        trip.updateTitle(requestDto.getTitle().trim());
+
+        TripStatus tripStatus = resolveTripStatus(trip, LocalDate.now());
+        return UpdateTripTitleResponseDto.from(trip, tripStatus);
+    }
+
+    /**
+     * 제목 즉시 수정 요청에 필요한 여행 PK, 사용자 아이디, 제목 존재 여부를 검증합니다.
+     *
+     * @param requestDto 제목 수정 요청 DTO
+     */
+    private void validateUpdateTripTitleRequest(UpdateTripTitleRequestDto requestDto) {
+        if (requestDto.getTripId() == null
+                || requestDto.getTripId() < 1
+                || requestDto.getUsersId() == null
+                || requestDto.getUsersId().isBlank()
+                || requestDto.getTitle() == null
+                || requestDto.getTitle().isBlank()) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT);
+        }
     }
 }
