@@ -716,7 +716,7 @@ public class TripController {
             description = "여행 제목을 수정합니다."
     )
     public ApiResponse<UpdateTripTitleResponseDto> updateTripTitle(
-            @Parameter(description = "수정할 여행 PK", example = "1")
+            @Parameter(description = "수정할 여행 PK", example = "29")
             @PathVariable("tripId") Long tripId,
             @io.swagger.v3.oas.annotations.parameters.RequestBody(
                     description = "수정할 여행 제목입니다.",
