@@ -2286,6 +2286,7 @@ public class TripService {
         TripStatus tripStatus = resolveTripStatus(trip, today);
         List<TripSchedule> schedules = tripScheduleRepository
                 .findAllWithPlaceByTrip_TripIdAndIsDeletedFalseOrderByScheduleDateAscStartTimeAsc(trip.getTripId());
+        LocalDate registeredAt = trip.getCreatedAt() != null ? trip.getCreatedAt().toLocalDate() : null;
 
         List<NearbyTripScheduleItemResponseDto> nextSchedules = filterNextSchedules(schedules, tripStatus, today, now)
                 .stream()
@@ -2293,7 +2294,32 @@ public class TripService {
                 .map(NearbyTripScheduleItemResponseDto::from)
                 .toList();
 
-        return NearbyTripScheduleResponseDto.of(trip, tripStatus, today, schedules.size(), nextSchedules);
+        return NearbyTripScheduleResponseDto.of(
+                trip,
+                tripStatus,
+                today,
+                registeredAt,
+                calculateNearbyTripProgressRate(trip, tripStatus, today, registeredAt),
+                schedules.size(),
+                nextSchedules
+        );
+    }
+
+    private Integer calculateNearbyTripProgressRate(
+            Trip trip,
+            TripStatus tripStatus,
+            LocalDate today,
+            LocalDate registeredAt
+    ) {
+        if (tripStatus != TripStatus.PLANNED || registeredAt == null) {
+            return null;
+        }
+
+        long totalDays = Math.max(1L, ChronoUnit.DAYS.between(registeredAt, trip.getStartDate()));
+        long elapsedDays = ChronoUnit.DAYS.between(registeredAt, today);
+        long clampedElapsedDays = Math.max(0L, Math.min(elapsedDays, totalDays));
+
+        return (int) Math.round((clampedElapsedDays * 100.0) / totalDays);
     }
 
     /**
