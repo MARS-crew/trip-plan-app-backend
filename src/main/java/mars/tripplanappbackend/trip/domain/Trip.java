@@ -108,12 +108,23 @@ public class Trip extends BaseEntity {
         this.shareCode = shareCode;
     }
 
-
     /**
      * 여행 날짜 수정 메서드
      */
     public void updateTripDate(LocalDate startDate, LocalDate endDate) {
         this.startDate = startDate;
         this.endDate = endDate;
+    }
+
+    /**
+     * 여행 제목을 수정합니다.
+     *
+     * 사용자가 여행 상세 화면에서 제목을 변경할 때 호출되며,
+     * 기존 제목을 새로운 값으로 갱신합니다.
+     *
+     * @param title 변경할 여행 제목
+     */
+    public void updateTitle(String title) {
+        this.title = title;
     }
 }

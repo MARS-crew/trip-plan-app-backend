@@ -24,6 +24,8 @@ public interface SavedPlaceRepository extends JpaRepository<SavedPlace, Long> {
             PlaceType placeType
     );
 
+    boolean existsByPlace_PlaceIdInAndIsDeletedFalse(List<Long> placeIds);
+
     List<SavedPlace> findAllByUser_UsersIdAndIsDeletedFalseAndPlace_IsDeletedFalseOrderByCreatedAtDesc(String usersId);
 
     List<SavedPlace> findAllByUser_UsersIdAndIsDeletedFalseAndPlace_IsDeletedFalseAndPlace_PlaceTypeOrderByCreatedAtDesc(

@@ -67,10 +67,10 @@ public class AuthController {
     @PostMapping("/naver")
     @ApiErrorExceptions({ErrorCode.INVALID_TOKEN, ErrorCode.EXPIRED_REFRESH_TOKEN,
             ErrorCode.USER_NOT_FOUND, ErrorCode.INTERNAL_ERROR})
-    @Operation(summary = "네이버 소셜 로그인", 
+    @Operation(summary = "네이버 소셜 로그인",
             description = "네이버 소셜 로그인 api, " +
-            "네이버에서 발급받은 accessToken을 요청으로 보내면 회원가입/로그인 여부를 판단함")
-    public ApiResponse<SocialLoginResponseDto> naverLogin(@Valid @RequestBody SocialLoginRequestDto requestDto){
+                    "네이버에서 발급받은 accessToken을 요청으로 보내면 회원가입/로그인 여부를 판단함")
+    public ApiResponse<SocialLoginResponseDto> naverLogin(@Valid @RequestBody SocialLoginRequestDto requestDto) {
         return ApiResponse.ok(socialLoginService.socialLogin(LoginType.NAVER, requestDto.getAccessToken()));
     }
 
@@ -80,12 +80,12 @@ public class AuthController {
     @Operation(summary = "구글 소셜 로그인",
             description = "구글 소셜 로그인 api, " +
                     "구글에서 발급받은 accessToken을 요청으로 보내면 회원가입/로그인 여부를 판단함")
-    public ApiResponse<SocialLoginResponseDto> googleLogin(@Valid @RequestBody SocialLoginRequestDto requestDto){
+    public ApiResponse<SocialLoginResponseDto> googleLogin(@Valid @RequestBody SocialLoginRequestDto requestDto) {
         return ApiResponse.ok(socialLoginService.socialLogin(LoginType.GOOGLE, requestDto.getAccessToken()));
     }
 
     @GetMapping("/check-id")
-    @ApiErrorExceptions({ErrorCode.INVALID_INPUT,  ErrorCode.USER_NOT_FOUND,
+    @ApiErrorExceptions({ErrorCode.INVALID_INPUT, ErrorCode.USER_NOT_FOUND,
             ErrorCode.INTERNAL_ERROR, ErrorCode.DUPLICATE_USER})
     @Operation(summary = "아이디 중복 확인", description = "아이디 중복 확인 api")
     public ApiResponse<CheckIdResponseDto> checkId(@RequestParam String usersId) {
@@ -96,25 +96,25 @@ public class AuthController {
     @PostMapping("/find-id")
     @ApiErrorExceptions({ErrorCode.INVALID_INPUT, ErrorCode.USER_NOT_FOUND, ErrorCode.INTERNAL_ERROR})
     @Operation(summary = "아이디 찾기", description = "아이디 찾기 api (이메일, 닉네임)")
-    public ApiResponse<FindIdResponseDto> findId(@Valid @RequestBody FindIdRequestDto requestDto){
+    public ApiResponse<FindIdResponseDto> findId(@Valid @RequestBody FindIdRequestDto requestDto) {
         FindIdResponseDto response = authService.findUsersId(requestDto);
         return ApiResponse.ok(response);
     }
 
     @PostMapping("/email-request")
-    @ApiErrorExceptions({ErrorCode.INVALID_INPUT, ErrorCode.USER_NOT_FOUND, ErrorCode.INTERNAL_ERROR})
-    @Operation(summary = "이메일 전송", description = "이메일 전송 api, gmail만 가능")
-    public ApiResponse<EmailResponseDto> findId(@Valid @RequestBody EmailRequestDto requestDto){
+    @ApiErrorExceptions({ErrorCode.INVALID_INPUT, ErrorCode.USER_NOT_FOUND,
+            ErrorCode.INTERNAL_ERROR, ErrorCode.DUPLICATE_EMAIL})
+    @Operation(summary = "회원가입용 이메일 전송", description = "이메일 전송 api, gmail만 가능")
+    public ApiResponse<EmailResponseDto> sendEmail(@Valid @RequestBody EmailRequestDto requestDto) {
         EmailResponseDto response = authService.sendEmail(requestDto);
         return ApiResponse.ok(response);
     }
 
     @PostMapping("/email-verify")
-    @ApiErrorExceptions({ErrorCode.USER_NOT_FOUND, ErrorCode.INVALID_EMAIL_CODE,
+    @ApiErrorExceptions({ErrorCode.INVALID_EMAIL_CODE,
             ErrorCode.EMAIL_CODE_EXPIRED, ErrorCode.INTERNAL_ERROR})
-    @Operation(summary = "이메일 인증", description = "이메일 인증 api, 이메일로 전송된 인증 번호 6자리 입력, " +
-            "해당 이메일로 가입된 유저가 없으면 user_not_found")
-    public ApiResponse<EmailVerifyResponseDto> findId(@Valid @RequestBody EmailVerifyRequestDto requestDto){
+    @Operation(summary = "회원가입용 이메일 인증", description = "이메일 인증 api, 이메일로 전송된 인증 번호 6자리 입력")
+    public ApiResponse<EmailVerifyResponseDto> emailVerify(@Valid @RequestBody EmailVerifyRequestDto requestDto) {
         EmailVerifyResponseDto response = authService.verifyEmailCode(requestDto);
         return ApiResponse.ok(response);
     }
@@ -143,4 +143,31 @@ public class AuthController {
         return ApiResponse.ok(null);
     }
 
+    @PostMapping("/password/email-request")
+    @ApiErrorExceptions({ErrorCode.INVALID_INPUT, ErrorCode.USER_NOT_FOUND,
+            ErrorCode.INTERNAL_ERROR, ErrorCode.EMAIL_SEND_FAIL})
+    @Operation(summary = "임시 비밀번호 이메일 전송", description = "임시 비밀번호 이메일 전송 api, gmail만 가능")
+    public ApiResponse<PasswordEmailResponseDto> findPassword(@Valid @RequestBody PasswordEmailRequestDto requestDto) {
+        PasswordEmailResponseDto response = authService.sendPasswordResetEmail(requestDto);
+        return ApiResponse.ok(response);
+    }
+
+    @PostMapping("/password/email-verify")
+    @ApiErrorExceptions({ErrorCode.INVALID_INPUT, ErrorCode.USER_NOT_FOUND,
+            ErrorCode.INTERNAL_ERROR, ErrorCode.EMAIL_SEND_FAIL})
+    @Operation(summary = "임시 비밀번호 발급용 이메일 인증", description = "임시 비밀번호 이메일 인증")
+    public ApiResponse<PasswordResetResponseDto> passwordVerify(@Valid @RequestBody PasswordResetRequestDto requestDto){
+        PasswordResetResponseDto response = authService.verifyPasswordResetCode(requestDto);
+        return ApiResponse.ok(response);
+    }
+
+    @PostMapping("/password/reset")
+    @ApiErrorExceptions({ErrorCode.INVALID_INPUT, ErrorCode.USER_NOT_FOUND,
+            ErrorCode.INTERNAL_ERROR, ErrorCode.EMAIL_SEND_FAIL})
+    @Operation(summary = "임시 비밀번호 발급", description = "이메일 인증 완료 후 임시 비밀번호 발급")
+    public ApiResponse<PasswordEmailResponseDto> resetPassword(@Valid @RequestBody PasswordEmailRequestDto requestDto) {
+        PasswordEmailResponseDto response =
+                authService.issueTempPassword(requestDto);
+        return ApiResponse.ok(response);
+    }
 }

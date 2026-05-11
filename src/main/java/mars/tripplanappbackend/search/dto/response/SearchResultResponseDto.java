@@ -4,59 +4,91 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Builder;
 import lombok.Getter;
 import mars.tripplanappbackend.place.domain.Place;
+import mars.tripplanappbackend.place.enums.PlaceType;
 
 import java.math.BigDecimal;
 import java.util.List;
 
 /**
- * 검색 결과 리스트 단건 응답 DTO입니다.
+ * Search result card response DTO.
  */
 @Getter
 @Builder
-@Schema(description = "검색 결과 리스트 단건 응답")
+@Schema(description = "Search result item response")
 public class SearchResultResponseDto {
 
-    @Schema(description = "장소 PK", example = "7")
+    @Schema(description = "Place PK", example = "7")
     private Long placeId;
 
-    @Schema(description = "장소명", example = "후카이도청")
+    @Schema(description = "Place name", example = "Sapporo Clock Tower")
     private String name;
 
-    @Schema(description = "국가명", example = "일본")
+    @Schema(description = "Country name", example = "Japan")
     private String countryName;
 
-    @Schema(description = "도시명", example = "삿포로")
+    @Schema(description = "City name", example = "Sapporo")
     private String cityName;
 
-    @Schema(description = "대표 이미지 URL", example = "https://cdn.lets-trip.com/place/hokkaido-office.jpg")
+    @Schema(description = "Place image URL", example = "https://cdn.lets-trip.com/place/sapporo-clock-tower.jpg")
     private String imageUrl;
 
-    @Schema(description = "평균 별점", example = "4.6")
+    @Schema(description = "Place description", example = "A landmark in central Sapporo.")
+    private String description;
+
+    @Schema(description = "App category mapped from Google Places type", example = "ATTRACTION")
+    private PlaceType placeType;
+
+    @Schema(description = "Latitude", example = "43.0621000")
+    private BigDecimal latitude;
+
+    @Schema(description = "Longitude", example = "141.3544000")
+    private BigDecimal longitude;
+
+    @Schema(description = "Average rating", example = "4.5")
     private BigDecimal ratingAvg;
 
-    @Schema(description = "리뷰 수", example = "56789")
+    @Schema(description = "Review count", example = "1201")
     private Integer reviewCount;
 
-    @Schema(description = "검색 결과 카드에 노출할 태그 목록")
+    @Schema(description = "Tags displayed on the search result card")
     private List<String> tags;
 
-    /**
-     * 장소 엔티티와 태그 목록을 검색 결과 응답 DTO로 변환합니다.
-     *
-     * @param place 장소 엔티티
-     * @param tags 장소 태그 목록
-     * @return 검색 결과 리스트 단건 응답 DTO
-     */
-    public static SearchResultResponseDto from(Place place, List<String> tags) {
+    public static SearchResultResponseDto from(Place place, List<String> tags, String description) {
         return SearchResultResponseDto.builder()
                 .placeId(place.getPlaceId())
                 .name(place.getName())
                 .countryName(place.getCountryName())
                 .cityName(place.getCityName())
                 .imageUrl(place.getImageUrl())
-                .ratingAvg(place.getRatingAvg())
-                .reviewCount(place.getReviewCount())
+                .description(description)
+                .placeType(PlaceType.normalizeForAppCategory(place.getPlaceType()))
+                .latitude(place.getLatitude())
+                .longitude(place.getLongitude())
+                .ratingAvg(resolveRatingAvg(place))
+                .reviewCount(resolveReviewCount(place))
                 .tags(tags)
                 .build();
+    }
+
+    private static BigDecimal resolveRatingAvg(Place place) {
+        if (place.getReviewCount() != null && place.getReviewCount() > 0 && place.getRatingAvg() != null) {
+            return place.getRatingAvg();
+        }
+        if (place.getGoogleReviewCount() != null
+                && place.getGoogleReviewCount() > 0
+                && place.getGoogleRatingAvg() != null) {
+            return place.getGoogleRatingAvg();
+        }
+        return BigDecimal.ZERO;
+    }
+
+    private static Integer resolveReviewCount(Place place) {
+        if (place.getReviewCount() != null && place.getReviewCount() > 0) {
+            return place.getReviewCount();
+        }
+        if (place.getGoogleReviewCount() != null && place.getGoogleReviewCount() > 0) {
+            return place.getGoogleReviewCount();
+        }
+        return 0;
     }
 }

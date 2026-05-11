@@ -55,7 +55,7 @@ public class PapagoService {
      * 번역 실패 시 TRANSLATION_FAILED
      */
     public List<PapagoResponseDto> translatePhrases(String usersId, String targetLang) {
-        myPageRepository.findByUsersId(usersId)
+        myPageRepository.findByUsersIdAndIsDeletedFalse(usersId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
 
         return FIXED_PHRASES.stream()

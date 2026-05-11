@@ -44,7 +44,7 @@ public class Notification extends BaseEntity {
     private Long notificationId;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "type", nullable = false, columnDefinition = "ENUM('SCHEDULE','WEATHER','SYSTEM','MARKETING')")
+    @Column(name = "type", nullable = false, columnDefinition = "ENUM('SCHEDULE','WEATHER')")
     private NotificationType type;
 
     @Column(name = "title", length = 60, nullable = false)
@@ -83,4 +83,9 @@ public class Notification extends BaseEntity {
     @ManyToOne(fetch = FetchType.LAZY, optional = true)
     @JoinColumn(name = "trip_schedule_id", nullable = true)
     private TripSchedule tripSchedule;
+
+    public void markAsRead() {
+        this.isRead = UseYnEnum.Y;
+        this.readAt = LocalDateTime.now();
+    }
 }

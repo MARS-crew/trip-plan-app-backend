@@ -80,7 +80,7 @@ public class MyTripCurrentScheduleResponseDto {
                 .dayLabel(tripSchedule.getDayNo() + "일차")
                 .placeId(tripSchedule.getPlace() != null ? tripSchedule.getPlace().getPlaceId() : null)
                 .title(tripSchedule.getTitle())
-                .placeName(tripSchedule.getPlace() != null ? tripSchedule.getPlace().getName() : null)
+                .placeName(tripSchedule.resolvePlaceName())
                 .address(address)
                 .startTime(tripSchedule.getStartTime())
                 .endTime(tripSchedule.getEndTime())
