@@ -691,10 +691,14 @@ public class TripController {
             description = "내 여행의 시작일과 종료일을 수정합니다."
     )
     public ApiResponse<UpdateTripDateResponseDto> updateTripDate(
+            @Parameter(hidden = true)
+            @CurrentUser UserPrincipal userPrincipal,
             @PathVariable Long tripId,
             @RequestBody UpdateTripDateRequestDto requestDto
     ) {
-        return ApiResponse.ok(tripService.updateTripDate(tripId, requestDto));
+        return ApiResponse.ok(
+                tripService.updateTripDate(userPrincipal, tripId, requestDto)
+        );
     }
 
     /**

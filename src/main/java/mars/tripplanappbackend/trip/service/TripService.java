@@ -44,6 +44,7 @@ import mars.tripplanappbackend.trip.repository.VisitedPlaceRepository;
 import mars.tripplanappbackend.trip.repository.WishlistPlaceRepository;
 import mars.tripplanappbackend.trip.dto.request.UpdateTripTitleRequestDto;
 import mars.tripplanappbackend.trip.dto.response.UpdateTripTitleResponseDto;
+import mars.tripplanappbackend.global.config.auth.UserPrincipal;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -2464,7 +2465,11 @@ public class TripService {
      * 여행 날짜 수정 API
      */
     @Transactional
-    public UpdateTripDateResponseDto updateTripDate(Long tripId, UpdateTripDateRequestDto requestDto) {
+    public UpdateTripDateResponseDto updateTripDate(
+            UserPrincipal userPrincipal,
+            Long tripId,
+            UpdateTripDateRequestDto requestDto
+    ) {
 
         // 1. 요청값 검증
         if (requestDto == null ||
@@ -2474,7 +2479,12 @@ public class TripService {
         }
 
         // 2. 여행 조회
-        Trip trip = tripRepository.findById(tripId)
+        validateUserExistsByUsersId(userPrincipal.getUsersId());
+
+        Trip trip = tripRepository.findByTripIdAndUser_UsersIdAndIsDeletedFalse(
+                        tripId,
+                        userPrincipal.getUsersId()
+                )
                 .orElseThrow(() -> new BusinessException(ErrorCode.TRIP_NOT_FOUND));
 
         // 3. 날짜 검증 (시작일 > 종료일)
@@ -2489,11 +2499,7 @@ public class TripService {
         );
 
         // 5. 응답 반환
-        return UpdateTripDateResponseDto.builder()
-                .tripId(trip.getTripId())
-                .startDate(trip.getStartDate().toString())
-                .endDate(trip.getEndDate().toString())
-                .build();
+        return UpdateTripDateResponseDto.from(trip);
     }
 
     /**
