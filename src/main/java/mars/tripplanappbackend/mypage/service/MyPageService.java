@@ -1,6 +1,7 @@
 package mars.tripplanappbackend.mypage.service;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import mars.tripplanappbackend.auth.dto.request.EmailRequestDto;
 import mars.tripplanappbackend.auth.dto.request.EmailVerifyRequestDto;
 import mars.tripplanappbackend.auth.dto.response.EmailResponseDto;
@@ -18,6 +19,7 @@ import mars.tripplanappbackend.review.repository.ReviewRepository;
 import mars.tripplanappbackend.trip.domain.VisitedPlace;
 import mars.tripplanappbackend.trip.repository.TripRepository;
 import mars.tripplanappbackend.trip.repository.VisitedPlaceRepository;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
@@ -30,6 +32,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 @Service
+@Slf4j
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
 public class MyPageService {
@@ -43,6 +46,8 @@ public class MyPageService {
 
     private final JavaMailSender mailSender;
     private final RedisTemplate<String, String> redisTemplate;
+    @Value("${spring.mail.username}")
+    private String mailUsername;
 
     /**
      * 현재 로그인한 사용자의 프로필 정보를 조회
@@ -235,12 +240,14 @@ public class MyPageService {
         // 사용자에게 전달되는 이메일 내용
         SimpleMailMessage message = new SimpleMailMessage();
         message.setTo(email);
+        message.setFrom(mailUsername);
         message.setSubject("PLI 이메일 인증");
         message.setText("PLI 이메일 인증 코드: " + code);
 
         try {
             mailSender.send(message);
         } catch (Exception e) {
+            log.error("Failed to send profile verification email to {} from {}", email, mailUsername, e);
             throw new BusinessException(ErrorCode.EMAIL_SEND_FAIL);
         }
 

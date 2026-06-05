@@ -8,11 +8,13 @@ import mars.tripplanappbackend.global.enums.ErrorCode;
 import mars.tripplanappbackend.global.enums.UseYnEnum;
 import mars.tripplanappbackend.global.exception.BusinessException;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import mars.tripplanappbackend.mypage.domain.User;
 import mars.tripplanappbackend.mypage.domain.Withdraw;
 import mars.tripplanappbackend.mypage.enums.LoginType;
 import mars.tripplanappbackend.mypage.repository.MyPageRepository;
 import mars.tripplanappbackend.mypage.repository.WithdrawRepository;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
@@ -25,6 +27,7 @@ import java.time.LocalDateTime;
 import java.util.concurrent.TimeUnit;
 
 @Service
+@Slf4j
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
 public class AuthService {
@@ -35,6 +38,8 @@ public class AuthService {
     private final JwtProvider jwtProvider;
     private final JavaMailSender mailSender;
     private final RedisTemplate<String, String> redisTemplate;
+    @Value("${spring.mail.username}")
+    private String mailUsername;
 
     /**
      * 회원가입 처리
@@ -234,12 +239,14 @@ public class AuthService {
         // 사용자에게 전달되는 이메일 내용
         SimpleMailMessage message = new SimpleMailMessage();
         message.setTo(email);
+        message.setFrom(mailUsername);
         message.setSubject("PLI 이메일 인증");
         message.setText("PLI 이메일 인증 코드: " + code);
 
         try {
             mailSender.send(message);
         } catch (Exception e) {
+            log.error("Failed to send signup verification email to {} from {}", email, mailUsername, e);
             throw new BusinessException(ErrorCode.EMAIL_SEND_FAIL);
         }
 
@@ -390,12 +397,14 @@ public class AuthService {
         // 이메일 전송
         SimpleMailMessage message = new SimpleMailMessage();
         message.setTo(email);
+        message.setFrom(mailUsername);
         message.setSubject("비밀번호 재설정 인증 코드");
         message.setText("인증 코드: " + code);
 
         try {
             mailSender.send(message);
         } catch (Exception e) {
+            log.error("Failed to send password reset verification email to {} from {}", email, mailUsername, e);
             throw new BusinessException(ErrorCode.EMAIL_SEND_FAIL);
         }
 
@@ -495,6 +504,7 @@ public class AuthService {
         SimpleMailMessage message = new SimpleMailMessage();
 
         message.setTo(email);
+        message.setFrom(mailUsername);
 
         message.setSubject("임시 비밀번호 발급");
 
@@ -504,6 +514,7 @@ public class AuthService {
             mailSender.send(message);
 
         } catch (Exception e) {
+            log.error("Failed to send temporary password email to {} from {}", email, mailUsername, e);
             throw new BusinessException(ErrorCode.EMAIL_SEND_FAIL);
         }
 
