@@ -9,11 +9,9 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.*;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.util.LinkedMultiValueMap;
-import org.springframework.util.MultiValueMap;
 import mars.tripplanappbackend.mypage.dto.resopnse.PapagoResponseDto;
-import org.springframework.web.reactive.function.BodyInserters;
 import org.springframework.web.reactive.function.client.WebClient;
+import org.springframework.web.util.UriComponentsBuilder;
 
 import java.util.Map;
 
@@ -24,16 +22,15 @@ import java.util.List;
 @Transactional(readOnly = true)
 @Slf4j
 public class PapagoService {
-    @Value("${spring.social.papago.client-key}")
-    private String clientId;
+    @Value("${google.translate.api-key}")
+    private String apiKey;
 
-    @Value("${spring.social.papago.client-secret}")
-    private String clientSecret;
+    @Value("${google.translate.base-url:https://translation.googleapis.com}")
+    private String baseUrl;
 
-    private final WebClient webClient =
-            WebClient.builder()
-                    .baseUrl("https://papago.apigw.ntruss.com")
-                    .build();
+    private static final String TRANSLATE_PATH = "/language/translate/v2";
+
+    private final WebClient webClient = WebClient.builder().build();
 
     private static final String SOURCE_LANG = "ko";
 
@@ -65,27 +62,32 @@ public class PapagoService {
     }
 
     /**
-     * Papago 번역 API 호출 (내부 전용)
+     * Google Cloud Translate Basic(v2) API 호출 (내부 전용)
      */
     private PapagoResponseDto translate(String text, String targetLang) {
         try {
-            MultiValueMap<String, String> body = new LinkedMultiValueMap<>();
-            body.add("source", "ko");
-            body.add("target", targetLang);
-            body.add("text", text);
+            String uri = UriComponentsBuilder.fromUriString(baseUrl + TRANSLATE_PATH)
+                    .queryParam("key", apiKey)
+                    .toUriString();
+
+            Map<String, String> body = Map.of(
+                    "q", text,
+                    "source", SOURCE_LANG,
+                    "target", targetLang,
+                    "format", "text"
+            );
 
             Map response = webClient.post()
-                    .uri("/nmt/v1/translation")
-                    .header("X-NCP-APIGW-API-KEY-ID", clientId)
-                    .header("X-NCP-APIGW-API-KEY", clientSecret)
-                    .body(BodyInserters.fromFormData(body))
+                    .uri(uri)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .bodyValue(body)
                     .retrieve()
                     .bodyToMono(Map.class)
                     .block();
 
-            Map<String, Object> message = (Map<String, Object>) response.get("message");
-            Map<String, Object> result  = (Map<String, Object>) message.get("result");
-            String translatedText       = (String) result.get("translatedText");
+            Map<String, Object> data = (Map<String, Object>) response.get("data");
+            List<Map<String, Object>> translations = (List<Map<String, Object>>) data.get("translations");
+            String translatedText = (String) translations.get(0).get("translatedText");
 
             return new PapagoResponseDto(text,
                     translatedText,
