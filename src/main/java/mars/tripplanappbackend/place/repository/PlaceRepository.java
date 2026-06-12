@@ -10,6 +10,7 @@ import org.springframework.stereotype.Repository;
 
 import java.util.List;
 import java.util.Optional;
+import java.math.BigDecimal;
 
 @Repository
 public interface PlaceRepository extends JpaRepository<Place, Long> {
@@ -35,6 +36,8 @@ public interface PlaceRepository extends JpaRepository<Place, Long> {
     Optional<Place> findByGooglePlaceIdAndIsDeletedFalse(String googlePlaceId);
 
     Optional<Place> findFirstByNameAndAddressAndIsDeletedFalse(String name, String address);
+
+    Optional<Place> findFirstByLatitudeAndLongitudeAndIsDeletedFalse(BigDecimal latitude, BigDecimal longitude);
 
     Optional<Place> findFirstByNameAndCityNameAndCountryNameAndIsDeletedFalse(
             String name,

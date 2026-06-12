@@ -231,7 +231,7 @@ public class TripController {
             description = "여행 상세 화면에서 사용하는 일차별 일정 묶음 데이터를 조회합니다. 여행 기간 전체 날짜를 유지하고, 각 일정의 진행 상태와 방문 기록 상태를 함께 반환합니다."
     )
     public ApiResponse<MyTripScheduleListResponseDto> getMyTripSchedules(
-            @Parameter(description = "조회할 여행 PK", example = "5")
+            @Parameter(description = "조회할 여행 PK", example = "57")
             @PathVariable("tripId") Long tripId,
             @Parameter(hidden = true)
             @CurrentUser UserPrincipal userPrincipal
@@ -543,7 +543,7 @@ public class TripController {
             description = "내 여행지 상세의 일정 추가 화면에서 입력한 일정명, 날짜, 시간, 장소, 메모를 기반으로 일정을 생성합니다."
     )
     public ApiResponse<AddTripScheduleResponseDto> addTripSchedule(
-            @Parameter(description = "일정을 추가할 여행 PK", example = "5")
+            @Parameter(description = "일정을 추가할 여행 PK", example = "57")
             @PathVariable("tripId") Long tripId,
             @io.swagger.v3.oas.annotations.parameters.RequestBody(
                     description = "일정 추가 화면에서 입력한 정보입니다. scheduleDate는 여행 기간 내 날짜만 선택 가능합니다.",
@@ -555,7 +555,7 @@ public class TripController {
                                     value = """
                                             {
                                               "title": "전시 관람",
-                                              "scheduleDate": "2026-04-22",
+                                              "scheduleDate": "2026-06-06",
                                               "startTime": "10:00",
                                               "endTime": "11:00",
                                               "placeName": "팀랩 보더리스",
