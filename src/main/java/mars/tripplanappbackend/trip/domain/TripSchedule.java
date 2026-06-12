@@ -170,6 +170,10 @@ public class TripSchedule extends BaseEntity {
         return resolveLatitude() != null && resolveLongitude() != null;
     }
 
+    public void linkPlace(Place place) {
+        this.place = place;
+    }
+
     /**
      * 연결된 여행이 삭제되었을 때 일정도 함께 soft delete 상태로 전환합니다.
      * 여행 상세에서 더 이상 노출되면 안 되므로 삭제 여부와 삭제 시점을 같이 기록합니다.

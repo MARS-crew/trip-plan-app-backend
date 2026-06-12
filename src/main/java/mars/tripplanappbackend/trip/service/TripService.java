@@ -90,6 +90,8 @@ public class TripService {
     private static final int ADDRESS_MAX_LENGTH = 255;
     private static final int DESCRIPTION_MAX_LENGTH = 2000;
     private static final int IMAGE_URL_MAX_LENGTH = 500;
+    private static final String DEFAULT_CUSTOM_PLACE_COUNTRY_NAME = "UNKNOWN";
+    private static final String DEFAULT_CUSTOM_PLACE_NAME = "Pinned place";
     private static final double SCHEDULE_LOCATION_NEARBY_SEARCH_RADIUS_METERS = 500.0d;
     private static final int SCHEDULE_LOCATION_NEARBY_RESULT_COUNT = 10;
 
@@ -574,12 +576,7 @@ public class TripService {
                 )
                 .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_INPUT));
 
-        Place place = placeRepository.findByPlaceIdAndIsDeletedFalse(requestDto.getPlaceId())
-                .orElseThrow(() -> new BusinessException(ErrorCode.PLACE_NOT_FOUND));
-
-        if (tripSchedule.getPlace() != null && !tripSchedule.getPlace().getPlaceId().equals(place.getPlaceId())) {
-            throw new BusinessException(ErrorCode.INVALID_INPUT);
-        }
+        Place place = resolveVisitedPlace(requestDto, tripSchedule);
 
         if (visitedPlaceRepository.existsByTrip_TripIdAndPlace_PlaceIdAndIsDeletedFalse(
                 trip.getTripId(),
@@ -638,6 +635,18 @@ public class TripService {
         String scheduleAddress = resolveTripScheduleAddress(place, requestDto.getAddress());
         BigDecimal scheduleLatitude = resolveTripScheduleLatitude(place, requestDto.getLatitude());
         BigDecimal scheduleLongitude = resolveTripScheduleLongitude(place, requestDto.getLongitude());
+        place = resolveOrCreateSchedulePlace(
+                place,
+                requestDto.getTitle(),
+                schedulePlaceName,
+                scheduleAddress,
+                scheduleLatitude,
+                scheduleLongitude
+        );
+        schedulePlaceName = resolveTripSchedulePlaceName(place, schedulePlaceName);
+        scheduleAddress = resolveTripScheduleAddress(place, scheduleAddress);
+        scheduleLatitude = resolveTripScheduleLatitude(place, scheduleLatitude);
+        scheduleLongitude = resolveTripScheduleLongitude(place, scheduleLongitude);
 
         TripSchedule savedTripSchedule = tripScheduleRepository.save(
                 TripSchedule.builder()
@@ -706,6 +715,18 @@ public class TripService {
         String scheduleAddress = resolveTripScheduleAddress(place, requestDto.getAddress());
         BigDecimal scheduleLatitude = resolveTripScheduleLatitude(place, requestDto.getLatitude());
         BigDecimal scheduleLongitude = resolveTripScheduleLongitude(place, requestDto.getLongitude());
+        place = resolveOrCreateSchedulePlace(
+                place,
+                requestDto.getTitle(),
+                schedulePlaceName,
+                scheduleAddress,
+                scheduleLatitude,
+                scheduleLongitude
+        );
+        schedulePlaceName = resolveTripSchedulePlaceName(place, schedulePlaceName);
+        scheduleAddress = resolveTripScheduleAddress(place, scheduleAddress);
+        scheduleLatitude = resolveTripScheduleLatitude(place, scheduleLatitude);
+        scheduleLongitude = resolveTripScheduleLongitude(place, scheduleLongitude);
 
         tripSchedule.updateSchedule(
                 dayNo,
@@ -974,8 +995,7 @@ public class TripService {
                 || requestDto.getTripId() < 1
                 || requestDto.getTripScheduleId() == null
                 || requestDto.getTripScheduleId() < 1
-                || requestDto.getPlaceId() == null
-                || requestDto.getPlaceId() < 1
+                || (requestDto.getPlaceId() != null && requestDto.getPlaceId() < 1)
                 || requestDto.getUsersId() == null) {
             throw new BusinessException(ErrorCode.INVALID_INPUT);
         }
@@ -1241,6 +1261,111 @@ public class TripService {
         return coordinate.setScale(7, RoundingMode.HALF_UP);
     }
 
+    private Place resolveVisitedPlace(AddVisitedPlaceRequestDto requestDto, TripSchedule tripSchedule) {
+        Place linkedPlace = tripSchedule.getPlace();
+
+        if (requestDto.getPlaceId() != null) {
+            Place requestedPlace = placeRepository.findByPlaceIdAndIsDeletedFalse(requestDto.getPlaceId())
+                    .orElseThrow(() -> new BusinessException(ErrorCode.PLACE_NOT_FOUND));
+
+            if (linkedPlace != null && !linkedPlace.getPlaceId().equals(requestedPlace.getPlaceId())) {
+                throw new BusinessException(ErrorCode.INVALID_INPUT);
+            }
+
+            if (linkedPlace == null) {
+                tripSchedule.linkPlace(requestedPlace);
+            }
+            return requestedPlace;
+        }
+
+        if (linkedPlace != null) {
+            return linkedPlace;
+        }
+
+        Place recoveredPlace = resolveOrCreateSchedulePlace(
+                null,
+                tripSchedule.getTitle(),
+                tripSchedule.resolvePlaceName(),
+                tripSchedule.resolveAddress(),
+                tripSchedule.resolveLatitude(),
+                tripSchedule.resolveLongitude()
+        );
+
+        if (recoveredPlace == null) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT);
+        }
+
+        tripSchedule.linkPlace(recoveredPlace);
+        return recoveredPlace;
+    }
+
+    private Place resolveOrCreateSchedulePlace(
+            Place selectedPlace,
+            String fallbackName,
+            String placeName,
+            String address,
+            BigDecimal latitude,
+            BigDecimal longitude
+    ) {
+        if (selectedPlace != null) {
+            return selectedPlace;
+        }
+
+        String normalizedPlaceName = truncate(nullableTrim(placeName), PLACE_NAME_MAX_LENGTH);
+        String normalizedAddress = truncate(nullableTrim(address), ADDRESS_MAX_LENGTH);
+        BigDecimal normalizedLatitude = normalizeTripScheduleCoordinate(latitude);
+        BigDecimal normalizedLongitude = normalizeTripScheduleCoordinate(longitude);
+
+        if (!hasText(normalizedPlaceName)
+                && !hasText(normalizedAddress)
+                && normalizedLatitude == null
+                && normalizedLongitude == null) {
+            return null;
+        }
+
+        if (hasText(normalizedPlaceName) && hasText(normalizedAddress)) {
+            Place existingByNameAndAddress = placeRepository
+                    .findFirstByNameAndAddressAndIsDeletedFalse(normalizedPlaceName, normalizedAddress)
+                    .orElse(null);
+            if (existingByNameAndAddress != null) {
+                return existingByNameAndAddress;
+            }
+        }
+
+        if (normalizedLatitude != null && normalizedLongitude != null) {
+            Place existingByCoordinate = placeRepository
+                    .findFirstByLatitudeAndLongitudeAndIsDeletedFalse(normalizedLatitude, normalizedLongitude)
+                    .orElse(null);
+            if (existingByCoordinate != null) {
+                return existingByCoordinate;
+            }
+        }
+
+        String resolvedPlaceName = resolveCustomPlaceName(normalizedPlaceName, normalizedAddress, fallbackName);
+
+        return placeRepository.save(Place.builder()
+                .name(resolvedPlaceName)
+                .countryName(DEFAULT_CUSTOM_PLACE_COUNTRY_NAME)
+                .address(normalizedAddress)
+                .latitude(normalizedLatitude)
+                .longitude(normalizedLongitude)
+                .placeType(PlaceType.ATTRACTION)
+                .build());
+    }
+
+    private String resolveCustomPlaceName(String placeName, String address, String fallbackName) {
+        if (hasText(placeName)) {
+            return placeName.trim();
+        }
+        if (hasText(address)) {
+            return truncate(address.trim(), PLACE_NAME_MAX_LENGTH);
+        }
+        if (hasText(fallbackName)) {
+            return truncate(fallbackName.trim(), PLACE_NAME_MAX_LENGTH);
+        }
+        return DEFAULT_CUSTOM_PLACE_NAME;
+    }
+
     private boolean hasInvalidScheduleCoordinate(BigDecimal latitude, BigDecimal longitude) {
         if (latitude == null && longitude == null) {
             return false;
@@ -1419,7 +1544,7 @@ public class TripService {
         Long placeId = tripSchedule.getPlace() != null ? tripSchedule.getPlace().getPlaceId() : null;
         boolean isOngoing = isCurrentTripSchedule(tripSchedule, today, now);
         boolean visited = placeId != null && visitedPlaceIds.contains(placeId);
-        boolean canAddVisitedPlace = placeId != null && isOngoing && !visited;
+        boolean canAddVisitedPlace = canResolveVisitedPlace(tripSchedule) && isOngoing && !visited;
         String address = resolveScheduleAddress(tripSchedule);
 
         return MyTripScheduleListResponseDto.ScheduleItemResponseDto.from(
@@ -1501,7 +1626,7 @@ public class TripService {
     ) {
         Long placeId = tripSchedule.getPlace() != null ? tripSchedule.getPlace().getPlaceId() : null;
         boolean visited = placeId != null && visitedPlaceIds.contains(placeId);
-        boolean canAddVisitedPlace = placeId != null && !visited;
+        boolean canAddVisitedPlace = canResolveVisitedPlace(tripSchedule) && !visited;
         String address = resolveScheduleAddress(tripSchedule);
         boolean canSearchRoute = canSearchRoute(tripSchedule, address);
 
@@ -1533,7 +1658,7 @@ public class TripService {
         Long placeId = tripSchedule.getPlace() != null ? tripSchedule.getPlace().getPlaceId() : null;
         boolean isCurrent = isCurrentTripSchedule(tripSchedule, today, now);
         boolean visited = placeId != null && visitedPlaceIds.contains(placeId);
-        boolean canAddVisitedPlace = placeId != null && isCurrent && !visited;
+        boolean canAddVisitedPlace = canResolveVisitedPlace(tripSchedule) && isCurrent && !visited;
         String address = resolveScheduleAddress(tripSchedule);
         boolean canSearchRoute = canSearchRoute(tripSchedule, address);
         boolean canEditSchedule = canEditTripSchedule(tripSchedule);
@@ -1614,7 +1739,7 @@ public class TripService {
         Long placeId = tripSchedule.getPlace() != null ? tripSchedule.getPlace().getPlaceId() : null;
         boolean isCurrent = isCurrentTripSchedule(tripSchedule, today, now);
         boolean visited = placeId != null && visitedPlaceIds.contains(placeId);
-        boolean canAddVisitedPlace = placeId != null && isCurrent && !visited;
+        boolean canAddVisitedPlace = canResolveVisitedPlace(tripSchedule) && isCurrent && !visited;
 
         return MyTripScheduleLocationItemResponseDto.from(
                 tripSchedule,
@@ -2080,6 +2205,13 @@ public class TripService {
      */
     private boolean canSearchRoute(TripSchedule tripSchedule, String address) {
         return hasLocation(tripSchedule) || hasText(address);
+    }
+
+    private boolean canResolveVisitedPlace(TripSchedule tripSchedule) {
+        return tripSchedule.getPlace() != null
+                || hasText(tripSchedule.resolvePlaceName())
+                || hasText(tripSchedule.resolveAddress())
+                || hasLocation(tripSchedule);
     }
 
     /**
