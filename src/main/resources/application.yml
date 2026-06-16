@@ -29,11 +29,6 @@ spring:
       client-id: ${GOOGLE_CLIENT_ID}
       client-secret: ${GOOGLE_CLIENT_SECRET}
 
-    papago:
-      client-key: ${PAPAGO_CLIENT_ID}
-      client-secret: ${PAPAGO_CLIENT_SECRET}
-
-
     exchange:
       auth-key: ${EXCHANGE_API_KEY:}
 
@@ -73,6 +68,10 @@ google:
   places:
     api-key: ${GOOGLE_PLACES_API_KEY:}
     base-url: ${GOOGLE_PLACES_BASE_URL:https://places.googleapis.com}
+
+  translate:
+    api-key: ${GOOGLE_TRANSLATE_API_KEY:}
+    base-url: ${GOOGLE_TRANSLATE_BASE_URL:https://translation.googleapis.com}
 
 search:
   cache:
