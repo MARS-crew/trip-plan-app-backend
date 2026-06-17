@@ -4,6 +4,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import mars.tripplanappbackend.global.enums.ErrorCode;
 import mars.tripplanappbackend.global.exception.BusinessException;
+import mars.tripplanappbackend.mypage.enums.TargetLanguage;
 import mars.tripplanappbackend.mypage.repository.MyPageRepository;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.*;
@@ -51,12 +52,12 @@ public class PapagoService {
      * @return 번역 결과 목록
      * 번역 실패 시 TRANSLATION_FAILED
      */
-    public List<PapagoResponseDto> translatePhrases(String usersId, String targetLang) {
+    public List<PapagoResponseDto> translatePhrases(String usersId, TargetLanguage targetLang) {
         myPageRepository.findByUsersIdAndIsDeletedFalse(usersId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
 
         return FIXED_PHRASES.stream()
-                .map(text -> translate(text, targetLang))
+                .map(text -> translate(text, targetLang.getCode()))
                 .toList();
 
     }
