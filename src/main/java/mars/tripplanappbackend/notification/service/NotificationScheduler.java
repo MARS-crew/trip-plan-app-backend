@@ -1,6 +1,7 @@
 package mars.tripplanappbackend.notification.service;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import mars.tripplanappbackend.notification.enums.NotificationType;
 import mars.tripplanappbackend.place.domain.Place;
 import mars.tripplanappbackend.trip.domain.Trip;
@@ -17,6 +18,7 @@ import java.util.Optional;
 
 @Component
 @RequiredArgsConstructor
+@Slf4j
 public class NotificationScheduler {
 
     private final NotificationService notificationService;
@@ -33,8 +35,10 @@ public class NotificationScheduler {
         LocalDate targetDate = LocalDate.now();
 
         List<TripSchedule> schedules = tripScheduleRepository.findAllByScheduleDateAndStartTime(targetDate, targetTime);
+        log.info("Schedule notification scan - date: {}, time: {}, count: {}", targetDate, targetTime, schedules.size());
 
         for (TripSchedule schedule : schedules) {
+            log.info("Schedule notification target found - tripScheduleId: {}, title: {}", schedule.getTripScheduleId(), schedule.getTitle());
             String content = String.format("10분뒤 %s 일정입니다.", schedule.getTitle());
 
             notificationService.sendNotification(
@@ -65,6 +69,7 @@ public class NotificationScheduler {
 
         LocalDate today = LocalDate.now();
         List<Trip> todayTrips = tripRepository.findAllByStartDateAndIsDeletedFalse(today);
+        log.info("Weather notification scan - date: {}, tripCount: {}", today, todayTrips.size());
 
         for (Trip trip : todayTrips) {
 

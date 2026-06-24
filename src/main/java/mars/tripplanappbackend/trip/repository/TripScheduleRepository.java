@@ -26,8 +26,10 @@ public interface TripScheduleRepository extends JpaRepository<TripSchedule, Long
             java.time.LocalDate scheduleDate
     );
 
+    @EntityGraph(attributePaths = {"trip", "trip.user"})
     List<TripSchedule> findAllByScheduleDateAndStartTime(LocalDate scheduleDate, LocalTime startTime);
 
+    @EntityGraph(attributePaths = {"place", "trip", "trip.user"})
     Optional<TripSchedule> findTop1ByTripAndScheduleDateOrderByStartTime(Trip trip, LocalDate scheduleDate);
 
     Optional<TripSchedule> findByTripScheduleIdAndTrip_TripIdAndTrip_User_UsersIdAndIsDeletedFalse(
