@@ -19,10 +19,10 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import mars.tripplanappbackend.global.entity.BaseEntity;
 import mars.tripplanappbackend.global.enums.UseYnEnum;
+import mars.tripplanappbackend.mypage.domain.User;
 import mars.tripplanappbackend.notification.enums.NotificationType;
 import mars.tripplanappbackend.trip.domain.Trip;
 import mars.tripplanappbackend.trip.domain.TripSchedule;
-import mars.tripplanappbackend.mypage.domain.User;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 import java.time.LocalDateTime;
@@ -52,6 +52,9 @@ public class Notification extends BaseEntity {
 
     @Column(name = "content", length = 400, nullable = false)
     private String content;
+
+    @Column(name = "weather_status_code")
+    private Integer weatherStatusCode;
 
     @Enumerated(EnumType.STRING)
     @Builder.Default
