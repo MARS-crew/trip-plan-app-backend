@@ -2,6 +2,7 @@ package mars.tripplanappbackend.notification.service;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import mars.tripplanappbackend.notification.enums.WeatherStatusCode;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
@@ -20,15 +21,6 @@ public class WeatherService {
 
     private final WebClient webClient = WebClient.create("https://api.openweathermap.org");
 
-    /**
-     * 위도/경도를 기반으로 날씨 정보 조회
-     *
-     * @param latitude 위도
-     * @param longitude 경도
-     * @return WeatherInfo (최저/최고 온도, 날씨 상태)
-     *
-     * 외부 API(OpenWeather) 호출 실패 시 기본값을 반환
-     */
     public WeatherInfo getWeather(BigDecimal latitude, BigDecimal longitude) {
         try {
             Map response = webClient.get()
@@ -52,30 +44,20 @@ public class WeatherService {
             double minTemp = ((Number) temp.get("min")).doubleValue();
             double maxTemp = ((Number) temp.get("max")).doubleValue();
             String weatherMain = (String) weather.get(0).get("main");
+            WeatherStatusCode weatherStatusCode = WeatherStatusCode.fromOpenWeatherMain(weatherMain);
 
             return new WeatherInfo(
                     (int) Math.round(minTemp),
                     (int) Math.round(maxTemp),
-                    convertWeatherStatus(weatherMain)
+                    weatherStatusCode.getLabel(),
+                    weatherStatusCode.getCode()
             );
 
         } catch (Exception e) {
             log.error("날씨 API 호출 실패: {}", e.getMessage());
-            return new WeatherInfo(0, 0, "알 수 없음");
+            return new WeatherInfo(0, 0, "알 수 없음", null);
         }
     }
 
-    /**
-     * OpenWeather 날씨 상태를 한국어로 변환
-     */
-    private String convertWeatherStatus(String weatherMain) {
-        return switch (weatherMain) {
-            case "Clear" -> "맑음";
-            case "Rain", "Drizzle", "Thunderstorm" -> "비옴";
-            case "Snow" -> "눈";
-            default -> "흐림";
-        };
-    }
-
-    public record WeatherInfo(int minTemp, int maxTemp, String weatherStatus) {}
+    public record WeatherInfo(int minTemp, int maxTemp, String weatherStatus, Integer weatherStatusCode) {}
 }

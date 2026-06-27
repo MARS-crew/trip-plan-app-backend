@@ -9,10 +9,6 @@ import mars.tripplanappbackend.mypage.domain.User;
 import mars.tripplanappbackend.mypage.repository.MyPageRepository;
 import mars.tripplanappbackend.notification.domain.Notification;
 import mars.tripplanappbackend.notification.dto.response.NotificationResponse;
-import mars.tripplanappbackend.notification.dto.response.UnreadNotificationResponse;
-import mars.tripplanappbackend.global.enums.UseYnEnum;
-import mars.tripplanappbackend.mypage.domain.User;
-import mars.tripplanappbackend.notification.domain.Notification;
 import mars.tripplanappbackend.notification.enums.NotificationType;
 import mars.tripplanappbackend.notification.repository.NotificationRepository;
 import mars.tripplanappbackend.notification.repository.UserFcmTokenRepository;
@@ -38,19 +34,16 @@ public class NotificationService {
     private final FcmService fcmService;
     private final MyPageRepository myPageRepository;
 
-    /**
-     * 알림 전송 공통 로직
-     *
-     * @param user 수신 대상 사용자
-     * @param trip 연관된 여행 정보
-     * @param tripSchedule 연관된 일정 정보
-     * @param type 알림 타입
-     * @param title 알림 제목
-     * @param content 알림 내용
-     */
     @Transactional
     public void sendNotification(User user, Trip trip, TripSchedule tripSchedule,
                                  NotificationType type, String title, String content) {
+        sendNotification(user, trip, tripSchedule, type, title, content, null);
+    }
+
+    @Transactional
+    public void sendNotification(User user, Trip trip, TripSchedule tripSchedule,
+                                 NotificationType type, String title, String content,
+                                 Integer weatherStatusCode) {
 
         if (user.getMarketingAgreed() == UseYnEnum.N) {
             log.info("알림 수신 미동의 유저 - 전송 중단: {}", user.getUsersId());
@@ -69,6 +62,7 @@ public class NotificationService {
                 .type(type)
                 .title(title)
                 .content(content)
+                .weatherStatusCode(weatherStatusCode)
                 .isRead(UseYnEnum.N)
                 .sendAt(LocalDateTime.now())
                 .isDeleted(false)
@@ -77,16 +71,16 @@ public class NotificationService {
         notificationRepository.save(notification);
     }
 
-    /**
-     * FCM 전송 처리
-     *
-     * 사용자 토큰이 존재하는 경우에만 FCM 전송을 수행
-     */
     public void sendFcm(User user, Trip trip, TripSchedule tripSchedule,
-                         NotificationType type, String title, String content) {
+                        NotificationType type, String title, String content) {
+        sendFcm(user, trip, tripSchedule, type, title, content, null);
+    }
+
+    public void sendFcm(User user, Trip trip, TripSchedule tripSchedule,
+                        NotificationType type, String title, String content,
+                        Integer weatherStatusCode) {
 
         userFcmTokenRepository.findByUser(user).ifPresent(fcmToken -> {
-
             Map<String, String> data = new HashMap<>();
             data.put("type", type.name());
 
@@ -96,11 +90,13 @@ public class NotificationService {
             if (tripSchedule != null) {
                 data.put("tripScheduleId", String.valueOf(tripSchedule.getTripScheduleId()));
             }
+            if (weatherStatusCode != null) {
+                data.put("weatherStatusCode", String.valueOf(weatherStatusCode));
+            }
 
             try {
                 fcmService.sendPushNotification(fcmToken.getToken(), title, content, data);
                 log.info("FCM 전송 요청 완료 - user: {}, type: {}", user.getUsersId(), type);
-
             } catch (Exception e) {
                 log.error("FCM 전송 실패 (서비스는 계속 진행) - user: {}, error: {}",
                         user.getUsersId(), e.getMessage());
@@ -108,38 +104,30 @@ public class NotificationService {
         });
     }
 
-    /**
-     * 현재 시간이 야간(21:00 ~ 08:00)인지 확인
-     */
     private boolean isNightTime() {
         LocalTime now = LocalTime.now();
         return now.isAfter(LocalTime.of(21, 0)) || now.isBefore(LocalTime.of(8, 0));
     }
 
-    /**
-     * 일정 알림
-     */
     @Transactional
     public void sendScheduleNotification(User user, Trip trip, TripSchedule schedule,
                                          String title, String content) {
         sendNotification(user, trip, schedule, NotificationType.SCHEDULE, title, content);
     }
 
-    /**
-     * 날씨 알림
-     */
     @Transactional
     public void sendWeatherNotification(User user, Trip trip,
                                         String title, String content) {
-        sendNotification(user, trip, null, NotificationType.WEATHER, title, content);
+        sendWeatherNotification(user, trip, title, content, null);
     }
 
-    /**
-     * 알림 조회 + 읽음 여부 처리
-     *
-     * @param usersId JWT에서 추출한 사용자 ID
-     * @return 알림 목록
-     */
+    @Transactional
+    public void sendWeatherNotification(User user, Trip trip,
+                                        String title, String content,
+                                        Integer weatherStatusCode) {
+        sendNotification(user, trip, null, NotificationType.WEATHER, title, content, weatherStatusCode);
+    }
+
     @Transactional
     public List<NotificationResponse> getNotifications(String usersId) {
         User user = myPageRepository.findByUsersIdAndIsDeletedFalse(usersId)
@@ -155,11 +143,6 @@ public class NotificationService {
                 .toList();
     }
 
-    /**
-     *
-     * @param usersId JWT에서 추출한 사용자 ID
-     * @return 사용자가 읽지 않은 알림이 하나라도 존재하면 false, 없으면 true 반환
-     */
     @Transactional(readOnly = true)
     public boolean hasUnreadNotification(String usersId) {
         User user = myPageRepository.findByUsersIdAndIsDeletedFalse(usersId)
