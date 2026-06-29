@@ -45,11 +45,13 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
@@ -88,8 +90,12 @@ public class SearchService {
     private static final int DESCRIPTION_MAX_LENGTH = 2000;
 
     private static final int SEARCH_CACHE_KEY_MAX_LENGTH = 150;
-    private static final String SEARCH_CACHE_KEY_PREFIX = "gplaces-v2:";
-    private static final int SEARCH_RESULT_TARGET_COUNT = 12;
+    private static final String SEARCH_CACHE_KEY_PREFIX = "gplaces-v3:";
+    private static final int DEFAULT_SEARCH_PAGE_INDEX = 0;
+    private static final int DEFAULT_SEARCH_PAGE_SIZE = 20;
+    private static final int MAX_SEARCH_PAGE_SIZE = 20;
+    private static final int MAX_SEARCH_RESULT_TARGET_COUNT = 100;
+    private static final int GOOGLE_TEXT_SEARCH_PAGE_SIZE = 20;
     private static final int NEARBY_EXPANSION_RESULT_COUNT_PER_GROUP = 5;
     private static final double NEARBY_EXPANSION_RADIUS_METERS = 5_000.0;
     private static final String GOOGLE_NEARBY_POPULARITY_RANK_PREFERENCE = "POPULARITY";
@@ -163,28 +169,39 @@ public class SearchService {
     @Transactional
     public SearchResultListResponseDto getSearchResults(SearchResultListRequestDto requestDto) {
         String keyword = normalizeKeyword(requestDto.getKeyword());
+        int page = normalizePage(requestDto.getPage());
+        int size = normalizePageSize(requestDto.getSize());
+        int requiredResultCount = calculateRequiredResultCount(page, size);
         String cacheKey = buildCacheKey(keyword);
 
         CachedSearch cachedSearch = findCachedSearch(cacheKey).orElse(null);
         List<Place> places;
 
         if (cachedSearch == null) {
-            places = refreshSearchResults(keyword, cacheKey, null);
+            places = refreshSearchResults(keyword, cacheKey, null, requiredResultCount);
         } else {
             cachedSearch.searchCache().markSearched();
             places = cachedSearch.places();
 
             // 캐시 메타데이터와 실제 매핑 개수가 어긋난 경우에만 복구성 재동기화를 수행합니다.
-            if (needsSearchCacheRefresh(cachedSearch)) {
-                places = refreshSearchResultsSafely(keyword, cacheKey, cachedSearch.searchCache(), places);
+            if (needsSearchCacheRefresh(cachedSearch, requiredResultCount)) {
+                places = refreshSearchResultsSafely(
+                        keyword,
+                        cacheKey,
+                        cachedSearch.searchCache(),
+                        places,
+                        requiredResultCount
+                );
             } else {
                 repairMissingPlaceImages(places);
             }
         }
 
-        Map<Long, List<String>> tagsByPlaceId = getTagsByPlaceId(places);
+        int totalCount = places.size();
+        List<Place> pagedPlaces = slicePlaces(places, page, size);
+        Map<Long, List<String>> tagsByPlaceId = getTagsByPlaceId(pagedPlaces);
 
-        List<SearchResultResponseDto> searchResults = places.stream()
+        List<SearchResultResponseDto> searchResults = pagedPlaces.stream()
                 .map(place -> {
                     List<String> tags = tagsByPlaceId.getOrDefault(place.getPlaceId(), List.of());
                     return SearchResultResponseDto.from(
@@ -197,7 +214,7 @@ public class SearchService {
 
         saveRecentSearchIfAuthenticated(requestDto.getUsersId(), keyword);
 
-        return SearchResultListResponseDto.of(keyword, searchResults);
+        return SearchResultListResponseDto.of(keyword, page, size, totalCount, searchResults);
     }
 
     /**
@@ -310,10 +327,11 @@ public class SearchService {
             String keyword,
             String cacheKey,
             SearchCache existingCache,
-            List<Place> fallbackPlaces
+            List<Place> fallbackPlaces,
+            int requiredResultCount
     ) {
         try {
-            return refreshSearchResults(keyword, cacheKey, existingCache);
+            return refreshSearchResults(keyword, cacheKey, existingCache, requiredResultCount);
         } catch (RuntimeException exception) {
             log.warn("Cached search refresh failed. keyword={}, message={}", keyword, exception.getMessage());
             return fallbackPlaces;
@@ -329,8 +347,13 @@ public class SearchService {
      * @param existingCache 기존 검색 캐시, 없으면 null
      * @return 정렬된 장소 목록
      */
-    private List<Place> refreshSearchResults(String keyword, String cacheKey, SearchCache existingCache) {
-        List<Place> searchPlaces = deduplicateSearchPlaces(syncGooglePlaces(keyword));
+    private List<Place> refreshSearchResults(
+            String keyword,
+            String cacheKey,
+            SearchCache existingCache,
+            int requiredResultCount
+    ) {
+        List<Place> searchPlaces = deduplicateSearchPlaces(syncGooglePlaces(keyword, requiredResultCount));
         SearchCache searchCache = upsertSearchCache(cacheKey, existingCache, searchPlaces);
         return loadCachePlaces(searchCache);
     }
@@ -389,8 +412,42 @@ public class SearchService {
      * @param cachedSearch 캐시 메타데이터와 결과 목록 묶음
      * @return 캐시를 다시 구성해야 하면 true
      */
-    private boolean needsSearchCacheRefresh(CachedSearch cachedSearch) {
-        return cachedSearch.searchCache().getResultCount() != cachedSearch.places().size();
+    private List<Place> slicePlaces(List<Place> places, int page, int size) {
+        if (isNullOrEmpty(places)) {
+            return List.of();
+        }
+
+        int fromIndex = page * size;
+        if (fromIndex >= places.size()) {
+            return List.of();
+        }
+
+        int toIndex = Math.min(fromIndex + size, places.size());
+        return places.subList(fromIndex, toIndex);
+    }
+
+    private int normalizePage(Integer page) {
+        if (page == null || page < 0) {
+            return DEFAULT_SEARCH_PAGE_INDEX;
+        }
+        return page;
+    }
+
+    private int normalizePageSize(Integer size) {
+        if (size == null || size < 1) {
+            return DEFAULT_SEARCH_PAGE_SIZE;
+        }
+        return Math.min(size, MAX_SEARCH_PAGE_SIZE);
+    }
+
+    private int calculateRequiredResultCount(int page, int size) {
+        long required = ((long) page + 2L) * size;
+        return (int) Math.min(required, MAX_SEARCH_RESULT_TARGET_COUNT);
+    }
+
+    private boolean needsSearchCacheRefresh(CachedSearch cachedSearch, int requiredResultCount) {
+        return cachedSearch.searchCache().getResultCount() != cachedSearch.places().size()
+                || cachedSearch.places().size() < requiredResultCount;
     }
 
     /**
@@ -469,9 +526,9 @@ public class SearchService {
      * @param keyword 검색어
      * @return 동기화된 장소 엔티티 목록
      */
-    private List<Place> syncGooglePlaces(String keyword) {
+    private List<Place> syncGooglePlaces(String keyword, int maxCount) {
         List<GooglePlaceSearchService.GooglePlaceCandidate> googleCandidates =
-                collectGoogleSearchCandidates(keyword);
+                collectGoogleSearchCandidates(keyword, maxCount);
 
         if (googleCandidates.isEmpty()) {
             return List.of();
@@ -487,23 +544,103 @@ public class SearchService {
         return syncedPlaces;
     }
 
-    private List<GooglePlaceSearchService.GooglePlaceCandidate> collectGoogleSearchCandidates(String keyword) {
-        List<GooglePlaceSearchService.GooglePlaceCandidate> googleCandidates = new ArrayList<>(
-                limitUniqueGoogleCandidates(
-                        googlePlaceSearchService.searchPlaces(keyword),
-                        SEARCH_RESULT_TARGET_COUNT
-                )
-        );
+    private List<GooglePlaceSearchService.GooglePlaceCandidate> collectGoogleSearchCandidates(
+            String keyword,
+            int maxCount
+    ) {
+        List<GooglePlaceSearchService.GooglePlaceCandidate> googleCandidates = new ArrayList<>();
 
-        if (googleCandidates.size() < SEARCH_RESULT_TARGET_COUNT) {
-            appendNearbyExpansionCandidates(googleCandidates);
+        for (String searchQuery : buildGoogleSearchQueries(keyword)) {
+            List<GooglePlaceSearchService.GooglePlaceCandidate> searchResults =
+                    googlePlaceSearchService.searchPlaces(searchQuery, GOOGLE_TEXT_SEARCH_PAGE_SIZE);
+
+            if (isNullOrEmpty(searchResults)) {
+                continue;
+            }
+
+            googleCandidates.addAll(searchResults);
+            googleCandidates = new ArrayList<>(limitUniqueGoogleCandidates(googleCandidates, maxCount));
+
+            if (googleCandidates.size() >= maxCount) {
+                break;
+            }
         }
 
-        return limitUniqueGoogleCandidates(googleCandidates, SEARCH_RESULT_TARGET_COUNT);
+        if (googleCandidates.size() < maxCount) {
+            appendNearbyExpansionCandidates(googleCandidates, maxCount);
+        }
+
+        return limitUniqueGoogleCandidates(googleCandidates, maxCount);
+    }
+
+    private List<String> buildGoogleSearchQueries(String keyword) {
+        String normalizedKeyword = normalizeKeyword(keyword);
+        LinkedHashSet<String> queries = new LinkedHashSet<>();
+
+        addGoogleSearchQuery(queries, normalizedKeyword);
+        appendKeywordSpecificFallbackQueries(queries, normalizedKeyword);
+        appendRegionalFallbackQueries(queries, normalizedKeyword);
+
+        return queries.stream().toList();
+    }
+
+    private void appendKeywordSpecificFallbackQueries(Set<String> queries, String keyword) {
+        String compactKeyword = keyword.replaceAll("\\s+", "");
+
+        if (compactKeyword.contains("한강")) {
+            addGoogleSearchQuery(queries, "한강공원");
+            addGoogleSearchQuery(queries, "한강 공원");
+            addGoogleSearchQuery(queries, "한강공원 서울");
+            addGoogleSearchQuery(queries, "한강 서울");
+        }
+
+        if (compactKeyword.contains("뚝섬")) {
+            addGoogleSearchQuery(queries, "뚝섬 한강공원");
+            addGoogleSearchQuery(queries, "뚝섬한강공원");
+            addGoogleSearchQuery(queries, "뚝섬유원지");
+            addGoogleSearchQuery(queries, "뚝섬 서울");
+        }
+    }
+
+    private void appendRegionalFallbackQueries(Set<String> queries, String keyword) {
+        if (!containsAny(keyword, "서울", "seoul")) {
+            addGoogleSearchQuery(queries, keyword + " 서울");
+        }
+
+        if (!containsAny(keyword, "대한민국", "한국", "korea")) {
+            addGoogleSearchQuery(queries, keyword + " 대한민국");
+        }
+    }
+
+    private void addGoogleSearchQuery(Set<String> queries, String query) {
+        if (!hasText(query)) {
+            return;
+        }
+
+        String normalizedQuery = query.trim().replaceAll("\\s+", " ");
+        if (!normalizedQuery.isEmpty()) {
+            queries.add(normalizedQuery);
+        }
+    }
+
+    private boolean containsAny(String value, String... candidates) {
+        if (!hasText(value) || candidates == null || candidates.length == 0) {
+            return false;
+        }
+
+        String normalizedValue = value.toLowerCase(Locale.ROOT);
+        for (String candidate : candidates) {
+            if (hasText(candidate) && normalizedValue.contains(candidate.toLowerCase(Locale.ROOT))) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private void appendNearbyExpansionCandidates(
-            List<GooglePlaceSearchService.GooglePlaceCandidate> googleCandidates
+            List<GooglePlaceSearchService.GooglePlaceCandidate> googleCandidates,
+            int maxCount
     ) {
         Optional<GooglePlaceSearchService.GooglePlaceCandidate> anchorCandidate =
                 findNearbyExpansionAnchor(googleCandidates);
@@ -513,7 +650,7 @@ public class SearchService {
 
         List<List<GooglePlaceSearchService.GooglePlaceCandidate>> candidateBuckets =
                 searchNearbyExpansionCandidateBuckets(anchorCandidate.get());
-        appendRoundRobinGoogleCandidates(googleCandidates, candidateBuckets, SEARCH_RESULT_TARGET_COUNT);
+        appendRoundRobinGoogleCandidates(googleCandidates, candidateBuckets, maxCount);
     }
 
     private Optional<GooglePlaceSearchService.GooglePlaceCandidate> findNearbyExpansionAnchor(
@@ -947,9 +1084,20 @@ public class SearchService {
             String countryName
     ) {
         if (hasText(googlePlaceId)) {
-            Optional<Place> placeByGooglePlaceId = placeRepository.findByGooglePlaceIdAndIsDeletedFalse(googlePlaceId);
-            if (placeByGooglePlaceId.isPresent()) {
-                return placeByGooglePlaceId;
+            List<Place> placesByGooglePlaceId =
+                    placeRepository.findAllByGooglePlaceIdAndIsDeletedFalseOrderByUpdatedAtDescCreatedAtDescPlaceIdDesc(
+                            googlePlaceId
+                    );
+            if (!isNullOrEmpty(placesByGooglePlaceId)) {
+                if (placesByGooglePlaceId.size() > 1) {
+                    log.warn(
+                            "Duplicate active places found for googlePlaceId={}. Using latest placeId={}. duplicateCount={}",
+                            googlePlaceId,
+                            placesByGooglePlaceId.get(0).getPlaceId(),
+                            placesByGooglePlaceId.size()
+                    );
+                }
+                return Optional.of(placesByGooglePlaceId.get(0));
             }
         }
 

@@ -33,7 +33,9 @@ public interface PlaceRepository extends JpaRepository<Place, Long> {
             """)
     List<Place> searchByKeyword(@Param("keyword") String keyword, Sort sort);
 
-    Optional<Place> findByGooglePlaceIdAndIsDeletedFalse(String googlePlaceId);
+    List<Place> findAllByGooglePlaceIdAndIsDeletedFalseOrderByUpdatedAtDescCreatedAtDescPlaceIdDesc(
+            String googlePlaceId
+    );
 
     Optional<Place> findFirstByNameAndAddressAndIsDeletedFalse(String name, String address);
 

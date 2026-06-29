@@ -1,6 +1,8 @@
 package mars.tripplanappbackend.search.service;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.RequiredArgsConstructor;
@@ -32,7 +34,8 @@ public class GooglePlaceSearchService {
 
     /**
      * Text Search 응답 필드 마스크.
-     * 장소 검색 결과를 DB에 upsert할 때 필요한 핵심 필드 + 화면 메타데이터(이미지/소개/영업시간)를 요청합니다.
+     * 검색 결과를 place/search_cache에 동기화하는 데 필요한 필드와
+     * 화면 표시에 쓰는 메타데이터(이미지/설명/영업시간)를 함께 요청합니다.
      */
     private static final String GOOGLE_PLACES_TEXT_SEARCH_FIELD_MASK =
             "places.id,places.displayName,places.formattedAddress,places.shortFormattedAddress,places.location,"
@@ -42,7 +45,7 @@ public class GooglePlaceSearchService {
 
     /**
      * Place Details 응답 필드 마스크.
-     * Text Search 결과에 메타데이터가 비어있는 경우 fallback으로 사용합니다.
+     * Text Search 결과 메타데이터가 비어 있을 때 fallback으로 사용합니다.
      */
     private static final String GOOGLE_PLACES_DETAILS_FIELD_MASK =
             "id,displayName,formattedAddress,shortFormattedAddress,location,"
@@ -62,6 +65,7 @@ public class GooglePlaceSearchService {
     @Value("${google.places.base-url:https://places.googleapis.com}")
     private String googlePlacesBaseUrl;
 
+    private final ObjectMapper objectMapper = new ObjectMapper();
     private final WebClient webClient = WebClient.builder().build();
 
     /**
@@ -80,30 +84,40 @@ public class GooglePlaceSearchService {
         int pageSize = normalizeResultCount(resultCount);
 
         try {
-            GoogleTextSearchResponse response = webClient.post()
-                    .uri(googlePlacesBaseUrl + GOOGLE_PLACES_TEXT_SEARCH_PATH)
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .header("X-Goog-Api-Key", googlePlacesApiKey)
-                    .header("X-Goog-FieldMask", GOOGLE_PLACES_TEXT_SEARCH_FIELD_MASK)
-                    .bodyValue(new GoogleTextSearchRequest(
+            GoogleTextSearchResponse response = executeTextSearchRequest(
+                    googlePlacesBaseUrl + GOOGLE_PLACES_TEXT_SEARCH_PATH,
+                    new GoogleTextSearchRequest(
                             normalizedKeyword,
                             pageSize,
                             DEFAULT_LANGUAGE_CODE
-                    ))
-                    .retrieve()
-                    .bodyToMono(GoogleTextSearchResponse.class)
-                    .block();
+                    )
+            );
 
             return mapTextSearchResults(response);
         } catch (WebClientResponseException exception) {
+            if (isTreatableAsEmptyResult(exception)) {
+                log.warn(
+                        "Google Places Text Search 응답이 비정상이지만 2xx이므로 빈 결과로 처리합니다. keyword={}, status={}, response={}",
+                        normalizedKeyword,
+                        exception.getStatusCode(),
+                        exception.getResponseBodyAsString()
+                );
+                return List.of();
+            }
             log.error(
-                    "Google Places Text Search API 호출 실패. status={}, response={}",
+                    "Google Places Text Search API 호출 실패. keyword={}, status={}, response={}",
+                    normalizedKeyword,
                     exception.getStatusCode(),
                     exception.getResponseBodyAsString()
             );
             throw new BusinessException(ErrorCode.INTERNAL_ERROR);
         } catch (Exception exception) {
-            log.error("Google Places Text Search 처리 중 예외 발생: {}", exception.getMessage(), exception);
+            log.error(
+                    "Google Places Text Search 처리 중 예외 발생. keyword={}, message={}",
+                    normalizedKeyword,
+                    exception.getMessage(),
+                    exception
+            );
             throw new BusinessException(ErrorCode.INTERNAL_ERROR);
         }
     }
@@ -138,12 +152,9 @@ public class GooglePlaceSearchService {
         String normalizedRankPreference = normalizeRankPreference(rankPreference);
 
         try {
-            GoogleTextSearchResponse response = webClient.post()
-                    .uri(googlePlacesBaseUrl + GOOGLE_PLACES_NEARBY_SEARCH_PATH)
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .header("X-Goog-Api-Key", googlePlacesApiKey)
-                    .header("X-Goog-FieldMask", GOOGLE_PLACES_TEXT_SEARCH_FIELD_MASK)
-                    .bodyValue(new GoogleNearbySearchRequest(
+            GoogleTextSearchResponse response = executeTextSearchRequest(
+                    googlePlacesBaseUrl + GOOGLE_PLACES_NEARBY_SEARCH_PATH,
+                    new GoogleNearbySearchRequest(
                             includedTypes,
                             normalizedMaxResultCount,
                             DEFAULT_LANGUAGE_CODE,
@@ -154,13 +165,21 @@ public class GooglePlaceSearchService {
                                             radiusMeters
                                     )
                             )
-                    ))
-                    .retrieve()
-                    .bodyToMono(GoogleTextSearchResponse.class)
-                    .block();
+                    )
+            );
 
             return mapTextSearchResults(response);
         } catch (WebClientResponseException exception) {
+            if (isTreatableAsEmptyResult(exception)) {
+                log.warn(
+                        "Google Places Nearby Search 응답이 비정상이지만 2xx이므로 빈 결과로 처리합니다. lat={}, lng={}, status={}, response={}",
+                        latitude,
+                        longitude,
+                        exception.getStatusCode(),
+                        exception.getResponseBodyAsString()
+                );
+                return List.of();
+            }
             log.warn(
                     "Google Places Nearby Search API 호출 실패. lat={}, lng={}, status={}, response={}",
                     latitude,
@@ -183,7 +202,7 @@ public class GooglePlaceSearchService {
     /**
      * Place ID 기준으로 Place Details를 조회합니다.
      * <p>
-     * 본 메서드는 metadata 보강용 fallback API로 사용되며, 조회 실패 시 null을 반환합니다.
+     * 본 메서드는 metadata 보강용 fallback API로 사용하고, 조회 실패 시 null을 반환합니다.
      *
      * @param googlePlaceId Google Place ID
      * @return 상세 정보 후보 객체, 실패 시 null
@@ -232,7 +251,7 @@ public class GooglePlaceSearchService {
     /**
      * Place Photo 리소스명을 사용해 photoUri를 조회합니다.
      * <p>
-     * 이미지 URL 조회 실패는 검색 전체를 실패시키지 않기 위해 null로 흡수합니다.
+     * 이미지 URL 조회 실패가 검색 전체를 실패시키지 않도록 null로 흡수합니다.
      *
      * @param photoName Place Photos 리소스명(ex. places/{placeId}/photos/{photoResource})
      * @return 이미지 URL(photoUri), 실패 시 null
@@ -275,6 +294,30 @@ public class GooglePlaceSearchService {
             );
             return null;
         }
+    }
+
+    private GoogleTextSearchResponse executeTextSearchRequest(String requestUri, Object requestBody)
+            throws JsonProcessingException {
+        String rawResponse = webClient.post()
+                .uri(requestUri)
+                .contentType(MediaType.APPLICATION_JSON)
+                .header("X-Goog-Api-Key", googlePlacesApiKey)
+                .header("X-Goog-FieldMask", GOOGLE_PLACES_TEXT_SEARCH_FIELD_MASK)
+                .bodyValue(requestBody)
+                .retrieve()
+                .bodyToMono(String.class)
+                .block();
+
+        if (!hasText(rawResponse)) {
+            log.warn("Google Places Text Search 응답 본문이 비어 있습니다. uri={}", requestUri);
+            return new GoogleTextSearchResponse();
+        }
+
+        GoogleTextSearchResponse parsedResponse = objectMapper.readValue(rawResponse, GoogleTextSearchResponse.class);
+        if (parsedResponse.getPlaces() == null || parsedResponse.getPlaces().isEmpty()) {
+            log.info("Google Places Text Search 결과가 없습니다. uri={}, rawResponse={}", requestUri, rawResponse);
+        }
+        return parsedResponse;
     }
 
     private List<GooglePlaceCandidate> mapTextSearchResults(GoogleTextSearchResponse response) {
@@ -395,6 +438,20 @@ public class GooglePlaceSearchService {
 
     private boolean hasText(String value) {
         return value != null && !value.isBlank();
+    }
+
+    private boolean isTreatableAsEmptyResult(WebClientResponseException exception) {
+        if (exception == null || !exception.getStatusCode().is2xxSuccessful()) {
+            return false;
+        }
+
+        String responseBody = exception.getResponseBodyAsString();
+        if (!hasText(responseBody)) {
+            return true;
+        }
+
+        String normalizedBody = responseBody.trim();
+        return "{}".equals(normalizedBody) || "{\"places\":[]}".equals(normalizedBody);
     }
 
     private void validateGooglePlacesApiKey() {
