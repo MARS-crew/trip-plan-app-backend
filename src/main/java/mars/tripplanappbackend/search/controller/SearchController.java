@@ -29,56 +29,50 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-/**
- * 검색 화면에서 사용하는 조회/삭제 API를 제공합니다.
- */
 @RestController
 @RequestMapping("/api/v1/search")
 @RequiredArgsConstructor
-@Tag(name = "Search", description = "검색 관련 API")
+@Tag(name = "Search", description = "Search APIs")
 public class SearchController {
 
     private final SearchService searchService;
 
-    /**
-     * 검색 화면 상단 고정 카테고리 목록을 조회합니다.
-     */
     @GetMapping("/categories")
     @ApiErrorExceptions({ErrorCode.INTERNAL_ERROR})
     @Operation(
             summary = "검색 카테고리 조회",
-            description = "검색 화면 상단에 고정 노출되는 카테고리 목록을 조회합니다."
+            description = "검색 화면 상단의 고정 카테고리 목록을 조회합니다."
     )
     public ApiResponse<SearchCategoryListResponseDto> getSearchCategories() {
         SearchCategoryRequestDto requestDto = SearchCategoryRequestDto.create();
         return ApiResponse.ok(searchService.getSearchCategories(requestDto));
     }
 
-    /**
-     * 통합 검색 결과를 조회합니다.
-     */
     @GetMapping("/results")
     @ApiErrorExceptions({ErrorCode.INVALID_INPUT, ErrorCode.INTERNAL_ERROR})
     @Operation(
             summary = "검색 결과 조회",
-            description = "검색어 기반 장소 검색 결과 목록을 조회합니다."
+            description = "검색어 기반 장소 검색 결과를 페이지 단위로 조회합니다."
     )
     public ApiResponse<SearchResultListResponseDto> getSearchResults(
-            @Parameter(description = "검색어", example = "제주도")
+            @Parameter(description = "검색어", example = "삿포로")
             @RequestParam("keyword") String keyword,
+            @Parameter(description = "0-based page index", example = "0")
+            @RequestParam(value = "page", defaultValue = "0") Integer page,
+            @Parameter(description = "page size (max 20)", example = "20")
+            @RequestParam(value = "size", defaultValue = "20") Integer size,
             @Parameter(hidden = true)
             @CurrentUser UserPrincipal userPrincipal
     ) {
         SearchResultListRequestDto requestDto = SearchResultListRequestDto.of(
                 keyword,
-                userPrincipal != null ? userPrincipal.getUsersId() : null
+                userPrincipal != null ? userPrincipal.getUsersId() : null,
+                page,
+                size
         );
         return ApiResponse.ok(searchService.getSearchResults(requestDto));
     }
 
-    /**
-     * 검색 화면 하단 인기 검색어 목록을 조회합니다.
-     */
     @GetMapping("/popular-searches")
     @ApiErrorExceptions({ErrorCode.INTERNAL_ERROR})
     @Operation(
@@ -90,14 +84,11 @@ public class SearchController {
         return ApiResponse.ok(searchService.getPopularSearches(requestDto));
     }
 
-    /**
-     * 로그인 사용자의 최근 검색어 목록을 조회합니다.
-     */
     @GetMapping("/recent-searches")
     @ApiErrorExceptions({ErrorCode.UNAUTHORIZED, ErrorCode.USER_NOT_FOUND, ErrorCode.INTERNAL_ERROR})
     @Operation(
             summary = "최근 검색어 조회",
-            description = "현재 로그인 사용자의 최근 검색어 최대 5건을 최신순으로 조회합니다."
+            description = "현재 로그인한 사용자의 최근 검색어 최대 5건을 최신순으로 조회합니다."
     )
     public ApiResponse<RecentSearchListResponseDto> getRecentSearches(
             @Parameter(hidden = true)
@@ -107,9 +98,6 @@ public class SearchController {
         return ApiResponse.ok(searchService.getRecentSearches(requestDto));
     }
 
-    /**
-     * 최근 검색어 한 건을 삭제합니다.
-     */
     @DeleteMapping("/recent-searches/{recentSearchId}")
     @ApiErrorExceptions({
             ErrorCode.UNAUTHORIZED,
@@ -134,9 +122,6 @@ public class SearchController {
         return ApiResponse.ok(searchService.deleteRecentSearch(requestDto));
     }
 
-    /**
-     * 최근 검색어 전체를 삭제합니다.
-     */
     @DeleteMapping("/recent-searches")
     @ApiErrorExceptions({
             ErrorCode.UNAUTHORIZED,
@@ -145,7 +130,7 @@ public class SearchController {
     })
     @Operation(
             summary = "최근 검색어 전체 삭제",
-            description = "현재 로그인 사용자의 최근 검색어 목록 전체를 삭제합니다."
+            description = "현재 로그인한 사용자의 최근 검색어 목록 전체를 삭제합니다."
     )
     public ApiResponse<DeleteAllRecentSearchResponseDto> deleteAllRecentSearches(
             @Parameter(hidden = true)
