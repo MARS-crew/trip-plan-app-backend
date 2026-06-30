@@ -1,6 +1,7 @@
 package mars.tripplanappbackend.place.service;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import mars.tripplanappbackend.global.enums.ErrorCode;
 import mars.tripplanappbackend.global.exception.BusinessException;
 import mars.tripplanappbackend.mypage.domain.SavedPlace;
@@ -35,6 +36,7 @@ import mars.tripplanappbackend.review.domain.Review;
 import mars.tripplanappbackend.review.domain.ReviewImage;
 import mars.tripplanappbackend.review.repository.ReviewImageRepository;
 import mars.tripplanappbackend.review.repository.ReviewRepository;
+import mars.tripplanappbackend.search.service.GooglePlaceSearchService;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -51,6 +53,7 @@ import java.util.stream.Collectors;
  * 메인 페이지와 여행지 상세 페이지에서 사용하는 장소 API의 비즈니스 로직을 처리하는 서비스입니다.
  */
 @Service
+@Slf4j
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
 public class PlaceService {
@@ -58,6 +61,9 @@ public class PlaceService {
     private static final int MAX_TAG_COUNT = 3;
     private static final int MAX_NEARBY_RECOMMENDED_PLACE_COUNT = 3;
     private static final long MAX_NEARBY_DISTANCE_METERS = 1_000L;
+    private static final int IMAGE_URL_MAX_LENGTH = 500;
+    private static final String LEGACY_PLACEHOLDER_IMAGE_URL_TOKEN = "cdn.lets-trip.com/place/";
+    private static final String QA_PLACEHOLDER_IMAGE_URL_TOKEN = "placehold.co/";
     private static final String SHARE_URL_TEMPLATE = "https://lets-trip.com/places/%d";
     private static final String SHARE_TITLE_TEMPLATE = "Let's Trip에서 %s을(를) 확인해보세요.";
     private static final String SHARE_DESCRIPTION_TEMPLATE = "%s에 위치한 %s의 상세 정보를 공유합니다.";
@@ -68,6 +74,7 @@ public class PlaceService {
     private final PlaceTagMapRepository placeTagMapRepository;
     private final ReviewRepository reviewRepository;
     private final ReviewImageRepository reviewImageRepository;
+    private final GooglePlaceSearchService googlePlaceSearchService;
 
     /**
      * 평점과 리뷰 수를 기준으로 메인 페이지 추천 여행지 목록을 조회합니다.
@@ -75,6 +82,7 @@ public class PlaceService {
      * @param requestDto 추천 여행지 조회 요청 DTO
      * @return 추천 여행지 목록 응답 DTO
      */
+    @Transactional
     public RecommendedPlaceListResponseDto getRecommendedPlaces(RecommendedPlaceRequestDto requestDto) {
         List<Place> places = placeRepository.findByIsDeletedFalseOrderByRatingAvgDescReviewCountDesc(
                 PageRequest.of(0, requestDto.getLimit())
@@ -97,7 +105,7 @@ public class PlaceService {
      * 전체 저장 개수와 현재 필터 기준 카드 목록을 함께 반환해 저장 화면과 바텀시트가 같은 응답을 재사용할 수 있도록 합니다.
      *
      * @param requestDto 로그인 사용자 아이디와 필터 유형을 담은 요청 DTO
-     * @return 저장한 장소 목록 응답 DTO
+     * @return 저장한 장소 목록 응답 DT
      */
     public SavedPlaceListResponseDto getSavedPlaces(SavedPlaceListRequestDto requestDto) {
         validateSavedPlaceListRequest(requestDto);
@@ -314,6 +322,85 @@ public class PlaceService {
                                 )
                         )
                 ));
+    }
+
+    /**
+     * Replaces missing or placeholder place images with Google Place Photo URLs when possible.
+     */
+    private void refreshPlaceImagesFromGoogle(List<Place> places) {
+        if (places == null || places.isEmpty()) {
+            return;
+        }
+
+        places.stream()
+                .filter(this::needsGoogleImageRefresh)
+                .forEach(this::refreshPlaceImageFromGoogle);
+    }
+
+    private boolean needsGoogleImageRefresh(Place place) {
+        if (place == null || !hasText(place.getGooglePlaceId())) {
+            return false;
+        }
+
+        String imageUrl = nullableTrim(place.getImageUrl());
+        return !hasText(imageUrl) || isPlaceholderImageUrl(imageUrl);
+    }
+
+    private void refreshPlaceImageFromGoogle(Place place) {
+        try {
+
+            log.info("H {}", place.toString());
+            GooglePlaceSearchService.GooglePlaceCandidate details =
+                    googlePlaceSearchService.getPlaceDetails(place.getGooglePlaceId());
+            if (details == null || !hasText(details.firstPhotoName())) {
+                return;
+            }
+
+            String photoUri = googlePlaceSearchService.getPhotoUri(details.firstPhotoName());
+            if (!hasText(photoUri)) {
+                return;
+            }
+
+            place.updateImageUrlFromGoogle(truncate(nullableTrim(photoUri), IMAGE_URL_MAX_LENGTH));
+        } catch (BusinessException exception) {
+            log.warn(
+                    "Skipping Google image refresh for recommended place. placeId={}, googlePlaceId={}, code={}",
+                    place.getPlaceId(),
+                    place.getGooglePlaceId(),
+                    exception.getErrorCode(),
+                    exception
+            );
+        } catch (Exception exception) {
+            log.warn(
+                    "Skipping Google image refresh for recommended place. placeId={}, googlePlaceId={}, message={}",
+                    place.getPlaceId(),
+                    place.getGooglePlaceId(),
+                    exception.getMessage(),
+                    exception
+            );
+        }
+    }
+
+    private boolean isPlaceholderImageUrl(String imageUrl) {
+        return hasText(imageUrl)
+                && (imageUrl.contains(LEGACY_PLACEHOLDER_IMAGE_URL_TOKEN)
+                || imageUrl.contains(QA_PLACEHOLDER_IMAGE_URL_TOKEN));
+    }
+
+    private String truncate(String value, int maxLength) {
+        if (!hasText(value)) {
+            return null;
+        }
+        return value.length() <= maxLength ? value : value.substring(0, maxLength);
+    }
+
+    private String nullableTrim(String value) {
+        if (value == null) {
+            return null;
+        }
+
+        String trimmed = value.trim();
+        return trimmed.isEmpty() ? null : trimmed;
     }
 
     /**
