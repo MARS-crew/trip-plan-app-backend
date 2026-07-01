@@ -178,6 +178,53 @@ public class Place extends BaseEntity {
     }
 
     /**
+     * Backfills legacy place rows with Google-derived metadata without touching review stats.
+     */
+    public void backfillGoogleMetadata(
+            String googlePlaceId,
+            String name,
+            String countryName,
+            String cityName,
+            String address,
+            BigDecimal latitude,
+            BigDecimal longitude,
+            String description,
+            String openingHours,
+            String imageUrl
+    ) {
+        if (hasText(googlePlaceId)) {
+            this.googlePlaceId = googlePlaceId.trim();
+        }
+        if (hasText(name)) {
+            this.name = name.trim();
+        }
+        if (hasText(countryName)) {
+            this.countryName = countryName.trim();
+        }
+        if (hasText(cityName)) {
+            this.cityName = cityName.trim();
+        }
+        if (hasText(address)) {
+            this.address = address.trim();
+        }
+        if (latitude != null) {
+            this.latitude = latitude;
+        }
+        if (longitude != null) {
+            this.longitude = longitude;
+        }
+        if (hasText(description)) {
+            this.description = description.trim();
+        }
+        if (hasText(openingHours)) {
+            this.openingHours = openingHours.trim();
+        }
+        if (hasText(imageUrl)) {
+            this.imageUrl = imageUrl.trim();
+        }
+    }
+
+    /**
      * 신규 리뷰가 등록될 때 평균 평점과 리뷰 수를 재계산합니다.
      */
     public void updateRating(Integer newRating) {
