@@ -1,6 +1,7 @@
 package mars.tripplanappbackend.place.repository;
 
 import mars.tripplanappbackend.place.domain.Place;
+import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -16,6 +17,8 @@ import java.math.BigDecimal;
 public interface PlaceRepository extends JpaRepository<Place, Long> {
 
     List<Place> findByIsDeletedFalseOrderByRatingAvgDescReviewCountDesc(Pageable pageable);
+
+    Page<Place> findAllByIsDeletedFalse(Pageable pageable);
 
     @Query("""
             select distinct p

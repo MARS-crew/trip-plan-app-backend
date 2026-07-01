@@ -4,6 +4,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import mars.tripplanappbackend.global.enums.ErrorCode;
 import mars.tripplanappbackend.global.exception.BusinessException;
+import mars.tripplanappbackend.global.service.LocationNameLocalizationService;
 import mars.tripplanappbackend.mypage.domain.SavedPlace;
 import mars.tripplanappbackend.mypage.domain.User;
 import mars.tripplanappbackend.mypage.repository.MyPageRepository;
@@ -42,11 +43,14 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.stream.Collectors;
 
 /**
@@ -62,6 +66,12 @@ public class PlaceService {
     private static final int MAX_NEARBY_RECOMMENDED_PLACE_COUNT = 3;
     private static final long MAX_NEARBY_DISTANCE_METERS = 1_000L;
     private static final int IMAGE_URL_MAX_LENGTH = 500;
+    private static final int RECOMMENDED_PLACE_FETCH_MULTIPLIER = 4;
+    private static final int MIN_RECOMMENDED_PLACE_FETCH_COUNT = 20;
+    private static final int MAX_RECOMMENDED_PLACE_FETCH_COUNT = 40;
+    private static final int GOOGLE_REPAIR_SEARCH_LIMIT = 5;
+    private static final int FALLBACK_DESCRIPTION_MAX_LENGTH = 255;
+    private static final String DEFAULT_COUNTRY_NAME = "UNKNOWN";
     private static final String LEGACY_PLACEHOLDER_IMAGE_URL_TOKEN = "cdn.lets-trip.com/place/";
     private static final String QA_PLACEHOLDER_IMAGE_URL_TOKEN = "placehold.co/";
     private static final String SHARE_URL_TEMPLATE = "https://lets-trip.com/places/%d";
@@ -75,6 +85,7 @@ public class PlaceService {
     private final ReviewRepository reviewRepository;
     private final ReviewImageRepository reviewImageRepository;
     private final GooglePlaceSearchService googlePlaceSearchService;
+    private final LocationNameLocalizationService locationNameLocalizationService;
 
     /**
      * 평점과 리뷰 수를 기준으로 메인 페이지 추천 여행지 목록을 조회합니다.
@@ -84,14 +95,28 @@ public class PlaceService {
      */
     @Transactional
     public RecommendedPlaceListResponseDto getRecommendedPlaces(RecommendedPlaceRequestDto requestDto) {
-        List<Place> places = placeRepository.findByIsDeletedFalseOrderByRatingAvgDescReviewCountDesc(
-                PageRequest.of(0, requestDto.getLimit())
+        int requestedLimit = requestDto.getLimit();
+        List<Place> candidatePlaces = placeRepository.findByIsDeletedFalseOrderByRatingAvgDescReviewCountDesc(
+                PageRequest.of(0, calculateRecommendedCandidateLimit(requestedLimit))
         );
 
-        Map<Long, List<String>> tagsByPlaceId = getTagsByPlaceId(places);
+        repairRecommendedPlaceMetadata(candidatePlaces);
 
-        List<RecommendedPlaceResponseDto> recommendedPlaces = places.stream()
-                .map(place -> RecommendedPlaceResponseDto.from(
+        List<Place> recommendedCandidates = candidatePlaces.stream()
+                .filter(this::hasDisplayableRecommendedImage)
+                .limit(requestedLimit)
+                .toList();
+
+        if (recommendedCandidates.size() < requestedLimit) {
+            recommendedCandidates = candidatePlaces.stream()
+                    .limit(requestedLimit)
+                    .toList();
+        }
+
+        Map<Long, List<String>> tagsByPlaceId = getTagsByPlaceId(recommendedCandidates);
+
+        List<RecommendedPlaceResponseDto> recommendedPlaces = recommendedCandidates.stream()
+                .map(place -> buildRecommendedPlaceResponse(
                         place,
                         tagsByPlaceId.getOrDefault(place.getPlaceId(), List.of())
                 ))
@@ -324,47 +349,72 @@ public class PlaceService {
                 ));
     }
 
-    /**
-     * Replaces missing or placeholder place images with Google Place Photo URLs when possible.
-     */
-    private void refreshPlaceImagesFromGoogle(List<Place> places) {
+    private int calculateRecommendedCandidateLimit(int requestedLimit) {
+        int normalizedRequestedLimit = Math.max(requestedLimit, 1);
+        int calculatedLimit = normalizedRequestedLimit * RECOMMENDED_PLACE_FETCH_MULTIPLIER;
+        return Math.min(Math.max(calculatedLimit, MIN_RECOMMENDED_PLACE_FETCH_COUNT), MAX_RECOMMENDED_PLACE_FETCH_COUNT);
+    }
+
+    private RecommendedPlaceResponseDto buildRecommendedPlaceResponse(Place place, List<String> tags) {
+        String countryName = locationNameLocalizationService.localizeCountryNameToKorean(
+                sanitizeRecommendedCountryName(place.getCountryName())
+        );
+        String cityName = locationNameLocalizationService.localizeCityNameToKorean(
+                resolveRecommendedDisplayCityName(place, countryName)
+        );
+
+        return RecommendedPlaceResponseDto.builder()
+                .placeId(place.getPlaceId())
+                .name(place.getName())
+                .countryName(countryName)
+                .cityName(cityName)
+                .imageUrl(sanitizeRecommendedImageUrl(place.getImageUrl()))
+                .placeType(place.getPlaceType())
+                .ratingAvg(place.getRatingAvg())
+                .reviewCount(place.getReviewCount())
+                .tags(tags)
+                .build();
+    }
+
+    private void repairRecommendedPlaceMetadata(List<Place> places) {
         if (places == null || places.isEmpty()) {
             return;
         }
 
-        places.stream()
-                .filter(this::needsGoogleImageRefresh)
-                .forEach(this::refreshPlaceImageFromGoogle);
+        places.forEach(this::repairRecommendedPlaceMetadata);
     }
 
-    private boolean needsGoogleImageRefresh(Place place) {
-        if (place == null || !hasText(place.getGooglePlaceId())) {
-            return false;
+    private void repairRecommendedPlaceMetadata(Place place) {
+        if (!needsRecommendedPlaceRepair(place)) {
+            return;
         }
 
-        String imageUrl = nullableTrim(place.getImageUrl());
-        return !hasText(imageUrl) || isPlaceholderImageUrl(imageUrl);
-    }
-
-    private void refreshPlaceImageFromGoogle(Place place) {
         try {
-
-            log.info("H {}", place.toString());
-            GooglePlaceSearchService.GooglePlaceCandidate details =
-                    googlePlaceSearchService.getPlaceDetails(place.getGooglePlaceId());
-            if (details == null || !hasText(details.firstPhotoName())) {
-                return;
+            GooglePlaceSearchService.GooglePlaceCandidate candidate = resolveGoogleCandidateForRepair(place);
+            if (candidate != null) {
+                applyGoogleMetadataToPlace(place, candidate);
             }
 
-            String photoUri = googlePlaceSearchService.getPhotoUri(details.firstPhotoName());
-            if (!hasText(photoUri)) {
-                return;
+            if (!hasText(place.getDescription())) {
+                String fallbackDescription = buildRecommendedFallbackDescription(place);
+                if (hasText(fallbackDescription)) {
+                    place.backfillGoogleMetadata(
+                            null,
+                            null,
+                            null,
+                            null,
+                            null,
+                            null,
+                            null,
+                            fallbackDescription,
+                            null,
+                            null
+                    );
+                }
             }
-
-            place.updateImageUrlFromGoogle(truncate(nullableTrim(photoUri), IMAGE_URL_MAX_LENGTH));
         } catch (BusinessException exception) {
             log.warn(
-                    "Skipping Google image refresh for recommended place. placeId={}, googlePlaceId={}, code={}",
+                    "Skipping recommended place repair. placeId={}, googlePlaceId={}, code={}",
                     place.getPlaceId(),
                     place.getGooglePlaceId(),
                     exception.getErrorCode(),
@@ -372,13 +422,502 @@ public class PlaceService {
             );
         } catch (Exception exception) {
             log.warn(
-                    "Skipping Google image refresh for recommended place. placeId={}, googlePlaceId={}, message={}",
+                    "Skipping recommended place repair. placeId={}, googlePlaceId={}, message={}",
                     place.getPlaceId(),
                     place.getGooglePlaceId(),
                     exception.getMessage(),
                     exception
             );
         }
+    }
+
+    private boolean needsRecommendedPlaceRepair(Place place) {
+        if (place == null) {
+            return false;
+        }
+
+        String imageUrl = nullableTrim(place.getImageUrl());
+        String countryName = nullableTrim(place.getCountryName());
+        String cityName = nullableTrim(place.getCityName());
+        String description = nullableTrim(place.getDescription());
+
+        return !hasText(imageUrl)
+                || isPlaceholderImageUrl(imageUrl)
+                || isUnknownCountry(countryName)
+                || !hasText(cityName)
+                || locationNameLocalizationService.requiresKoreanLocalization(countryName)
+                || locationNameLocalizationService.requiresKoreanLocalization(cityName)
+                || !hasText(description);
+    }
+
+    private boolean hasDisplayableRecommendedImage(Place place) {
+        String imageUrl = sanitizeRecommendedImageUrl(place != null ? place.getImageUrl() : null);
+        return hasText(imageUrl);
+    }
+
+    private GooglePlaceSearchService.GooglePlaceCandidate resolveGoogleCandidateForRepair(Place place) {
+        if (place == null) {
+            return null;
+        }
+
+        if (hasText(place.getGooglePlaceId())) {
+            return enrichRepairCandidateWithDetails(
+                    new GooglePlaceSearchService.GooglePlaceCandidate(
+                            place.getGooglePlaceId(),
+                            place.getName(),
+                            place.getAddress(),
+                            null,
+                            null,
+                            null,
+                            null,
+                            null,
+                            List.of(),
+                            place.getDescription(),
+                            List.of(),
+                            null,
+                            null,
+                            List.of()
+                    )
+            );
+        }
+
+        return searchGoogleCandidateForRepair(place);
+    }
+
+    private GooglePlaceSearchService.GooglePlaceCandidate searchGoogleCandidateForRepair(Place place) {
+        for (String query : buildGoogleRepairQueries(place)) {
+            List<GooglePlaceSearchService.GooglePlaceCandidate> candidates =
+                    googlePlaceSearchService.searchPlaces(query, GOOGLE_REPAIR_SEARCH_LIMIT);
+            if (candidates == null || candidates.isEmpty()) {
+                continue;
+            }
+
+            return enrichRepairCandidateWithDetails(candidates.get(0));
+        }
+
+        return null;
+    }
+
+    private List<String> buildGoogleRepairQueries(Place place) {
+        LinkedHashSet<String> queries = new LinkedHashSet<>();
+        String name = nullableTrim(place.getName());
+        String address = nullableTrim(place.getAddress());
+        String cityName = nullableTrim(place.getCityName());
+
+        if (hasText(name) && hasText(address)) {
+            queries.add(name + " " + address);
+        }
+        if (hasText(name) && hasText(cityName)) {
+            queries.add(name + " " + cityName);
+        }
+        if (hasText(name)) {
+            queries.add(name);
+        }
+
+        return List.copyOf(queries);
+    }
+
+    private GooglePlaceSearchService.GooglePlaceCandidate enrichRepairCandidateWithDetails(
+            GooglePlaceSearchService.GooglePlaceCandidate candidate
+    ) {
+        if (candidate == null || !hasText(candidate.googlePlaceId()) || !needsCandidateDetailsRefresh(candidate)) {
+            return candidate;
+        }
+
+        GooglePlaceSearchService.GooglePlaceCandidate details =
+                googlePlaceSearchService.getPlaceDetails(candidate.googlePlaceId());
+        if (details == null) {
+            return candidate;
+        }
+
+        return new GooglePlaceSearchService.GooglePlaceCandidate(
+                firstNonBlank(details.googlePlaceId(), candidate.googlePlaceId()),
+                firstNonBlank(details.name(), candidate.name()),
+                firstNonBlank(details.formattedAddress(), candidate.formattedAddress()),
+                firstNonBlank(details.shortFormattedAddress(), candidate.shortFormattedAddress()),
+                details.latitude() != null ? details.latitude() : candidate.latitude(),
+                details.longitude() != null ? details.longitude() : candidate.longitude(),
+                details.rating() != null ? details.rating() : candidate.rating(),
+                details.userRatingCount() != null ? details.userRatingCount() : candidate.userRatingCount(),
+                details.addressComponents() == null || details.addressComponents().isEmpty()
+                        ? candidate.addressComponents()
+                        : details.addressComponents(),
+                firstNonBlank(details.editorialSummary(), candidate.editorialSummary()),
+                details.regularOpeningWeekdayDescriptions() == null
+                        || details.regularOpeningWeekdayDescriptions().isEmpty()
+                        ? candidate.regularOpeningWeekdayDescriptions()
+                        : details.regularOpeningWeekdayDescriptions(),
+                firstNonBlank(details.firstPhotoName(), candidate.firstPhotoName()),
+                firstNonBlank(details.primaryType(), candidate.primaryType()),
+                details.types() == null || details.types().isEmpty() ? candidate.types() : details.types()
+        );
+    }
+
+    private boolean needsCandidateDetailsRefresh(GooglePlaceSearchService.GooglePlaceCandidate candidate) {
+        return !hasText(candidate.firstPhotoName())
+                || !hasText(candidate.editorialSummary())
+                || candidate.addressComponents() == null
+                || candidate.addressComponents().isEmpty();
+    }
+
+    private void applyGoogleMetadataToPlace(
+            Place place,
+            GooglePlaceSearchService.GooglePlaceCandidate candidate
+    ) {
+        ResolvedLocation resolvedLocation = resolveLocationMetadata(place, candidate);
+        String rawCountryName = resolveRepairedCountryName(place, resolvedLocation);
+        String rawCityName = resolveRepairedCityName(place, resolvedLocation, rawCountryName);
+        String countryName = locationNameLocalizationService.localizeCountryNameToKorean(rawCountryName);
+        String cityName = locationNameLocalizationService.localizeCityNameToKorean(rawCityName);
+        String address = firstNonBlank(nullableTrim(candidate.formattedAddress()), nullableTrim(place.getAddress()));
+        String description = resolveRepairedDescription(place, candidate, cityName, countryName);
+        String openingHours = resolveRepairedOpeningHours(place, candidate.regularOpeningWeekdayDescriptions());
+        String imageUrl = resolveRepairedImageUrl(place, candidate);
+
+        place.backfillGoogleMetadata(
+                firstNonBlank(candidate.googlePlaceId(), place.getGooglePlaceId()),
+                firstNonBlank(nullableTrim(candidate.name()), nullableTrim(place.getName())),
+                countryName,
+                cityName,
+                address,
+                normalizeCoordinate(candidate.latitude(), place.getLatitude()),
+                normalizeCoordinate(candidate.longitude(), place.getLongitude()),
+                description,
+                openingHours,
+                imageUrl
+        );
+    }
+
+    private String resolveRepairedCountryName(Place place, ResolvedLocation resolvedLocation) {
+        String resolvedCountry = nullableTrim(resolvedLocation.countryName());
+        if (hasText(resolvedCountry) && !isUnknownCountry(resolvedCountry)) {
+            return resolvedCountry;
+        }
+
+        String existingCountry = nullableTrim(place.getCountryName());
+        if (hasText(existingCountry) && !isUnknownCountry(existingCountry)) {
+            return existingCountry;
+        }
+
+        return existingCountry;
+    }
+
+    private String resolveRepairedCityName(Place place, ResolvedLocation resolvedLocation, String countryName) {
+        String resolvedCity = nullableTrim(resolvedLocation.cityName());
+        if (hasText(resolvedCity)) {
+            return resolvedCity;
+        }
+
+        String existingCity = nullableTrim(place.getCityName());
+        if (hasText(existingCity)) {
+            return existingCity;
+        }
+
+        return extractDisplayCityFromAddress(place.getAddress(), countryName);
+    }
+
+    private String resolveRepairedDescription(
+            Place place,
+            GooglePlaceSearchService.GooglePlaceCandidate candidate,
+            String cityName,
+            String countryName
+    ) {
+        String googleDescription = truncate(nullableTrim(candidate.editorialSummary()), FALLBACK_DESCRIPTION_MAX_LENGTH);
+        if (hasText(googleDescription)) {
+            return googleDescription;
+        }
+
+        String existingDescription = truncate(nullableTrim(place.getDescription()), FALLBACK_DESCRIPTION_MAX_LENGTH);
+        if (hasText(existingDescription)) {
+            return existingDescription;
+        }
+
+        String displayLocation = firstNonBlank(cityName, countryName);
+        if (hasText(displayLocation)) {
+            return truncate(
+                    "지금 " + displayLocation + "에서 인기 있는 추천 장소예요.",
+                    FALLBACK_DESCRIPTION_MAX_LENGTH
+            );
+        }
+
+        String placeName = nullableTrim(place.getName());
+        if (hasText(placeName)) {
+            return truncate(placeName + "의 소개 정보가 아직 준비되지 않았어요.", FALLBACK_DESCRIPTION_MAX_LENGTH);
+        }
+
+        return null;
+    }
+
+    private String buildRecommendedFallbackDescription(Place place) {
+        String countryName = sanitizeRecommendedCountryName(place.getCountryName());
+        String cityName = resolveRecommendedDisplayCityName(place, countryName);
+        return resolveRepairedDescription(
+                place,
+                new GooglePlaceSearchService.GooglePlaceCandidate(
+                        null,
+                        place.getName(),
+                        place.getAddress(),
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        List.of(),
+                        null,
+                        List.of(),
+                        null,
+                        null,
+                        List.of()
+                ),
+                cityName,
+                countryName
+        );
+    }
+
+    private String resolveRepairedOpeningHours(Place place, List<String> googleOpeningHours) {
+        String googleValue = normalizeOpeningHours(googleOpeningHours);
+        if (hasText(googleValue)) {
+            return googleValue;
+        }
+        return truncate(nullableTrim(place.getOpeningHours()), 255);
+    }
+
+    private String resolveRepairedImageUrl(
+            Place place,
+            GooglePlaceSearchService.GooglePlaceCandidate candidate
+    ) {
+        if (hasText(candidate.firstPhotoName())) {
+            String photoUri = googlePlaceSearchService.getPhotoUri(candidate.firstPhotoName());
+            String normalizedPhotoUri = truncate(nullableTrim(photoUri), IMAGE_URL_MAX_LENGTH);
+            if (hasText(normalizedPhotoUri)) {
+                return normalizedPhotoUri;
+            }
+        }
+
+        String existingImageUrl = truncate(nullableTrim(place.getImageUrl()), IMAGE_URL_MAX_LENGTH);
+        if (hasText(existingImageUrl) && !isPlaceholderImageUrl(existingImageUrl)) {
+            return existingImageUrl;
+        }
+
+        return null;
+    }
+
+    private ResolvedLocation resolveLocationMetadata(
+            Place place,
+            GooglePlaceSearchService.GooglePlaceCandidate candidate
+    ) {
+        ResolvedLocation resolvedLocation = parseLocation(candidate.formattedAddress(), candidate.addressComponents());
+        if (resolvedLocation.hasAnyValue()) {
+            return resolvedLocation;
+        }
+
+        return parseLocation(place.getAddress(), List.of());
+    }
+
+    private ResolvedLocation parseLocation(
+            String formattedAddress,
+            List<GooglePlaceSearchService.GoogleAddressComponentCandidate> addressComponents
+    ) {
+        if (addressComponents != null && !addressComponents.isEmpty()) {
+            String country = null;
+            String locality = null;
+            String adminLevel1 = null;
+            String adminLevel2 = null;
+            String subLocality = null;
+
+            for (GooglePlaceSearchService.GoogleAddressComponentCandidate component : addressComponents) {
+                if (component == null || component.types() == null || component.types().isEmpty()) {
+                    continue;
+                }
+
+                String value = firstNonBlank(component.longText(), component.shortText());
+                if (!hasText(value)) {
+                    continue;
+                }
+
+                if (containsType(component.types(), "country")) {
+                    country = value;
+                }
+                if (containsType(component.types(), "locality")) {
+                    locality = value;
+                }
+                if (containsType(component.types(), "administrative_area_level_1")) {
+                    adminLevel1 = value;
+                }
+                if (containsType(component.types(), "administrative_area_level_2")) {
+                    adminLevel2 = value;
+                }
+                if (containsType(component.types(), "sublocality")
+                        || containsTypePrefix(component.types(), "sublocality_level_")) {
+                    subLocality = value;
+                }
+            }
+
+            String city = firstNonBlank(locality, adminLevel2, adminLevel1, subLocality);
+            if (hasText(country) || hasText(city)) {
+                return new ResolvedLocation(country, city);
+            }
+        }
+
+        String country = extractCountryFromAddress(formattedAddress);
+        String city = extractDisplayCityFromAddress(formattedAddress, country);
+        return new ResolvedLocation(country, city);
+    }
+
+    private String sanitizeRecommendedCountryName(String countryName) {
+        String normalizedCountryName = nullableTrim(countryName);
+        if (!hasText(normalizedCountryName) || isUnknownCountry(normalizedCountryName)) {
+            return null;
+        }
+        return normalizedCountryName;
+    }
+
+    private String resolveRecommendedDisplayCityName(Place place, String countryName) {
+        String cityName = nullableTrim(place.getCityName());
+        if (hasText(cityName)) {
+            return cityName;
+        }
+
+        String derivedCityName = extractDisplayCityFromAddress(place.getAddress(), countryName);
+        if (hasText(derivedCityName)) {
+            return derivedCityName;
+        }
+
+        return countryName;
+    }
+
+    private String sanitizeRecommendedImageUrl(String imageUrl) {
+        String normalizedImageUrl = truncate(nullableTrim(imageUrl), IMAGE_URL_MAX_LENGTH);
+        if (!hasText(normalizedImageUrl) || isPlaceholderImageUrl(normalizedImageUrl)) {
+            return null;
+        }
+        return normalizedImageUrl;
+    }
+
+    private String extractCountryFromAddress(String address) {
+        List<String> addressTokens = splitAddressTokens(address);
+        if (addressTokens.size() < 3) {
+            return null;
+        }
+
+        for (int index = addressTokens.size() - 1; index >= 0; index--) {
+            String token = addressTokens.get(index);
+            if (!looksLikePostalCode(token)) {
+                return token;
+            }
+        }
+
+        return null;
+    }
+
+    private String extractDisplayCityFromAddress(String address, String countryName) {
+        List<String> addressTokens = splitAddressTokens(address);
+        if (addressTokens.isEmpty()) {
+            return null;
+        }
+
+        List<String> nonPostalTokens = addressTokens.stream()
+                .map(this::nullableTrim)
+                .filter(this::hasText)
+                .filter(token -> !looksLikePostalCode(token))
+                .toList();
+
+        if (nonPostalTokens.isEmpty()) {
+            return null;
+        }
+
+        String normalizedCountryName = nullableTrim(countryName);
+        if (hasText(normalizedCountryName)) {
+            for (int index = nonPostalTokens.size() - 1; index >= 0; index--) {
+                String token = nonPostalTokens.get(index);
+                if (!normalizedCountryName.equalsIgnoreCase(token)) {
+                    return token;
+                }
+            }
+            return null;
+        }
+
+        if (nonPostalTokens.size() == 1) {
+            return nonPostalTokens.get(0);
+        }
+        if (nonPostalTokens.size() == 2) {
+            return nonPostalTokens.get(1);
+        }
+        return nonPostalTokens.get(nonPostalTokens.size() - 2);
+    }
+
+    private List<String> splitAddressTokens(String address) {
+        String normalizedAddress = nullableTrim(address);
+        if (!hasText(normalizedAddress)) {
+            return List.of();
+        }
+
+        return Arrays.stream(normalizedAddress.split(","))
+                .map(this::nullableTrim)
+                .filter(this::hasText)
+                .toList();
+    }
+
+    private boolean looksLikePostalCode(String token) {
+        String normalizedToken = nullableTrim(token);
+        if (!hasText(normalizedToken)) {
+            return false;
+        }
+
+        String digitsOnly = normalizedToken.replace("-", "").replace(" ", "");
+        return !digitsOnly.isEmpty() && digitsOnly.chars().allMatch(Character::isDigit);
+    }
+
+    private boolean containsType(List<String> types, String targetType) {
+        return types != null && types.stream().anyMatch(targetType::equalsIgnoreCase);
+    }
+
+    private boolean containsTypePrefix(List<String> types, String prefix) {
+        return types != null
+                && types.stream()
+                .filter(Objects::nonNull)
+                .anyMatch(type -> type.toLowerCase().startsWith(prefix.toLowerCase()));
+    }
+
+    private String normalizeOpeningHours(List<String> openingHoursLines) {
+        if (openingHoursLines == null || openingHoursLines.isEmpty()) {
+            return null;
+        }
+
+        String normalizedValue = openingHoursLines.stream()
+                .filter(Objects::nonNull)
+                .map(String::trim)
+                .filter(this::hasText)
+                .distinct()
+                .collect(Collectors.joining(" | "));
+
+        return truncate(nullableTrim(normalizedValue), 255);
+    }
+
+    private BigDecimal normalizeCoordinate(Double coordinate, BigDecimal fallbackValue) {
+        if (coordinate == null) {
+            return fallbackValue;
+        }
+
+        return BigDecimal.valueOf(coordinate).setScale(7, RoundingMode.HALF_UP);
+    }
+
+    private String firstNonBlank(String... values) {
+        if (values == null) {
+            return null;
+        }
+
+        for (String value : values) {
+            if (hasText(value)) {
+                return value.trim();
+            }
+        }
+
+        return null;
+    }
+
+    private boolean isUnknownCountry(String countryName) {
+        return hasText(countryName) && DEFAULT_COUNTRY_NAME.equalsIgnoreCase(countryName);
     }
 
     private boolean isPlaceholderImageUrl(String imageUrl) {
@@ -739,5 +1278,12 @@ public class PlaceService {
                         reviewImage -> reviewImage.getReview().getReviewId(),
                         Collectors.mapping(ReviewImage::getImageUrl, Collectors.toList())
                 ));
+    }
+
+    private record ResolvedLocation(String countryName, String cityName) {
+        private boolean hasAnyValue() {
+            return (countryName != null && !countryName.isBlank())
+                    || (cityName != null && !cityName.isBlank());
+        }
     }
 }
