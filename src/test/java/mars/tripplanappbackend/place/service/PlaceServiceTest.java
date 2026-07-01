@@ -1,8 +1,8 @@
 package mars.tripplanappbackend.place.service;
 
+import mars.tripplanappbackend.global.service.LocationNameLocalizationService;
 import mars.tripplanappbackend.mypage.repository.MyPageRepository;
 import mars.tripplanappbackend.mypage.repository.SavedPlaceRepository;
-import mars.tripplanappbackend.global.service.LocationNameLocalizationService;
 import mars.tripplanappbackend.place.domain.Place;
 import mars.tripplanappbackend.place.dto.request.RecommendedPlaceRequestDto;
 import mars.tripplanappbackend.place.dto.response.RecommendedPlaceListResponseDto;
@@ -42,16 +42,8 @@ class PlaceServiceTest {
                 .reviewCount(1004)
                 .build();
 
-        PlaceService placeService = new PlaceService(
-                createProxy(MyPageRepository.class, Map.of()),
-                createProxy(SavedPlaceRepository.class, Map.of()),
-                createProxy(
-                        PlaceRepository.class,
-                        Map.of("findByIsDeletedFalseOrderByRatingAvgDescReviewCountDesc", List.of(place))
-                ),
-                createProxy(PlaceTagMapRepository.class, Map.of("findAllByPlace_PlaceIdInAndIsDeletedFalse", List.of())),
-                createProxy(ReviewRepository.class, Map.of()),
-                createProxy(ReviewImageRepository.class, Map.of()),
+        PlaceService placeService = createPlaceService(
+                List.of(place),
                 new StubGooglePlaceSearchService(
                         Map.of(
                                 "google-place-2421",
@@ -77,8 +69,7 @@ class PlaceServiceTest {
                                 "https://lh3.googleusercontent.com/photo-1"
                         ),
                         Map.of()
-                ),
-                new StubLocationNameLocalizationService()
+                )
         );
 
         RecommendedPlaceListResponseDto response = placeService.getRecommendedPlaces(new RecommendedPlaceRequestDto());
@@ -131,16 +122,8 @@ class PlaceServiceTest {
                         List.of()
                 );
 
-        PlaceService placeService = new PlaceService(
-                createProxy(MyPageRepository.class, Map.of()),
-                createProxy(SavedPlaceRepository.class, Map.of()),
-                createProxy(
-                        PlaceRepository.class,
-                        Map.of("findByIsDeletedFalseOrderByRatingAvgDescReviewCountDesc", List.of(legacyPlace))
-                ),
-                createProxy(PlaceTagMapRepository.class, Map.of("findAllByPlace_PlaceIdInAndIsDeletedFalse", List.of())),
-                createProxy(ReviewRepository.class, Map.of()),
-                createProxy(ReviewImageRepository.class, Map.of()),
+        PlaceService placeService = createPlaceService(
+                List.of(legacyPlace),
                 new StubGooglePlaceSearchService(
                         Map.of(),
                         Map.of(
@@ -151,22 +134,187 @@ class PlaceServiceTest {
                                 "teamLab Borderless Azabudai Hills, Tokyo",
                                 List.of(searchCandidate)
                         )
-                ),
-                new StubLocationNameLocalizationService()
+                )
         );
 
         RecommendedPlaceListResponseDto response = placeService.getRecommendedPlaces(new RecommendedPlaceRequestDto());
 
         assertThat(response.getRecommendedPlaces()).hasSize(1);
-        assertThat(response.getRecommendedPlaces().get(0).getCountryName()).isEqualTo("일본");
-        assertThat(response.getRecommendedPlaces().get(0).getCityName()).isEqualTo("미나토구");
+        assertThat(response.getRecommendedPlaces().get(0).getName()).isEqualTo("teamLab Borderless");
+        assertThat(response.getRecommendedPlaces().get(0).getCountryName()).isEqualTo("KR_JAPAN");
+        assertThat(response.getRecommendedPlaces().get(0).getCityName()).isEqualTo("KR_MINATO_GU");
         assertThat(response.getRecommendedPlaces().get(0).getImageUrl())
                 .isEqualTo("https://lh3.googleusercontent.com/teamlab-photo");
 
         assertThat(legacyPlace.getGooglePlaceId()).isEqualTo("google-place-745");
-        assertThat(legacyPlace.getCountryName()).isEqualTo("일본");
-        assertThat(legacyPlace.getCityName()).isEqualTo("미나토구");
+        assertThat(legacyPlace.getCountryName()).isEqualTo("KR_JAPAN");
+        assertThat(legacyPlace.getCityName()).isEqualTo("KR_MINATO_GU");
         assertThat(legacyPlace.getDescription()).isEqualTo("Immersive digital art museum in central Tokyo.");
+    }
+
+    @Test
+    @DisplayName("recommended places refresh expiring google photo urls and shorten long card names")
+    void getRecommendedPlacesRefreshesExpiringGooglePhotoUrlAndShortensLongName() {
+        Place place = Place.builder()
+                .placeId(745L)
+                .name("teamLab Borderless: MORI Building DIGITAL ART MUSEUM")
+                .googlePlaceId("google-place-745")
+                .countryName("Japan")
+                .cityName("Minato City")
+                .address("1-2 Toranomon, Minato City, Tokyo, Japan")
+                .description("Immersive digital art museum in central Tokyo.")
+                .imageUrl("https://lh3.googleusercontent.com/place-photos/stale-photo")
+                .placeType(PlaceType.LANDMARK)
+                .ratingAvg(new BigDecimal("4.0"))
+                .reviewCount(1)
+                .build();
+
+        PlaceService placeService = createPlaceService(
+                List.of(place),
+                new StubGooglePlaceSearchService(
+                        Map.of(
+                                "google-place-745",
+                                new GooglePlaceSearchService.GooglePlaceCandidate(
+                                        "google-place-745",
+                                        "teamLab Borderless: MORI Building DIGITAL ART MUSEUM",
+                                        "1-2 Toranomon, Minato City, Tokyo, Japan",
+                                        null,
+                                        35.6654,
+                                        139.7494,
+                                        null,
+                                        null,
+                                        List.of(
+                                                new GooglePlaceSearchService.GoogleAddressComponentCandidate(
+                                                        "Japan",
+                                                        "JP",
+                                                        List.of("country")
+                                                ),
+                                                new GooglePlaceSearchService.GoogleAddressComponentCandidate(
+                                                        "Minato City",
+                                                        null,
+                                                        List.of("locality")
+                                                )
+                                        ),
+                                        "Immersive digital art museum in central Tokyo.",
+                                        List.of("Mon: 10:00 - 19:00"),
+                                        "places/google-place-745/photos/photo-2",
+                                        null,
+                                        List.of()
+                                )
+                        ),
+                        Map.of(
+                                "places/google-place-745/photos/photo-2",
+                                "https://lh3.googleusercontent.com/fresh-teamlab-photo"
+                        ),
+                        Map.of()
+                )
+        );
+
+        RecommendedPlaceListResponseDto response = placeService.getRecommendedPlaces(new RecommendedPlaceRequestDto());
+
+        assertThat(response.getRecommendedPlaces()).hasSize(1);
+        assertThat(response.getRecommendedPlaces().get(0).getName()).isEqualTo("teamLab Borderless");
+        assertThat(response.getRecommendedPlaces().get(0).getCityName()).isEqualTo("KR_MINATO_GU");
+        assertThat(response.getRecommendedPlaces().get(0).getImageUrl())
+                .isEqualTo("https://lh3.googleusercontent.com/fresh-teamlab-photo");
+        assertThat(place.getImageUrl()).isEqualTo("https://lh3.googleusercontent.com/fresh-teamlab-photo");
+    }
+
+    @Test
+    @DisplayName("recommended places do not fall back to blank cards when at least one valid image exists")
+    void getRecommendedPlacesDoesNotFallbackToBlankCardsWhenValidCardExists() {
+        Place staleImagePlace = Place.builder()
+                .placeId(1L)
+                .name("Stale Image Place")
+                .countryName("대한민국")
+                .cityName("서울")
+                .imageUrl("https://lh3.googleusercontent.com/place-photos/expired-photo")
+                .placeType(PlaceType.LANDMARK)
+                .ratingAvg(new BigDecimal("5.0"))
+                .reviewCount(10)
+                .build();
+
+        Place validImagePlace = Place.builder()
+                .placeId(2L)
+                .name("Valid Image Place")
+                .countryName("대한민국")
+                .cityName("서울")
+                .imageUrl("https://images.example.com/valid-place.jpg")
+                .placeType(PlaceType.LANDMARK)
+                .ratingAvg(new BigDecimal("4.9"))
+                .reviewCount(9)
+                .build();
+
+        PlaceService placeService = createPlaceService(
+                List.of(staleImagePlace, validImagePlace),
+                new StubGooglePlaceSearchService(Map.of(), Map.of(), Map.of())
+        );
+
+        RecommendedPlaceListResponseDto response = placeService.getRecommendedPlaces(new RecommendedPlaceRequestDto());
+
+        assertThat(response.getRecommendedPlaces()).hasSize(1);
+        assertThat(response.getRecommendedPlaces().get(0).getPlaceId()).isEqualTo(2L);
+        assertThat(response.getRecommendedPlaces().get(0).getImageUrl())
+                .isEqualTo("https://images.example.com/valid-place.jpg");
+    }
+
+    @Test
+    @DisplayName("recommended places exclude station exit style places and keep travel-worthy cards")
+    void getRecommendedPlacesExcludeStationExitStylePlaces() {
+        Place stationExitPlace = Place.builder()
+                .placeId(1L)
+                .name("\uD654\uACE1\uC5ED7\uBC88\uCD9C\uAD6C")
+                .googlePlaceId("google-hwagok-exit")
+                .countryName("Korea")
+                .cityName("Seoul")
+                .imageUrl("https://images.example.com/hwagok-exit.jpg")
+                .placeType(PlaceType.ATTRACTION)
+                .ratingAvg(new BigDecimal("5.0"))
+                .reviewCount(1)
+                .build();
+
+        Place travelPlace = Place.builder()
+                .placeId(2L)
+                .name("\uC624\uB3C4\uB9AC \uACF5\uC6D0")
+                .googlePlaceId("google-odori-park")
+                .countryName("Japan")
+                .cityName("Sapporo")
+                .description("Major downtown park and festival destination in Sapporo.")
+                .imageUrl("https://images.example.com/odori-park.jpg")
+                .placeType(PlaceType.NATURE)
+                .ratingAvg(new BigDecimal("4.1"))
+                .reviewCount(1)
+                .build();
+
+        PlaceService placeService = createPlaceService(
+                List.of(stationExitPlace, travelPlace),
+                new StubGooglePlaceSearchService(Map.of(), Map.of(), Map.of())
+        );
+
+        RecommendedPlaceListResponseDto response = placeService.getRecommendedPlaces(new RecommendedPlaceRequestDto());
+
+        assertThat(response.getRecommendedPlaces()).hasSize(1);
+        assertThat(response.getRecommendedPlaces().get(0).getPlaceId()).isEqualTo(2L);
+        assertThat(response.getRecommendedPlaces().get(0).getName()).isEqualTo("\uC624\uB3C4\uB9AC \uACF5\uC6D0");
+    }
+
+    private PlaceService createPlaceService(
+            List<Place> places,
+            GooglePlaceSearchService googlePlaceSearchService
+    ) {
+        return new PlaceService(
+                createProxy(MyPageRepository.class, Map.of()),
+                createProxy(SavedPlaceRepository.class, Map.of()),
+                createProxy(
+                        PlaceRepository.class,
+                        Map.of("findByIsDeletedFalseOrderByRatingAvgDescReviewCountDesc", places)
+                ),
+                createProxy(PlaceTagMapRepository.class, Map.of("findAllByPlace_PlaceIdInAndIsDeletedFalse", List.of())),
+                createProxy(ReviewRepository.class, Map.of()),
+                createProxy(ReviewImageRepository.class, Map.of()),
+                googlePlaceSearchService,
+                new StubLocationNameLocalizationService()
+        );
     }
 
     @SuppressWarnings("unchecked")
@@ -261,7 +409,7 @@ class PlaceServiceTest {
         @Override
         public String localizeCountryNameToKorean(String countryName) {
             if ("Japan".equals(countryName)) {
-                return "일본";
+                return "KR_JAPAN";
             }
             return countryName;
         }
@@ -269,13 +417,13 @@ class PlaceServiceTest {
         @Override
         public String localizeCityNameToKorean(String cityName) {
             if ("Osaka".equals(cityName)) {
-                return "오사카";
+                return "KR_OSAKA";
             }
             if ("Minato City".equals(cityName)) {
-                return "미나토구";
+                return "KR_MINATO_GU";
             }
-            if ("札幌市".equals(cityName)) {
-                return "삿포로";
+            if ("Sapporo".equals(cityName)) {
+                return "KR_SAPPORO";
             }
             return cityName;
         }
@@ -285,7 +433,7 @@ class PlaceServiceTest {
             if (value == null || value.isBlank()) {
                 return false;
             }
-            return !value.matches(".*[가-힣].*");
+            return value.chars().noneMatch(ch -> ch >= '가' && ch <= '힣');
         }
     }
 }
