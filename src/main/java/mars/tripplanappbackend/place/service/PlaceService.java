@@ -30,6 +30,7 @@ import mars.tripplanappbackend.place.dto.response.SavedPlaceCategoryResponseDto;
 import mars.tripplanappbackend.place.dto.response.SavedPlaceItemResponseDto;
 import mars.tripplanappbackend.place.dto.response.SavedPlaceListResponseDto;
 import mars.tripplanappbackend.place.dto.response.SharePlaceResponseDto;
+import mars.tripplanappbackend.place.enums.PlaceType;
 import mars.tripplanappbackend.place.enums.SavedPlaceFilterType;
 import mars.tripplanappbackend.place.repository.PlaceRepository;
 import mars.tripplanappbackend.place.repository.PlaceTagMapRepository;
@@ -49,6 +50,7 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.stream.Collectors;
@@ -71,9 +73,47 @@ public class PlaceService {
     private static final int MAX_RECOMMENDED_PLACE_FETCH_COUNT = 40;
     private static final int GOOGLE_REPAIR_SEARCH_LIMIT = 5;
     private static final int FALLBACK_DESCRIPTION_MAX_LENGTH = 255;
+    private static final int RECOMMENDED_PLACE_NAME_MAX_LENGTH = 28;
+    private static final int MIN_TRAVEL_RECOMMENDATION_SCORE = 4;
     private static final String DEFAULT_COUNTRY_NAME = "UNKNOWN";
     private static final String LEGACY_PLACEHOLDER_IMAGE_URL_TOKEN = "cdn.lets-trip.com/place/";
     private static final String QA_PLACEHOLDER_IMAGE_URL_TOKEN = "placehold.co/";
+    private static final String TRANSIENT_GOOGLE_PLACE_PHOTO_URL_TOKEN = "googleusercontent.com/place-photos/";
+    private static final List<String> RECOMMENDED_NAME_SPLIT_DELIMITERS = List.of(":", " - ", " | ");
+    private static final List<String> NON_TRAVEL_RECOMMENDATION_NAME_KEYWORDS = List.of(
+            "출구",
+            "정류장",
+            "치과",
+            "병원",
+            "약국",
+            "의원",
+            "학원",
+            "학교",
+            "부동산",
+            "공인중개사",
+            "오피스",
+            "사무소",
+            "주차장",
+            "주민센터",
+            "주유소",
+            "편의점",
+            "아파트",
+            "오피스텔"
+    );
+    private static final List<String> TRAVEL_TAG_KEYWORDS = List.of(
+            "관광",
+            "랜드마크",
+            "자연",
+            "공원",
+            "전망",
+            "역사",
+            "문화",
+            "전시",
+            "미술",
+            "박물관",
+            "해변",
+            "힐링"
+    );
     private static final String SHARE_URL_TEMPLATE = "https://lets-trip.com/places/%d";
     private static final String SHARE_TITLE_TEMPLATE = "Let's Trip에서 %s을(를) 확인해보세요.";
     private static final String SHARE_DESCRIPTION_TEMPLATE = "%s에 위치한 %s의 상세 정보를 공유합니다.";
@@ -101,19 +141,34 @@ public class PlaceService {
         );
 
         repairRecommendedPlaceMetadata(candidatePlaces);
+        Map<Long, List<String>> tagsByPlaceId = getTagsByPlaceId(candidatePlaces);
 
         List<Place> recommendedCandidates = candidatePlaces.stream()
+                .sorted(buildRecommendedPlaceComparator(tagsByPlaceId))
+                .filter(place -> isTravelRecommendationCandidate(
+                        place,
+                        tagsByPlaceId.getOrDefault(place.getPlaceId(), List.of())
+                ))
                 .filter(this::hasDisplayableRecommendedImage)
                 .limit(requestedLimit)
                 .toList();
 
-        if (recommendedCandidates.size() < requestedLimit) {
+        if (recommendedCandidates.isEmpty()) {
             recommendedCandidates = candidatePlaces.stream()
+                    .sorted(buildRecommendedPlaceComparator(tagsByPlaceId))
+                    .filter(place -> !isHardExcludedTravelRecommendation(place))
+                    .filter(this::hasDisplayableRecommendedImage)
                     .limit(requestedLimit)
                     .toList();
         }
 
-        Map<Long, List<String>> tagsByPlaceId = getTagsByPlaceId(recommendedCandidates);
+        if (recommendedCandidates.isEmpty()) {
+            recommendedCandidates = candidatePlaces.stream()
+                    .sorted(buildRecommendedPlaceComparator(tagsByPlaceId))
+                    .filter(place -> !isHardExcludedTravelRecommendation(place))
+                    .limit(requestedLimit)
+                    .toList();
+        }
 
         List<RecommendedPlaceResponseDto> recommendedPlaces = recommendedCandidates.stream()
                 .map(place -> buildRecommendedPlaceResponse(
@@ -355,6 +410,20 @@ public class PlaceService {
         return Math.min(Math.max(calculatedLimit, MIN_RECOMMENDED_PLACE_FETCH_COUNT), MAX_RECOMMENDED_PLACE_FETCH_COUNT);
     }
 
+    private Comparator<Place> buildRecommendedPlaceComparator(Map<Long, List<String>> tagsByPlaceId) {
+        return Comparator
+                .comparingInt((Place place) -> calculateTravelRecommendationScore(
+                        place,
+                        tagsByPlaceId.getOrDefault(place.getPlaceId(), List.of())
+                ))
+                .reversed()
+                .thenComparingInt(this::effectiveRecommendationReviewCount)
+                .reversed()
+                .thenComparingInt(this::effectiveRecommendationRatingScore)
+                .reversed()
+                .thenComparing(Place::getPlaceId, Comparator.nullsLast(Comparator.naturalOrder()));
+    }
+
     private RecommendedPlaceResponseDto buildRecommendedPlaceResponse(Place place, List<String> tags) {
         String countryName = locationNameLocalizationService.localizeCountryNameToKorean(
                 sanitizeRecommendedCountryName(place.getCountryName())
@@ -365,7 +434,7 @@ public class PlaceService {
 
         return RecommendedPlaceResponseDto.builder()
                 .placeId(place.getPlaceId())
-                .name(place.getName())
+                .name(sanitizeRecommendedDisplayName(place.getName()))
                 .countryName(countryName)
                 .cityName(cityName)
                 .imageUrl(sanitizeRecommendedImageUrl(place.getImageUrl()))
@@ -443,6 +512,7 @@ public class PlaceService {
 
         return !hasText(imageUrl)
                 || isPlaceholderImageUrl(imageUrl)
+                || isTransientGooglePhotoImageUrl(imageUrl)
                 || isUnknownCountry(countryName)
                 || !hasText(cityName)
                 || locationNameLocalizationService.requiresKoreanLocalization(countryName)
@@ -453,6 +523,121 @@ public class PlaceService {
     private boolean hasDisplayableRecommendedImage(Place place) {
         String imageUrl = sanitizeRecommendedImageUrl(place != null ? place.getImageUrl() : null);
         return hasText(imageUrl);
+    }
+
+    private boolean isTravelRecommendationCandidate(Place place, List<String> tags) {
+        return !isHardExcludedTravelRecommendation(place)
+                && calculateTravelRecommendationScore(place, tags) >= MIN_TRAVEL_RECOMMENDATION_SCORE;
+    }
+
+    private int calculateTravelRecommendationScore(Place place, List<String> tags) {
+        if (place == null) {
+            return 0;
+        }
+
+        int score = 0;
+
+        if (isTravelFriendlyPlaceType(place.getPlaceType())) {
+            score += 2;
+        }
+        if (hasText(place.getGooglePlaceId())) {
+            score += 1;
+        }
+        if (hasNonGeneratedRecommendedDescription(place)) {
+            score += 1;
+        }
+        if (containsTravelTag(tags)) {
+            score += 2;
+        } else if (tags != null && !tags.isEmpty()) {
+            score += 1;
+        }
+        if (effectiveRecommendationReviewCount(place) >= 10) {
+            score += 1;
+        }
+        if (effectiveRecommendationReviewCount(place) >= 100) {
+            score += 1;
+        }
+
+        return score;
+    }
+
+    private boolean isTravelFriendlyPlaceType(PlaceType placeType) {
+        if (placeType == null) {
+            return false;
+        }
+
+        return switch (placeType) {
+            case ATTRACTION, RESTAURANT, BEACH, NATURE, LANDMARK, SHOPPING, CULTURE -> true;
+            case ACCOMMODATION -> false;
+        };
+    }
+
+    private boolean hasNonGeneratedRecommendedDescription(Place place) {
+        return place != null && !isGeneratedRecommendedDescription(place.getDescription());
+    }
+
+    private boolean isGeneratedRecommendedDescription(String description) {
+        String normalizedDescription = nullableTrim(description);
+        if (!hasText(normalizedDescription)) {
+            return true;
+        }
+
+        return (normalizedDescription.startsWith("지금 ")
+                && normalizedDescription.endsWith("인기 있는 추천 장소예요."))
+                || normalizedDescription.endsWith("소개 정보가 아직 준비되지 않았어요.");
+    }
+
+    private boolean containsTravelTag(List<String> tags) {
+        if (tags == null || tags.isEmpty()) {
+            return false;
+        }
+
+        return tags.stream()
+                .filter(Objects::nonNull)
+                .map(String::trim)
+                .filter(this::hasText)
+                .anyMatch(tag -> TRAVEL_TAG_KEYWORDS.stream().anyMatch(tag::contains));
+    }
+
+    private int effectiveRecommendationReviewCount(Place place) {
+        if (place == null) {
+            return 0;
+        }
+
+        int reviewCount = place.getReviewCount() != null ? place.getReviewCount() : 0;
+        int googleReviewCount = place.getGoogleReviewCount() != null ? place.getGoogleReviewCount() : 0;
+        return Math.max(reviewCount, googleReviewCount);
+    }
+
+    private int effectiveRecommendationRatingScore(Place place) {
+        if (place == null) {
+            return 0;
+        }
+
+        BigDecimal ratingAvg = place.getRatingAvg() != null ? place.getRatingAvg() : BigDecimal.ZERO;
+        BigDecimal googleRatingAvg = place.getGoogleRatingAvg() != null ? place.getGoogleRatingAvg() : BigDecimal.ZERO;
+        return ratingAvg.max(googleRatingAvg)
+                .multiply(BigDecimal.TEN)
+                .intValue();
+    }
+
+    private boolean isHardExcludedTravelRecommendation(Place place) {
+        String normalizedPlaceName = normalizeRecommendationComparisonText(place != null ? place.getName() : null);
+        if (!hasText(normalizedPlaceName)) {
+            return false;
+        }
+
+        if (normalizedPlaceName.matches(".*(?:\\uC5ED\\s*)?\\d+\\uBC88\\s*\\uCD9C\\uAD6C.*")) {
+            return true;
+        }
+        if (normalizedPlaceName.contains("station exit")
+                || normalizedPlaceName.contains("subway station")
+                || normalizedPlaceName.contains("bus stop")) {
+            return true;
+        }
+
+        return NON_TRAVEL_RECOMMENDATION_NAME_KEYWORDS.stream()
+                .anyMatch(normalizedPlaceName::contains);
     }
 
     private GooglePlaceSearchService.GooglePlaceCandidate resolveGoogleCandidateForRepair(Place place) {
@@ -695,7 +880,9 @@ public class PlaceService {
         }
 
         String existingImageUrl = truncate(nullableTrim(place.getImageUrl()), IMAGE_URL_MAX_LENGTH);
-        if (hasText(existingImageUrl) && !isPlaceholderImageUrl(existingImageUrl)) {
+        if (hasText(existingImageUrl)
+                && !isPlaceholderImageUrl(existingImageUrl)
+                && !isTransientGooglePhotoImageUrl(existingImageUrl)) {
             return existingImageUrl;
         }
 
@@ -772,6 +959,30 @@ public class PlaceService {
         return normalizedCountryName;
     }
 
+    private String sanitizeRecommendedDisplayName(String placeName) {
+        String normalizedPlaceName = nullableTrim(placeName);
+        if (!hasText(normalizedPlaceName)) {
+            return null;
+        }
+
+        String collapsedPlaceName = normalizedPlaceName.replaceAll("\\s+", " ");
+        for (String delimiter : RECOMMENDED_NAME_SPLIT_DELIMITERS) {
+            int delimiterIndex = collapsedPlaceName.indexOf(delimiter);
+            if (delimiterIndex > 0) {
+                String shortenedName = collapsedPlaceName.substring(0, delimiterIndex).trim();
+                if (hasText(shortenedName)) {
+                    return truncate(shortenedName, RECOMMENDED_PLACE_NAME_MAX_LENGTH);
+                }
+            }
+        }
+
+        if (collapsedPlaceName.length() <= RECOMMENDED_PLACE_NAME_MAX_LENGTH) {
+            return collapsedPlaceName;
+        }
+
+        return collapsedPlaceName.substring(0, RECOMMENDED_PLACE_NAME_MAX_LENGTH - 3).trim() + "...";
+    }
+
     private String resolveRecommendedDisplayCityName(Place place, String countryName) {
         String cityName = nullableTrim(place.getCityName());
         if (hasText(cityName)) {
@@ -788,7 +999,9 @@ public class PlaceService {
 
     private String sanitizeRecommendedImageUrl(String imageUrl) {
         String normalizedImageUrl = truncate(nullableTrim(imageUrl), IMAGE_URL_MAX_LENGTH);
-        if (!hasText(normalizedImageUrl) || isPlaceholderImageUrl(normalizedImageUrl)) {
+        if (!hasText(normalizedImageUrl)
+                || isPlaceholderImageUrl(normalizedImageUrl)
+                || isTransientGooglePhotoImageUrl(normalizedImageUrl)) {
             return null;
         }
         return normalizedImageUrl;
@@ -924,6 +1137,19 @@ public class PlaceService {
         return hasText(imageUrl)
                 && (imageUrl.contains(LEGACY_PLACEHOLDER_IMAGE_URL_TOKEN)
                 || imageUrl.contains(QA_PLACEHOLDER_IMAGE_URL_TOKEN));
+    }
+
+    private boolean isTransientGooglePhotoImageUrl(String imageUrl) {
+        return hasText(imageUrl) && imageUrl.contains(TRANSIENT_GOOGLE_PLACE_PHOTO_URL_TOKEN);
+    }
+
+    private String normalizeRecommendationComparisonText(String value) {
+        String normalizedValue = nullableTrim(value);
+        if (!hasText(normalizedValue)) {
+            return null;
+        }
+
+        return normalizedValue.toLowerCase(Locale.ROOT).replaceAll("\\s+", " ");
     }
 
     private String truncate(String value, int maxLength) {

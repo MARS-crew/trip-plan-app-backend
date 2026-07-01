@@ -9,6 +9,7 @@ import org.springframework.web.util.HtmlUtils;
 import org.springframework.web.util.UriComponentsBuilder;
 
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -20,6 +21,9 @@ public class LocationNameLocalizationService {
     private static final String TRANSLATE_PATH = "/language/translate/v2";
     private static final String TARGET_LANGUAGE_CODE = "ko";
     private static final String UNKNOWN_COUNTRY_NAME = "UNKNOWN";
+    private static final Map<String, String> MANUAL_LOCALIZATION_OVERRIDES = Map.of(
+            "minato city", "미나토구"
+    );
 
     @Value("${google.translate.api-key:}")
     private String apiKey;
@@ -52,7 +56,21 @@ public class LocationNameLocalizationService {
             return normalizedValue;
         }
 
+        String overrideValue = resolveManualOverride(normalizedValue);
+        if (overrideValue != null) {
+            return overrideValue;
+        }
+
         return localizationCache.computeIfAbsent(normalizedValue, this::translateToKoreanOrOriginal);
+    }
+
+    private String resolveManualOverride(String value) {
+        String normalizedValue = trimToNull(value);
+        if (normalizedValue == null) {
+            return null;
+        }
+
+        return MANUAL_LOCALIZATION_OVERRIDES.get(normalizedValue.toLowerCase(Locale.ROOT));
     }
 
     private String translateToKoreanOrOriginal(String originalText) {
