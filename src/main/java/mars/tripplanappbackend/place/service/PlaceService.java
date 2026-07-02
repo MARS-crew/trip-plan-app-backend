@@ -170,10 +170,16 @@ public class PlaceService {
                     .toList();
         }
 
+        if (recommendedCandidates.isEmpty()) {
+            recommendedCandidates = findRandomRecommendedFallbackPlaces(requestedLimit);
+        }
+
+        Map<Long, List<String>> selectedTagsByPlaceId = getTagsByPlaceId(recommendedCandidates);
+
         List<RecommendedPlaceResponseDto> recommendedPlaces = recommendedCandidates.stream()
                 .map(place -> buildRecommendedPlaceResponse(
                         place,
-                        tagsByPlaceId.getOrDefault(place.getPlaceId(), List.of())
+                        selectedTagsByPlaceId.getOrDefault(place.getPlaceId(), List.of())
                 ))
                 .toList();
 
@@ -408,6 +414,12 @@ public class PlaceService {
         int normalizedRequestedLimit = Math.max(requestedLimit, 1);
         int calculatedLimit = normalizedRequestedLimit * RECOMMENDED_PLACE_FETCH_MULTIPLIER;
         return Math.min(Math.max(calculatedLimit, MIN_RECOMMENDED_PLACE_FETCH_COUNT), MAX_RECOMMENDED_PLACE_FETCH_COUNT);
+    }
+
+    private List<Place> findRandomRecommendedFallbackPlaces(int requestedLimit) {
+        List<Place> randomPlaces = placeRepository.findRandomActivePlaces(Math.max(requestedLimit, 1));
+        repairRecommendedPlaceMetadata(randomPlaces);
+        return randomPlaces;
     }
 
     private Comparator<Place> buildRecommendedPlaceComparator(Map<Long, List<String>> tagsByPlaceId) {
