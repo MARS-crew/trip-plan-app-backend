@@ -18,6 +18,9 @@ public interface PlaceRepository extends JpaRepository<Place, Long> {
 
     List<Place> findByIsDeletedFalseOrderByRatingAvgDescReviewCountDesc(Pageable pageable);
 
+    @Query(value = "select * from place where is_deleted = false order by rand() limit :limit", nativeQuery = true)
+    List<Place> findRandomActivePlaces(@Param("limit") int limit);
+
     Page<Place> findAllByIsDeletedFalse(Pageable pageable);
 
     @Query("""

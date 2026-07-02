@@ -298,8 +298,46 @@ class PlaceServiceTest {
         assertThat(response.getRecommendedPlaces().get(0).getName()).isEqualTo("\uC624\uB3C4\uB9AC \uACF5\uC6D0");
     }
 
+    @Test
+    @DisplayName("recommended places fall back to random stored places when no candidates exist")
+    void getRecommendedPlacesFallbackToRandomStoredPlacesWhenNoCandidatesExist() {
+        Place randomPlace = Place.builder()
+                .placeId(10L)
+                .name("Random Stored Place")
+                .countryName("Korea")
+                .cityName("Seoul")
+                .description("Stored fallback place.")
+                .imageUrl("https://images.example.com/random-stored-place.jpg")
+                .placeType(PlaceType.ATTRACTION)
+                .ratingAvg(new BigDecimal("3.8"))
+                .reviewCount(2)
+                .build();
+
+        PlaceService placeService = createPlaceService(
+                List.of(),
+                List.of(randomPlace),
+                new StubGooglePlaceSearchService(Map.of(), Map.of(), Map.of())
+        );
+
+        RecommendedPlaceListResponseDto response = placeService.getRecommendedPlaces(new RecommendedPlaceRequestDto());
+
+        assertThat(response.getRecommendedPlaces()).hasSize(1);
+        assertThat(response.getRecommendedPlaces().get(0).getPlaceId()).isEqualTo(10L);
+        assertThat(response.getRecommendedPlaces().get(0).getName()).isEqualTo("Random Stored Place");
+        assertThat(response.getRecommendedPlaces().get(0).getImageUrl())
+                .isEqualTo("https://images.example.com/random-stored-place.jpg");
+    }
+
     private PlaceService createPlaceService(
             List<Place> places,
+            GooglePlaceSearchService googlePlaceSearchService
+    ) {
+        return createPlaceService(places, List.of(), googlePlaceSearchService);
+    }
+
+    private PlaceService createPlaceService(
+            List<Place> places,
+            List<Place> randomPlaces,
             GooglePlaceSearchService googlePlaceSearchService
     ) {
         return new PlaceService(
@@ -307,7 +345,10 @@ class PlaceServiceTest {
                 createProxy(SavedPlaceRepository.class, Map.of()),
                 createProxy(
                         PlaceRepository.class,
-                        Map.of("findByIsDeletedFalseOrderByRatingAvgDescReviewCountDesc", places)
+                        Map.of(
+                                "findByIsDeletedFalseOrderByRatingAvgDescReviewCountDesc", places,
+                                "findRandomActivePlaces", randomPlaces
+                        )
                 ),
                 createProxy(PlaceTagMapRepository.class, Map.of("findAllByPlace_PlaceIdInAndIsDeletedFalse", List.of())),
                 createProxy(ReviewRepository.class, Map.of()),
