@@ -39,7 +39,7 @@ public class Trip extends BaseEntity {
     @Column(name = "trip_id", nullable = false)
     private Long tripId;
 
-    @Column(name = "title", length = 50, nullable = false)
+    @Column(name = "title", length = 255, nullable = false)
     private String title;
 
     @Column(name = "start_date", nullable = false)
