@@ -23,7 +23,6 @@ public class CreateTripRequestDto {
     private String usersId;
 
     @NotBlank(message = "여행 제목은 필수입니다.")
-    @Size(max = 10, message = "여행 제목은 10자 이하로 입력해주세요.")
     @Schema(description = "여행 제목", example = "오사카 여행")
     private String title;
 
