@@ -31,6 +31,7 @@ import mars.tripplanappbackend.trip.dto.request.MyTripScheduleRouteRequestDto;
 import mars.tripplanappbackend.trip.dto.request.NearbyTripScheduleRequestDto;
 import mars.tripplanappbackend.trip.dto.request.ShareTripRequestDto;
 import mars.tripplanappbackend.trip.dto.request.TripPlaceSelectionRequestDto;
+import mars.tripplanappbackend.trip.dto.request.TripWishlistRecommendationRequestDto;
 import mars.tripplanappbackend.trip.dto.request.UpdateTripDateRequestDto;
 import mars.tripplanappbackend.trip.dto.request.UpdateTripScheduleRequestDto;
 import mars.tripplanappbackend.trip.dto.request.UpdateTripRequestDto;
@@ -45,6 +46,7 @@ import mars.tripplanappbackend.trip.repository.WishlistPlaceRepository;
 import mars.tripplanappbackend.trip.dto.request.UpdateTripTitleRequestDto;
 import mars.tripplanappbackend.trip.dto.response.UpdateTripTitleResponseDto;
 import mars.tripplanappbackend.global.config.auth.UserPrincipal;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -61,9 +63,13 @@ import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -90,6 +96,28 @@ public class TripService {
     private static final int ADDRESS_MAX_LENGTH = 255;
     private static final int DESCRIPTION_MAX_LENGTH = 2000;
     private static final int IMAGE_URL_MAX_LENGTH = 500;
+    private static final int MAX_WISHLIST_RECOMMENDATION_LIMIT = 10;
+    private static final double MAX_WISHLIST_RECOMMENDATION_RADIUS_METERS = 50_000.0d;
+    private static final int GOOGLE_WISHLIST_RECOMMENDATION_RESULT_COUNT = 20;
+    private static final String GOOGLE_WISHLIST_RECOMMENDATION_RANK_PREFERENCE = "POPULARITY";
+    private static final int COUNTRY_NAME_MAX_LENGTH = 70;
+    private static final int CITY_NAME_MAX_LENGTH = 90;
+    private static final int OPENING_HOURS_MAX_LENGTH = 255;
+    private static final int MAX_WISHLIST_RECOMMENDATION_TAG_COUNT = 3;
+    private static final List<String> GOOGLE_WISHLIST_RECOMMENDATION_TYPES = List.of(
+            "tourist_attraction",
+            "restaurant",
+            "cafe",
+            "museum",
+            "park",
+            "shopping_mall"
+    );
+    private static final List<List<String>> GOOGLE_WISHLIST_RECOMMENDATION_TYPE_GROUPS = List.of(
+            List.of("tourist_attraction", "museum", "art_gallery", "historical_landmark", "monument"),
+            List.of("park", "garden", "botanical_garden", "beach", "national_park"),
+            List.of("observation_deck", "cultural_center", "amusement_park", "aquarium", "zoo"),
+            List.of("restaurant", "cafe", "bakery", "shopping_mall", "market")
+    );
     private static final String DEFAULT_CUSTOM_PLACE_COUNTRY_NAME = "UNKNOWN";
     private static final String DEFAULT_CUSTOM_PLACE_NAME = "Pinned place";
     private static final double SCHEDULE_LOCATION_NEARBY_SEARCH_RADIUS_METERS = 500.0d;
@@ -833,6 +861,900 @@ public class TripService {
     }
 
     /**
+     * 위시리스트 페이지의 실시간 추천 탭에 표시할 추천 장소 목록을 조회합니다.
+     * 현재 여행 위시리스트에 이미 담긴 장소는 추천 후보에서 제외해 중복 담기를 방지합니다.
+     *
+     * @param requestDto 조회 대상 여행 PK, 로그인 사용자 아이디, 추천 개수를 담은 요청 DTO
+     * @return 실시간 추천 장소 목록 응답 DTO
+     */
+    @Transactional
+    public TripWishlistRecommendationResponseDto getWishlistRecommendations(
+            TripWishlistRecommendationRequestDto requestDto
+    ) {
+        validateTripWishlistRecommendationRequest(requestDto);
+        validateUserExistsByUsersId(requestDto.getUsersId());
+
+        Trip trip = tripRepository.findByTripIdAndUser_UsersIdAndIsDeletedFalse(
+                        requestDto.getTripId(),
+                        requestDto.getUsersId()
+                )
+                .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_INPUT));
+
+        List<WishlistPlace> wishlistPlaces = wishlistPlaceRepository
+                .findAllByTrip_TripIdAndIsDeletedFalseAndPlace_IsDeletedFalseOrderByCreatedAtDesc(trip.getTripId());
+
+        Set<String> wishlistGooglePlaceIds = wishlistPlaces
+                .stream()
+                .map(WishlistPlace::getPlace)
+                .map(Place::getGooglePlaceId)
+                .filter(this::hasText)
+                .collect(Collectors.toSet());
+        Set<Long> excludedPlaceIds = wishlistPlaces
+                .stream()
+                .map(WishlistPlace::getPlace)
+                .map(Place::getPlaceId)
+                .filter(placeId -> placeId != null)
+                .collect(Collectors.toCollection(HashSet::new));
+
+        List<WishlistRecommendationSyncResult> googleRecommendationResults = collectWishlistRecommendationGoogleCandidates(
+                        requestDto
+                )
+                .stream()
+                .filter(this::isRecommendableGoogleCandidate)
+                .filter(candidate -> !wishlistGooglePlaceIds.contains(candidate.googlePlaceId()))
+                .sorted(buildGoogleTravelRecommendationComparator(requestDto))
+                .limit(requestDto.getLimit())
+                .map(this::syncWishlistRecommendationPlace)
+                .filter(syncResult -> syncResult != null && syncResult.place() != null)
+                .toList();
+        googleRecommendationResults.stream()
+                .map(WishlistRecommendationSyncResult::place)
+                .map(Place::getPlaceId)
+                .filter(placeId -> placeId != null)
+                .forEach(excludedPlaceIds::add);
+
+        List<TripWishlistRecommendationPlaceResponseDto> recommendedPlaces = new ArrayList<>();
+        googleRecommendationResults.stream()
+                .map(syncResult -> TripWishlistRecommendationPlaceResponseDto.from(
+                        syncResult.place(),
+                        syncResult.tags()
+                ))
+                .forEach(recommendedPlaces::add);
+
+        int remainingRecommendationCount = requestDto.getLimit() - recommendedPlaces.size();
+        if (remainingRecommendationCount > 0) {
+            recommendedPlaces.addAll(findStoredWishlistRecommendationFallbacks(
+                    requestDto,
+                    excludedPlaceIds,
+                    remainingRecommendationCount
+            ));
+        }
+
+        return TripWishlistRecommendationResponseDto.of(
+                trip.getTripId(),
+                trip.getTitle(),
+                recommendedPlaces
+        );
+    }
+
+    private List<GooglePlaceSearchService.GooglePlaceCandidate> collectWishlistRecommendationGoogleCandidates(
+            TripWishlistRecommendationRequestDto requestDto
+    ) {
+        LinkedHashMap<String, GooglePlaceSearchService.GooglePlaceCandidate> candidatesByGooglePlaceId =
+                new LinkedHashMap<>();
+
+        addWishlistRecommendationGoogleCandidates(
+                candidatesByGooglePlaceId,
+                googlePlaceSearchService.searchNearbyPlaces(
+                        requestDto.getLatitude(),
+                        requestDto.getLongitude(),
+                        requestDto.getRadiusMeters(),
+                        GOOGLE_WISHLIST_RECOMMENDATION_TYPES,
+                        GOOGLE_WISHLIST_RECOMMENDATION_RESULT_COUNT,
+                        GOOGLE_WISHLIST_RECOMMENDATION_RANK_PREFERENCE
+                )
+        );
+
+        for (List<String> typeGroup : GOOGLE_WISHLIST_RECOMMENDATION_TYPE_GROUPS) {
+            addWishlistRecommendationGoogleCandidates(
+                    candidatesByGooglePlaceId,
+                    googlePlaceSearchService.searchNearbyPlaces(
+                            requestDto.getLatitude(),
+                            requestDto.getLongitude(),
+                            requestDto.getRadiusMeters(),
+                            typeGroup,
+                            GOOGLE_WISHLIST_RECOMMENDATION_RESULT_COUNT,
+                            GOOGLE_WISHLIST_RECOMMENDATION_RANK_PREFERENCE
+                    )
+            );
+        }
+
+        return candidatesByGooglePlaceId.values().stream().toList();
+    }
+
+    private void addWishlistRecommendationGoogleCandidates(
+            Map<String, GooglePlaceSearchService.GooglePlaceCandidate> candidatesByGooglePlaceId,
+            List<GooglePlaceSearchService.GooglePlaceCandidate> candidates
+    ) {
+        if (isNullOrEmpty(candidates)) {
+            return;
+        }
+
+        for (GooglePlaceSearchService.GooglePlaceCandidate candidate : candidates) {
+            if (candidate == null || !hasText(candidate.googlePlaceId())) {
+                continue;
+            }
+            candidatesByGooglePlaceId.putIfAbsent(candidate.googlePlaceId(), candidate);
+        }
+    }
+
+    private List<TripWishlistRecommendationPlaceResponseDto> findStoredWishlistRecommendationFallbacks(
+            TripWishlistRecommendationRequestDto requestDto,
+            Set<Long> excludedPlaceIds,
+            int limit
+    ) {
+        if (limit <= 0) {
+            return List.of();
+        }
+
+        Set<Long> normalizedExcludedPlaceIds = excludedPlaceIds != null ? excludedPlaceIds : Set.of();
+        List<Place> fallbackPlaces = new ArrayList<>();
+        Set<Long> selectedPlaceIds = new HashSet<>(normalizedExcludedPlaceIds);
+
+        placeRepository.findAllByIsDeletedFalse(
+                        PageRequest.of(0, Math.max(limit * 20, 100))
+                )
+                .stream()
+                .filter(place -> isStoredWishlistRecommendationCandidate(place, selectedPlaceIds))
+                .sorted(buildStoredTravelRecommendationComparator(requestDto))
+                .limit(limit)
+                .forEach(place -> addStoredWishlistRecommendationFallback(fallbackPlaces, selectedPlaceIds, place));
+
+        int remainingCount = limit - fallbackPlaces.size();
+        if (remainingCount > 0) {
+            placeRepository.findRandomActivePlaces(Math.max(remainingCount * 5, 20))
+                    .stream()
+                    .filter(place -> isStoredWishlistRecommendationCandidate(place, selectedPlaceIds))
+                    .sorted(buildStoredTravelRecommendationComparator(requestDto))
+                    .limit(remainingCount)
+                    .forEach(place -> addStoredWishlistRecommendationFallback(fallbackPlaces, selectedPlaceIds, place));
+        }
+
+        return fallbackPlaces.stream()
+                .map(place -> TripWishlistRecommendationPlaceResponseDto.from(
+                        place,
+                        resolveStoredWishlistRecommendationTags(place)
+                ))
+                .toList();
+    }
+
+    private boolean isStoredWishlistRecommendationCandidate(Place place, Set<Long> selectedPlaceIds) {
+        return place != null
+                && place.getPlaceId() != null
+                && !Boolean.TRUE.equals(place.getIsDeleted())
+                && !selectedPlaceIds.contains(place.getPlaceId())
+                && isTravelRecommendationPlaceType(place.getPlaceType())
+                && !isLowQualityTravelRecommendationName(place.getName());
+    }
+
+    private void addStoredWishlistRecommendationFallback(
+            List<Place> fallbackPlaces,
+            Set<Long> selectedPlaceIds,
+            Place place
+    ) {
+        fallbackPlaces.add(place);
+        selectedPlaceIds.add(place.getPlaceId());
+    }
+
+    private List<String> resolveStoredWishlistRecommendationTags(Place place) {
+        if (place == null) {
+            return List.of("추천");
+        }
+        return List.of(mapPlaceTypeToRecommendationTag(place.getPlaceType()));
+    }
+
+    private boolean isRecommendableGoogleCandidate(GooglePlaceSearchService.GooglePlaceCandidate candidate) {
+        return candidate != null
+                && hasText(candidate.googlePlaceId())
+                && hasText(candidate.name())
+                && hasTravelRecommendationGoogleType(candidate)
+                && !hasExcludedGoogleRecommendationType(candidate)
+                && !isLowQualityTravelRecommendationName(candidate.name());
+    }
+
+    private Comparator<GooglePlaceSearchService.GooglePlaceCandidate> buildGoogleTravelRecommendationComparator(
+            TripWishlistRecommendationRequestDto requestDto
+    ) {
+        return Comparator.<GooglePlaceSearchService.GooglePlaceCandidate, Double>comparing(
+                        candidate -> calculateGoogleTravelRecommendationScore(candidate, requestDto),
+                        Comparator.nullsLast(Comparator.reverseOrder())
+                )
+                .thenComparing(
+                        candidate -> nullableTrim(candidate.name()),
+                        Comparator.nullsLast(String.CASE_INSENSITIVE_ORDER)
+                );
+    }
+
+    private Comparator<Place> buildStoredTravelRecommendationComparator(
+            TripWishlistRecommendationRequestDto requestDto
+    ) {
+        return Comparator
+                .comparing(
+                        (Place place) -> calculateNullableDistanceMeters(
+                                requestDto.getLatitude(),
+                                requestDto.getLongitude(),
+                                place.getLatitude(),
+                                place.getLongitude()
+                        ),
+                        Comparator.nullsLast(Comparator.naturalOrder())
+                )
+                .thenComparing(
+                        this::calculateStoredTravelRecommendationScore,
+                        Comparator.reverseOrder()
+                )
+                .thenComparing(
+                        place -> nullableTrim(place.getName()),
+                        Comparator.nullsLast(String.CASE_INSENSITIVE_ORDER)
+                );
+    }
+
+    private Double calculateGoogleTravelRecommendationScore(
+            GooglePlaceSearchService.GooglePlaceCandidate candidate,
+            TripWishlistRecommendationRequestDto requestDto
+    ) {
+        if (candidate == null) {
+            return null;
+        }
+
+        double score = calculateGoogleTypeRecommendationScore(candidate);
+        if (candidate.rating() != null) {
+            score += candidate.rating() * 8.0d;
+        }
+        if (candidate.userRatingCount() != null && candidate.userRatingCount() > 0) {
+            score += Math.log10(candidate.userRatingCount() + 1.0d) * 6.0d;
+        }
+        if (hasText(candidate.firstPhotoName())) {
+            score += 5.0d;
+        }
+        Double distanceMeters = calculateNullableDistanceMeters(
+                requestDto.getLatitude(),
+                requestDto.getLongitude(),
+                candidate.latitude(),
+                candidate.longitude()
+        );
+        if (distanceMeters != null) {
+            score += Math.max(0.0d, 10.0d - (distanceMeters / 1_000.0d));
+        }
+        return score;
+    }
+
+    private double calculateStoredTravelRecommendationScore(Place place) {
+        if (place == null) {
+            return 0.0d;
+        }
+
+        double score = calculatePlaceTypeRecommendationScore(place.getPlaceType());
+        BigDecimal ratingAvg = place.getGoogleRatingAvg() != null ? place.getGoogleRatingAvg() : place.getRatingAvg();
+        Integer reviewCount = place.getGoogleReviewCount() != null ? place.getGoogleReviewCount() : place.getReviewCount();
+        if (ratingAvg != null) {
+            score += ratingAvg.doubleValue() * 8.0d;
+        }
+        if (reviewCount != null && reviewCount > 0) {
+            score += Math.log10(reviewCount + 1.0d) * 6.0d;
+        }
+        if (hasText(place.getImageUrl())) {
+            score += 5.0d;
+        }
+        return score;
+    }
+
+    private double calculateGoogleTypeRecommendationScore(GooglePlaceSearchService.GooglePlaceCandidate candidate) {
+        List<String> googleTypes = collectGoogleCandidateTypes(candidate);
+        double score = 0.0d;
+        for (String googleType : googleTypes) {
+            score = Math.max(score, calculateGoogleTypeRecommendationScore(googleType));
+        }
+        return score;
+    }
+
+    private double calculateGoogleTypeRecommendationScore(String googleType) {
+        if (!hasText(googleType)) {
+            return 0.0d;
+        }
+
+        String normalizedType = googleType.trim().toLowerCase(Locale.ROOT);
+        return switch (normalizedType) {
+            case "tourist_attraction", "historical_landmark", "monument", "observation_deck",
+                    "museum", "art_gallery", "cultural_center", "performing_arts_theater" -> 100.0d;
+            case "park", "national_park", "botanical_garden", "garden", "beach",
+                    "hiking_area", "natural_feature" -> 95.0d;
+            case "amusement_park", "aquarium", "zoo", "visitor_center" -> 90.0d;
+            case "shopping_mall", "department_store", "market", "souvenir_store" -> 75.0d;
+            case "restaurant", "cafe", "bakery", "bar", "coffee_shop", "ramen_restaurant",
+                    "japanese_restaurant", "korean_restaurant", "seafood_restaurant" -> 70.0d;
+            default -> 0.0d;
+        };
+    }
+
+    private double calculatePlaceTypeRecommendationScore(PlaceType placeType) {
+        if (placeType == null) {
+            return 0.0d;
+        }
+
+        return switch (placeType) {
+            case ATTRACTION, LANDMARK, CULTURE -> 100.0d;
+            case NATURE, BEACH -> 95.0d;
+            case SHOPPING -> 75.0d;
+            case RESTAURANT -> 70.0d;
+            case ACCOMMODATION -> 40.0d;
+        };
+    }
+
+    private boolean hasTravelRecommendationGoogleType(GooglePlaceSearchService.GooglePlaceCandidate candidate) {
+        return collectGoogleCandidateTypes(candidate).stream()
+                .anyMatch(type -> calculateGoogleTypeRecommendationScore(type) > 0.0d);
+    }
+
+    private boolean hasExcludedGoogleRecommendationType(GooglePlaceSearchService.GooglePlaceCandidate candidate) {
+        return collectGoogleCandidateTypes(candidate).stream()
+                .anyMatch(this::isExcludedGoogleRecommendationType);
+    }
+
+    private boolean isExcludedGoogleRecommendationType(String googleType) {
+        if (!hasText(googleType)) {
+            return false;
+        }
+
+        String normalizedType = googleType.trim().toLowerCase(Locale.ROOT);
+        return switch (normalizedType) {
+            case "bus_station", "subway_station", "train_station", "transit_station", "light_rail_station",
+                    "parking", "parking_lot", "parking_garage", "gas_station", "atm", "bank",
+                    "public_bathroom", "convenience_store", "pharmacy" -> true;
+            default -> false;
+        };
+    }
+
+    private boolean isTravelRecommendationPlaceType(PlaceType placeType) {
+        return placeType != null && calculatePlaceTypeRecommendationScore(placeType) >= 70.0d;
+    }
+
+    private List<String> collectGoogleCandidateTypes(GooglePlaceSearchService.GooglePlaceCandidate candidate) {
+        if (candidate == null) {
+            return List.of();
+        }
+
+        LinkedHashSet<String> types = new LinkedHashSet<>();
+        if (hasText(candidate.primaryType())) {
+            types.add(candidate.primaryType());
+        }
+        if (!isNullOrEmpty(candidate.types())) {
+            candidate.types().stream()
+                    .filter(this::hasText)
+                    .forEach(types::add);
+        }
+        return types.stream().toList();
+    }
+
+    private boolean isLowQualityTravelRecommendationName(String name) {
+        String normalizedName = normalizeMatchingText(name);
+        if (!hasText(normalizedName)) {
+            return true;
+        }
+
+        return normalizedName.contains("번출구")
+                || normalizedName.contains("출구")
+                || normalizedName.contains("정류장")
+                || normalizedName.contains("버스정류장")
+                || normalizedName.contains("승강장")
+                || normalizedName.contains("주차장")
+                || normalizedName.contains("화장실")
+                || normalizedName.contains("ticketgate")
+                || normalizedName.contains("exit")
+                || normalizedName.contains("busstop")
+                || normalizedName.contains("parking")
+                || normalizedName.contains("toilet");
+    }
+
+    private Double calculateNullableDistanceMeters(
+            Double latitude1,
+            Double longitude1,
+            Double latitude2,
+            Double longitude2
+    ) {
+        if (latitude1 == null || longitude1 == null || latitude2 == null || longitude2 == null) {
+            return null;
+        }
+        return calculateDistanceMeters(
+                latitude1.doubleValue(),
+                longitude1.doubleValue(),
+                latitude2.doubleValue(),
+                longitude2.doubleValue()
+        );
+    }
+
+    private Double calculateNullableDistanceMeters(
+            Double latitude1,
+            Double longitude1,
+            BigDecimal latitude2,
+            BigDecimal longitude2
+    ) {
+        if (latitude1 == null || longitude1 == null || latitude2 == null || longitude2 == null) {
+            return null;
+        }
+        return calculateDistanceMeters(
+                latitude1.doubleValue(),
+                longitude1.doubleValue(),
+                latitude2.doubleValue(),
+                longitude2.doubleValue()
+        );
+    }
+
+    private WishlistRecommendationSyncResult syncWishlistRecommendationPlace(
+            GooglePlaceSearchService.GooglePlaceCandidate candidate
+    ) {
+        GooglePlaceSearchService.GooglePlaceCandidate enrichedCandidate =
+                enrichWishlistRecommendationCandidate(candidate);
+        if (enrichedCandidate == null
+                || !hasText(enrichedCandidate.googlePlaceId())
+                || !hasText(enrichedCandidate.name())) {
+            return null;
+        }
+
+        String name = truncate(enrichedCandidate.name().trim(), PLACE_NAME_MAX_LENGTH);
+        String address = truncate(
+                firstNonBlank(enrichedCandidate.formattedAddress(), enrichedCandidate.shortFormattedAddress()),
+                ADDRESS_MAX_LENGTH
+        );
+        ParsedGoogleAddress parsedAddress = parseGoogleAddress(address, enrichedCandidate.addressComponents());
+        String countryName = truncate(
+                firstNonBlank(parsedAddress.countryName(), DEFAULT_CUSTOM_PLACE_COUNTRY_NAME),
+                COUNTRY_NAME_MAX_LENGTH
+        );
+        String cityName = truncate(nullableTrim(parsedAddress.cityName()), CITY_NAME_MAX_LENGTH);
+        BigDecimal latitude = normalizeCoordinate(enrichedCandidate.latitude());
+        BigDecimal longitude = normalizeCoordinate(enrichedCandidate.longitude());
+        Place existingPlace = findExistingWishlistRecommendationPlace(
+                enrichedCandidate.googlePlaceId(),
+                name,
+                address,
+                cityName,
+                countryName
+        ).orElse(null);
+        PlaceType placeType = resolveWishlistRecommendationPlaceType(enrichedCandidate, existingPlace);
+        String description = resolveWishlistRecommendationDescription(existingPlace, enrichedCandidate.editorialSummary());
+        String openingHours = resolveWishlistRecommendationOpeningHours(
+                existingPlace,
+                enrichedCandidate.regularOpeningWeekdayDescriptions()
+        );
+        String imageUrl = resolveWishlistRecommendationImageUrl(existingPlace, enrichedCandidate.firstPhotoName());
+        BigDecimal googleRatingAvg = normalizeGoogleRating(
+                enrichedCandidate.rating(),
+                enrichedCandidate.userRatingCount()
+        );
+        Integer googleReviewCount = normalizeGoogleReviewCount(enrichedCandidate.userRatingCount());
+
+        Place place;
+        if (existingPlace == null) {
+            place = placeRepository.save(Place.builder()
+                    .name(name)
+                    .googlePlaceId(enrichedCandidate.googlePlaceId())
+                    .countryName(countryName)
+                    .cityName(cityName)
+                    .address(address)
+                    .description(description)
+                    .latitude(latitude)
+                    .longitude(longitude)
+                    .placeType(placeType)
+                    .openingHours(openingHours)
+                    .imageUrl(imageUrl)
+                    .googleRatingAvg(googleRatingAvg)
+                    .googleReviewCount(googleReviewCount)
+                    .build());
+        } else {
+            existingPlace.updateFromGoogle(
+                    enrichedCandidate.googlePlaceId(),
+                    name,
+                    countryName,
+                    cityName,
+                    address,
+                    latitude,
+                    longitude,
+                    placeType,
+                    description,
+                    openingHours,
+                    imageUrl,
+                    googleRatingAvg,
+                    googleReviewCount
+            );
+            place = existingPlace;
+        }
+
+        return new WishlistRecommendationSyncResult(
+                place,
+                resolveWishlistRecommendationTags(enrichedCandidate, placeType)
+        );
+    }
+
+    private GooglePlaceSearchService.GooglePlaceCandidate enrichWishlistRecommendationCandidate(
+            GooglePlaceSearchService.GooglePlaceCandidate candidate
+    ) {
+        if (candidate == null || !hasText(candidate.googlePlaceId()) || !needsWishlistRecommendationDetails(candidate)) {
+            return candidate;
+        }
+
+        GooglePlaceSearchService.GooglePlaceCandidate details =
+                googlePlaceSearchService.getPlaceDetails(candidate.googlePlaceId());
+        if (details == null) {
+            return candidate;
+        }
+
+        return new GooglePlaceSearchService.GooglePlaceCandidate(
+                firstNonBlank(details.googlePlaceId(), candidate.googlePlaceId()),
+                firstNonBlank(details.name(), candidate.name()),
+                firstNonBlank(details.formattedAddress(), candidate.formattedAddress()),
+                firstNonBlank(details.shortFormattedAddress(), candidate.shortFormattedAddress()),
+                details.latitude() != null ? details.latitude() : candidate.latitude(),
+                details.longitude() != null ? details.longitude() : candidate.longitude(),
+                details.rating() != null ? details.rating() : candidate.rating(),
+                details.userRatingCount() != null ? details.userRatingCount() : candidate.userRatingCount(),
+                isNullOrEmpty(details.addressComponents()) ? candidate.addressComponents() : details.addressComponents(),
+                firstNonBlank(details.editorialSummary(), candidate.editorialSummary()),
+                isNullOrEmpty(details.regularOpeningWeekdayDescriptions())
+                        ? candidate.regularOpeningWeekdayDescriptions()
+                        : details.regularOpeningWeekdayDescriptions(),
+                firstNonBlank(details.firstPhotoName(), candidate.firstPhotoName()),
+                firstNonBlank(details.primaryType(), candidate.primaryType()),
+                isNullOrEmpty(details.types()) ? candidate.types() : details.types()
+        );
+    }
+
+    private boolean needsWishlistRecommendationDetails(GooglePlaceSearchService.GooglePlaceCandidate candidate) {
+        return !hasText(candidate.formattedAddress())
+                || isNullOrEmpty(candidate.addressComponents())
+                || !hasText(candidate.firstPhotoName())
+                || !hasText(candidate.editorialSummary());
+    }
+
+    private Optional<Place> findExistingWishlistRecommendationPlace(
+            String googlePlaceId,
+            String name,
+            String address,
+            String cityName,
+            String countryName
+    ) {
+        if (hasText(googlePlaceId)) {
+            List<Place> placesByGooglePlaceId =
+                    placeRepository.findAllByGooglePlaceIdAndIsDeletedFalseOrderByUpdatedAtDescCreatedAtDescPlaceIdDesc(
+                            googlePlaceId
+                    );
+            if (!isNullOrEmpty(placesByGooglePlaceId)) {
+                return Optional.of(placesByGooglePlaceId.get(0));
+            }
+        }
+
+        if (hasText(name) && hasText(address)) {
+            Optional<Place> placeByNameAndAddress =
+                    placeRepository.findFirstByNameAndAddressAndIsDeletedFalse(name, address);
+            if (placeByNameAndAddress.isPresent()) {
+                return placeByNameAndAddress;
+            }
+        }
+
+        if (hasText(name) && hasText(cityName) && hasText(countryName)) {
+            return placeRepository.findFirstByNameAndCityNameAndCountryNameAndIsDeletedFalse(
+                    name,
+                    cityName,
+                    countryName
+            );
+        }
+
+        return Optional.empty();
+    }
+
+    private ParsedGoogleAddress parseGoogleAddress(
+            String formattedAddress,
+            List<GooglePlaceSearchService.GoogleAddressComponentCandidate> addressComponents
+    ) {
+        ParsedGoogleAddress parsedFromComponents = parseGoogleAddressComponents(addressComponents);
+        if (parsedFromComponents.hasAnyValue()) {
+            return parsedFromComponents;
+        }
+
+        return parseGoogleFormattedAddress(formattedAddress);
+    }
+
+    private ParsedGoogleAddress parseGoogleAddressComponents(
+            List<GooglePlaceSearchService.GoogleAddressComponentCandidate> addressComponents
+    ) {
+        if (isNullOrEmpty(addressComponents)) {
+            return ParsedGoogleAddress.empty();
+        }
+
+        String country = null;
+        String locality = null;
+        String adminLevel1 = null;
+        String adminLevel2 = null;
+        String subLocality = null;
+
+        for (GooglePlaceSearchService.GoogleAddressComponentCandidate component : addressComponents) {
+            if (component == null || isNullOrEmpty(component.types())) {
+                continue;
+            }
+
+            String value = firstNonBlank(component.longText(), component.shortText());
+            if (!hasText(value)) {
+                continue;
+            }
+
+            if (containsGoogleAddressType(component.types(), "country")) {
+                country = value;
+            }
+            if (containsGoogleAddressType(component.types(), "locality")) {
+                locality = value;
+            }
+            if (containsGoogleAddressType(component.types(), "administrative_area_level_1")) {
+                adminLevel1 = value;
+            }
+            if (containsGoogleAddressType(component.types(), "administrative_area_level_2")) {
+                adminLevel2 = value;
+            }
+            if (containsGoogleAddressType(component.types(), "sublocality")
+                    || containsGoogleAddressTypePrefix(component.types(), "sublocality_level_")) {
+                subLocality = value;
+            }
+        }
+
+        return ParsedGoogleAddress.of(country, firstNonBlank(locality, adminLevel2, adminLevel1, subLocality));
+    }
+
+    private ParsedGoogleAddress parseGoogleFormattedAddress(String formattedAddress) {
+        if (!hasText(formattedAddress) || !formattedAddress.contains(",")) {
+            return ParsedGoogleAddress.empty();
+        }
+
+        List<String> tokens = List.of(formattedAddress.split(","))
+                .stream()
+                .map(String::trim)
+                .filter(this::hasText)
+                .toList();
+        if (tokens.isEmpty()) {
+            return ParsedGoogleAddress.empty();
+        }
+
+        String country = tokens.get(tokens.size() - 1);
+        String city = tokens.size() >= 2 ? tokens.get(tokens.size() - 2) : null;
+        return ParsedGoogleAddress.of(country, city);
+    }
+
+    private boolean containsGoogleAddressType(List<String> types, String targetType) {
+        return types.stream().anyMatch(type -> targetType.equalsIgnoreCase(type));
+    }
+
+    private boolean containsGoogleAddressTypePrefix(List<String> types, String prefix) {
+        return types.stream().anyMatch(type -> type != null
+                && type.toLowerCase(Locale.ROOT).startsWith(prefix.toLowerCase(Locale.ROOT)));
+    }
+
+    private PlaceType resolveWishlistRecommendationPlaceType(
+            GooglePlaceSearchService.GooglePlaceCandidate candidate,
+            Place existingPlace
+    ) {
+        PlaceType mappedPlaceType = resolvePlaceTypeFromGoogle(candidate);
+        if (mappedPlaceType != null) {
+            return mappedPlaceType;
+        }
+        if (existingPlace != null) {
+            return PlaceType.normalizeForAppCategory(existingPlace.getPlaceType());
+        }
+        return PlaceType.ATTRACTION;
+    }
+
+    private PlaceType resolvePlaceTypeFromGoogle(GooglePlaceSearchService.GooglePlaceCandidate candidate) {
+        if (candidate == null) {
+            return null;
+        }
+
+        PlaceType primaryTypeMatch = mapGoogleTypeToPlaceType(candidate.primaryType());
+        if (primaryTypeMatch != null) {
+            return primaryTypeMatch;
+        }
+
+        if (isNullOrEmpty(candidate.types())) {
+            return null;
+        }
+
+        for (String type : candidate.types()) {
+            PlaceType mappedType = mapGoogleTypeToPlaceType(type);
+            if (mappedType != null) {
+                return mappedType;
+            }
+        }
+
+        return null;
+    }
+
+    private PlaceType mapGoogleTypeToPlaceType(String googleType) {
+        if (!hasText(googleType)) {
+            return null;
+        }
+
+        String normalizedType = googleType.trim().toLowerCase(Locale.ROOT);
+
+        return switch (normalizedType) {
+            case "lodging", "hotel", "motel", "resort_hotel", "hostel", "guest_house",
+                    "bed_and_breakfast", "extended_stay_hotel", "rv_park" -> PlaceType.ACCOMMODATION;
+            case "restaurant", "cafe", "bakery", "bar", "brunch_restaurant", "breakfast_restaurant",
+                    "coffee_shop", "fast_food_restaurant", "hamburger_restaurant", "ice_cream_shop",
+                    "japanese_restaurant", "korean_restaurant", "meal_delivery", "meal_takeaway",
+                    "pizza_restaurant", "ramen_restaurant", "seafood_restaurant", "steak_house" ->
+                    PlaceType.RESTAURANT;
+            case "shopping_mall", "department_store", "supermarket", "convenience_store", "market",
+                    "clothing_store", "book_store", "gift_shop", "souvenir_store", "store" -> PlaceType.SHOPPING;
+            case "museum", "art_gallery", "cultural_center", "performing_arts_theater", "library",
+                    "church", "hindu_temple", "mosque", "synagogue", "buddhist_temple", "shinto_shrine" ->
+                    PlaceType.CULTURE;
+            case "beach" -> PlaceType.BEACH;
+            case "park", "national_park", "botanical_garden", "garden", "campground",
+                    "hiking_area", "natural_feature" -> PlaceType.NATURE;
+            case "historical_landmark", "monument", "observation_deck" -> PlaceType.LANDMARK;
+            case "tourist_attraction", "amusement_park", "aquarium", "visitor_center", "zoo" ->
+                    PlaceType.ATTRACTION;
+            default -> {
+                if (normalizedType.endsWith("_restaurant")
+                        || normalizedType.endsWith("_cafe")
+                        || normalizedType.endsWith("_bar")) {
+                    yield PlaceType.RESTAURANT;
+                }
+                if (normalizedType.endsWith("_store")
+                        || normalizedType.endsWith("_shop")
+                        || normalizedType.endsWith("_market")) {
+                    yield PlaceType.SHOPPING;
+                }
+                yield null;
+            }
+        };
+    }
+
+    private String resolveWishlistRecommendationDescription(Place place, String googleDescription) {
+        String normalizedGoogleValue = truncate(nullableTrim(googleDescription), DESCRIPTION_MAX_LENGTH);
+        if (hasText(normalizedGoogleValue)) {
+            return normalizedGoogleValue;
+        }
+        if (place != null) {
+            return truncate(nullableTrim(place.getDescription()), DESCRIPTION_MAX_LENGTH);
+        }
+        return null;
+    }
+
+    private String resolveWishlistRecommendationOpeningHours(Place place, List<String> googleOpeningHours) {
+        String normalizedGoogleValue = normalizeOpeningHours(googleOpeningHours);
+        if (hasText(normalizedGoogleValue)) {
+            return normalizedGoogleValue;
+        }
+        if (place != null) {
+            return truncate(nullableTrim(place.getOpeningHours()), OPENING_HOURS_MAX_LENGTH);
+        }
+        return null;
+    }
+
+    private String resolveWishlistRecommendationImageUrl(Place place, String photoName) {
+        if (hasText(photoName)) {
+            String photoUri = googlePlaceSearchService.getPhotoUri(photoName);
+            if (hasText(photoUri)) {
+                return truncate(photoUri, IMAGE_URL_MAX_LENGTH);
+            }
+        }
+
+        if (place != null) {
+            return truncate(nullableTrim(place.getImageUrl()), IMAGE_URL_MAX_LENGTH);
+        }
+        return null;
+    }
+
+    private String normalizeOpeningHours(List<String> openingHoursLines) {
+        if (isNullOrEmpty(openingHoursLines)) {
+            return null;
+        }
+
+        String normalizedValue = openingHoursLines.stream()
+                .filter(line -> line != null)
+                .map(String::trim)
+                .filter(this::hasText)
+                .distinct()
+                .collect(Collectors.joining(" | "));
+
+        return truncate(nullableTrim(normalizedValue), OPENING_HOURS_MAX_LENGTH);
+    }
+
+    private BigDecimal normalizeCoordinate(Double coordinate) {
+        if (coordinate == null) {
+            return null;
+        }
+        return BigDecimal.valueOf(coordinate).setScale(7, RoundingMode.HALF_UP);
+    }
+
+    private BigDecimal normalizeGoogleRating(Double rating, Integer userRatingCount) {
+        if (rating == null || userRatingCount == null || userRatingCount <= 0) {
+            return null;
+        }
+        return BigDecimal.valueOf(rating).setScale(1, RoundingMode.HALF_UP);
+    }
+
+    private Integer normalizeGoogleReviewCount(Integer userRatingCount) {
+        if (userRatingCount == null || userRatingCount <= 0) {
+            return null;
+        }
+        return userRatingCount;
+    }
+
+    private List<String> resolveWishlistRecommendationTags(
+            GooglePlaceSearchService.GooglePlaceCandidate candidate,
+            PlaceType placeType
+    ) {
+        List<String> googleTypes = new ArrayList<>();
+        if (hasText(candidate.primaryType())) {
+            googleTypes.add(candidate.primaryType());
+        }
+        if (!isNullOrEmpty(candidate.types())) {
+            googleTypes.addAll(candidate.types());
+        }
+
+        List<String> tags = googleTypes.stream()
+                .map(this::mapGoogleTypeToRecommendationTag)
+                .filter(this::hasText)
+                .distinct()
+                .limit(MAX_WISHLIST_RECOMMENDATION_TAG_COUNT)
+                .toList();
+        if (!tags.isEmpty()) {
+            return tags;
+        }
+
+        return List.of(mapPlaceTypeToRecommendationTag(placeType));
+    }
+
+    private String mapGoogleTypeToRecommendationTag(String googleType) {
+        if (!hasText(googleType)) {
+            return null;
+        }
+
+        String normalizedType = googleType.trim().toLowerCase(Locale.ROOT);
+        return switch (normalizedType) {
+            case "restaurant", "japanese_restaurant", "korean_restaurant", "ramen_restaurant",
+                    "seafood_restaurant", "steak_house" -> "맛집";
+            case "cafe", "coffee_shop", "bakery" -> "카페";
+            case "shopping_mall", "department_store", "market", "store", "souvenir_store" -> "쇼핑";
+            case "museum", "art_gallery", "cultural_center", "performing_arts_theater" -> "문화";
+            case "park", "national_park", "garden", "botanical_garden" -> "공원";
+            case "beach" -> "해변";
+            case "lodging", "hotel", "resort_hotel", "hostel", "guest_house" -> "숙소";
+            case "historical_landmark", "monument", "observation_deck" -> "랜드마크";
+            case "tourist_attraction", "amusement_park", "aquarium", "zoo" -> "관광";
+            default -> null;
+        };
+    }
+
+    private String mapPlaceTypeToRecommendationTag(PlaceType placeType) {
+        if (placeType == null) {
+            return "추천";
+        }
+
+        return switch (placeType) {
+            case RESTAURANT -> "맛집";
+            case BEACH -> "해변";
+            case NATURE -> "자연";
+            case LANDMARK -> "랜드마크";
+            case ACCOMMODATION -> "숙소";
+            case SHOPPING -> "쇼핑";
+            case CULTURE -> "문화";
+            case ATTRACTION -> "관광";
+        };
+    }
+
+    private boolean isNullOrEmpty(List<?> list) {
+        return list == null || list.isEmpty();
+    }
+
+    /**
      * 위시리스트 엔티티 목록을 "장소 PK -> 위시리스트 PK" 맵으로 변환합니다.
      * 저장한 장소 탭에서 "이미 담긴 장소인지"를 빠르게 판단하기 위해 사용합니다.
      *
@@ -1098,6 +2020,27 @@ public class TripService {
         if (requestDto.getTripId() == null
                 || requestDto.getTripId() < 1
                 || requestDto.getUsersId() == null) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT);
+        }
+    }
+
+    private void validateTripWishlistRecommendationRequest(TripWishlistRecommendationRequestDto requestDto) {
+        if (requestDto.getTripId() == null
+                || requestDto.getTripId() < 1
+                || requestDto.getUsersId() == null
+                || requestDto.getUsersId().isBlank()
+                || requestDto.getLatitude() == null
+                || requestDto.getLatitude() < -90.0d
+                || requestDto.getLatitude() > 90.0d
+                || requestDto.getLongitude() == null
+                || requestDto.getLongitude() < -180.0d
+                || requestDto.getLongitude() > 180.0d
+                || requestDto.getRadiusMeters() == null
+                || requestDto.getRadiusMeters() <= 0.0d
+                || requestDto.getRadiusMeters() > MAX_WISHLIST_RECOMMENDATION_RADIUS_METERS
+                || requestDto.getLimit() == null
+                || requestDto.getLimit() < 1
+                || requestDto.getLimit() > MAX_WISHLIST_RECOMMENDATION_LIMIT) {
             throw new BusinessException(ErrorCode.INVALID_INPUT);
         }
     }
@@ -2357,6 +3300,33 @@ public class TripService {
                 .replaceAll("\\s+", "")
                 .replace(",", "")
                 .toLowerCase();
+    }
+
+    private record WishlistRecommendationSyncResult(
+            Place place,
+            List<String> tags
+    ) {
+    }
+
+    private record ParsedGoogleAddress(
+            String countryName,
+            String cityName
+    ) {
+        private static ParsedGoogleAddress empty() {
+            return new ParsedGoogleAddress(null, null);
+        }
+
+        private static ParsedGoogleAddress of(String countryName, String cityName) {
+            return new ParsedGoogleAddress(
+                    countryName == null ? null : countryName.trim(),
+                    cityName == null ? null : cityName.trim()
+            );
+        }
+
+        private boolean hasAnyValue() {
+            return (countryName != null && !countryName.isBlank())
+                    || (cityName != null && !cityName.isBlank());
+        }
     }
 
     private record ScheduleLocationPlaceSnapshot(
