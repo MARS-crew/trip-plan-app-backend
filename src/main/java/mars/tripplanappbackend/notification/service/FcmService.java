@@ -3,6 +3,8 @@ package mars.tripplanappbackend.notification.service;
 import com.google.firebase.messaging.*;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import mars.tripplanappbackend.global.enums.ErrorCode;
+import mars.tripplanappbackend.global.exception.BusinessException;
 import mars.tripplanappbackend.notification.repository.UserFcmTokenRepository;
 import org.springframework.stereotype.Service;
 
@@ -34,6 +36,28 @@ public class FcmService {
 
         } catch (FirebaseMessagingException e) {
             handleFcmError(e, token);
+        }
+    }
+
+    public String sendTestPushNotification(String token, String title, String body, Map<String, String> data) {
+
+        Message message = buildMessage(token, title, body, data);
+
+        try {
+            String response = firebaseMessaging.send(message);
+            log.info("FCM test send success - response: {}", response);
+            return response;
+
+        } catch (FirebaseMessagingException e) {
+            handleFcmError(e, token);
+
+            MessagingErrorCode errorCode = e.getMessagingErrorCode();
+            if (errorCode == MessagingErrorCode.UNREGISTERED
+                    || errorCode == MessagingErrorCode.INVALID_ARGUMENT) {
+                throw new BusinessException(ErrorCode.INVALID_FCM_TOKEN);
+            }
+
+            throw new BusinessException(ErrorCode.FCM_SEND_FAIL);
         }
     }
 

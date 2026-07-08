@@ -9,14 +9,18 @@ import mars.tripplanappbackend.global.config.auth.UserPrincipal;
 import mars.tripplanappbackend.global.config.swagger.ApiErrorExceptions;
 import mars.tripplanappbackend.global.dto.ApiResponse;
 import mars.tripplanappbackend.global.enums.ErrorCode;
+import mars.tripplanappbackend.notification.dto.request.FcmTestRequest;
 import mars.tripplanappbackend.notification.dto.request.FcmTokenRequest;
+import mars.tripplanappbackend.notification.dto.response.FcmTestResponse;
 import mars.tripplanappbackend.notification.dto.response.NotificationResponse;
 import mars.tripplanappbackend.notification.dto.response.UnreadNotificationResponse;
+import mars.tripplanappbackend.notification.service.FcmService;
 import mars.tripplanappbackend.notification.service.FcmTokenService;
 import mars.tripplanappbackend.notification.service.NotificationService;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/v1/notifications")
@@ -26,6 +30,7 @@ public class NotificationController {
 
     private final NotificationService notificationService;
     private final FcmTokenService fcmTokenService;
+    private final FcmService fcmService;
 
     @PostMapping("/token")
     @ApiErrorExceptions({ErrorCode.INVALID_INPUT, ErrorCode.INTERNAL_ERROR,
@@ -38,6 +43,27 @@ public class NotificationController {
         String usersId = userPrincipal.getUsersId();
         fcmTokenService.saveToken(usersId, request);
         return ApiResponse.ok(null);
+    }
+
+    @PostMapping("/test/fcm")
+    @ApiErrorExceptions({ErrorCode.INVALID_INPUT, ErrorCode.INVALID_FCM_TOKEN,
+            ErrorCode.FCM_SEND_FAIL, ErrorCode.INTERNAL_ERROR})
+    @Operation(summary = "FCM test send", description = "Send a test push notification to the provided FCM token.")
+    public ApiResponse<FcmTestResponse> sendTestFcm(
+            @Valid @RequestBody FcmTestRequest request
+    ) {
+        String messageId = fcmService.sendTestPushNotification(
+                request.getToken(),
+                request.getTitle(),
+                request.getBody(),
+                Map.of("type", "TEST")
+        );
+
+        return ApiResponse.ok(FcmTestResponse.builder()
+                .messageId(messageId)
+                .title(request.getTitle())
+                .body(request.getBody())
+                .build());
     }
 
     @GetMapping
