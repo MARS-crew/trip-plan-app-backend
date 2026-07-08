@@ -29,6 +29,7 @@ import mars.tripplanappbackend.trip.dto.request.MyTripScheduleRouteRequestDto;
 import mars.tripplanappbackend.trip.dto.request.NearbyTripScheduleRequestDto;
 import mars.tripplanappbackend.trip.dto.request.ShareTripRequestDto;
 import mars.tripplanappbackend.trip.dto.request.TripPlaceSelectionRequestDto;
+import mars.tripplanappbackend.trip.dto.request.TripWishlistRecommendationRequestDto;
 import mars.tripplanappbackend.trip.dto.request.UpdateTripScheduleRequestDto;
 import mars.tripplanappbackend.trip.dto.request.UpdateTripDateRequestDto;
 import mars.tripplanappbackend.trip.dto.request.UpdateTripRequestDto;
@@ -49,6 +50,7 @@ import mars.tripplanappbackend.trip.dto.response.MyTripScheduleRouteResponseDto;
 import mars.tripplanappbackend.trip.dto.response.NearbyTripScheduleResponseDto;
 import mars.tripplanappbackend.trip.dto.response.ShareTripResponseDto;
 import mars.tripplanappbackend.trip.dto.response.TripPlaceSelectionResponseDto;
+import mars.tripplanappbackend.trip.dto.response.TripWishlistRecommendationResponseDto;
 import mars.tripplanappbackend.trip.dto.response.UpdateTripScheduleResponseDto;
 import mars.tripplanappbackend.trip.dto.response.UpdateTripDateResponseDto;
 import mars.tripplanappbackend.trip.dto.response.UpdateTripResponseDto;
@@ -266,6 +268,49 @@ public class TripController {
         TripPlaceSelectionRequestDto requestDto =
                 TripPlaceSelectionRequestDto.of(tripId, userPrincipal.getUsersId());
         return ApiResponse.ok(tripService.getTripPlaceSelection(requestDto));
+    }
+
+    /**
+     * 위시리스트 페이지의 실시간 추천 탭에 표시할 장소 목록을 조회합니다.
+     *
+     * @param tripId 조회할 여행 PK
+     * @param latitude 현재 zoom 영역의 중심 위도
+     * @param longitude 현재 zoom 영역의 중심 경도
+     * @param radiusMeters 현재 zoom 영역 검색 반경
+     * @param limit 조회할 추천 장소 개수
+     * @param userPrincipal 커스텀 어노테이션으로 주입한 현재 로그인 사용자 정보
+     * @return 공통 응답 형식으로 감싼 위시리스트 실시간 추천 목록
+     */
+    @GetMapping("/{tripId}/wishlist-places/recommendations")
+    @ApiErrorExceptions({ErrorCode.INVALID_INPUT, ErrorCode.UNAUTHORIZED, ErrorCode.USER_NOT_FOUND, ErrorCode.INTERNAL_ERROR})
+    @Operation(
+            summary = "위시리스트 실시간 추천 장소 조회",
+            description = "위시리스트 페이지의 실시간 추천 탭에 표시할 장소 목록을 조회합니다."
+    )
+    public ApiResponse<TripWishlistRecommendationResponseDto> getWishlistRecommendations(
+            @Parameter(description = "조회할 여행 PK", example = "5")
+            @PathVariable("tripId") Long tripId,
+            @Parameter(description = "현재 zoom 영역의 중심 위도", example = "43.062096")
+            @RequestParam(name = "latitude") Double latitude,
+            @Parameter(description = "현재 zoom 영역의 중심 경도", example = "141.354376")
+            @RequestParam(name = "longitude") Double longitude,
+            @Parameter(description = "현재 zoom 영역 검색 반경(미터)", example = "1500", required = false)
+            @RequestParam(name = "radiusMeters", defaultValue = "1500") Double radiusMeters,
+            @Parameter(description = "조회할 추천 장소 개수", example = "1", required = false)
+            @RequestParam(name = "limit", defaultValue = "1") Integer limit,
+            @Parameter(hidden = true)
+            @CurrentUser UserPrincipal userPrincipal
+    ) {
+        TripWishlistRecommendationRequestDto requestDto =
+                TripWishlistRecommendationRequestDto.of(
+                        tripId,
+                        userPrincipal.getUsersId(),
+                        latitude,
+                        longitude,
+                        radiusMeters,
+                        limit
+                );
+        return ApiResponse.ok(tripService.getWishlistRecommendations(requestDto));
     }
 
     /**
