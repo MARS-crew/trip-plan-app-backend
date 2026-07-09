@@ -18,10 +18,12 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
+import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import jakarta.mail.internet.MimeMessage;
 import java.security.SecureRandom;
 import java.time.LocalDateTime;
 import java.util.concurrent.TimeUnit;
@@ -236,15 +238,8 @@ public class AuthService {
                 TimeUnit.MINUTES
         );
 
-        // 사용자에게 전달되는 이메일 내용
-        SimpleMailMessage message = new SimpleMailMessage();
-        message.setTo(email);
-        message.setFrom(mailUsername);
-        message.setSubject("PLI 이메일 인증");
-        message.setText("PLI 이메일 인증 코드: " + code);
-
         try {
-            mailSender.send(message);
+            sendEmailVerificationMail(email, code);
         } catch (Exception e) {
             log.error("Failed to send signup verification email to {} from {}", email, mailUsername, e);
             throw new BusinessException(ErrorCode.EMAIL_SEND_FAIL);
@@ -257,6 +252,35 @@ public class AuthService {
     private String generateVerificationCode() {
         int code = (int) (Math.random() * 900000) + 100000;
         return String.valueOf(code);
+    }
+
+    private void sendEmailVerificationMail(String email, String code) throws Exception {
+        MimeMessage message = mailSender.createMimeMessage();
+        MimeMessageHelper helper = new MimeMessageHelper(message, false, "UTF-8");
+
+        helper.setTo(email);
+        helper.setFrom(mailUsername, "Pli");
+        helper.setReplyTo(mailUsername, "Pli");
+        helper.setSubject("[Pli] 이메일 인증번호 안내");
+        helper.setText(buildEmailVerificationHtml(code), true);
+
+        mailSender.send(message);
+    }
+
+    private String buildEmailVerificationHtml(String code) {
+        return """
+                <!doctype html>
+                <html lang="ko">
+                <body style="margin:0; padding:0;">
+                  <div style="width:100%; text-align:center; font-family:Arial, 'Malgun Gothic', sans-serif; font-size:14px; line-height:1.5; color:#000000;">
+                    <div>안녕하세요, Pli입니다.</div>
+                    <div>아래 인증번호를 앱 화면에 입력해 이메일 인증을 완료해 주세요.</div>
+                    <div>PLI 이메일 인증 코드: %s</div>
+                    <div>감사합니다.</div>
+                  </div>
+                </body>
+                </html>
+                """.replace("%s", code);
     }
 
     /**
