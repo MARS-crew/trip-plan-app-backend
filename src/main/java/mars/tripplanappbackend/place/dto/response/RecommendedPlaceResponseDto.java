@@ -29,6 +29,9 @@ public class RecommendedPlaceResponseDto {
     @Schema(description = "도시명", example = "부산")
     private String cityName;
 
+    @Schema(description = "장소 설명", example = "도심 속에서 전망과 야경을 함께 즐길 수 있는 대표 여행지입니다.")
+    private String description;
+
     @Schema(description = "대표 이미지 URL", example = "https://cdn.lets-trip.com/place/haeundae.jpg")
     private String imageUrl;
 
@@ -57,6 +60,7 @@ public class RecommendedPlaceResponseDto {
                 .name(place.getName())
                 .countryName(place.getCountryName())
                 .cityName(place.getCityName())
+                .description(place.getDescription())
                 .imageUrl(place.getImageUrl())
                 .placeType(place.getPlaceType())
                 .ratingAvg(place.getRatingAvg())

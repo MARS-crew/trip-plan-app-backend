@@ -449,6 +449,7 @@ public class PlaceService {
                 .name(sanitizeRecommendedDisplayName(place.getName()))
                 .countryName(countryName)
                 .cityName(cityName)
+                .description(place.getDescription())
                 .imageUrl(sanitizeRecommendedImageUrl(place.getImageUrl()))
                 .placeType(place.getPlaceType())
                 .ratingAvg(place.getRatingAvg())
