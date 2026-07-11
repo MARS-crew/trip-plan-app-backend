@@ -174,6 +174,8 @@ public class PlaceService {
             recommendedCandidates = findRandomRecommendedFallbackPlaces(requestedLimit);
         }
 
+        recommendedCandidates = fillRecommendedPlacesWithRandomFallbacks(recommendedCandidates, requestedLimit);
+
         Map<Long, List<String>> selectedTagsByPlaceId = getTagsByPlaceId(recommendedCandidates);
 
         List<RecommendedPlaceResponseDto> recommendedPlaces = recommendedCandidates.stream()
@@ -420,6 +422,39 @@ public class PlaceService {
         List<Place> randomPlaces = placeRepository.findRandomActivePlaces(Math.max(requestedLimit, 1));
         repairRecommendedPlaceMetadata(randomPlaces);
         return randomPlaces;
+    }
+
+    private List<Place> fillRecommendedPlacesWithRandomFallbacks(List<Place> recommendedCandidates, int requestedLimit) {
+        if (recommendedCandidates.size() >= requestedLimit) {
+            return recommendedCandidates;
+        }
+
+        LinkedHashSet<Place> filledPlaces = new LinkedHashSet<>(recommendedCandidates);
+        LinkedHashSet<Long> selectedPlaceIds = recommendedCandidates.stream()
+                .map(Place::getPlaceId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+        int remainingCount = requestedLimit - recommendedCandidates.size();
+        List<Place> randomPlaces = findRandomRecommendedFallbackPlaces(remainingCount + selectedPlaceIds.size());
+
+        for (Place randomPlace : randomPlaces) {
+            Long randomPlaceId = randomPlace.getPlaceId();
+            if (randomPlaceId != null && selectedPlaceIds.contains(randomPlaceId)) {
+                continue;
+            }
+
+            filledPlaces.add(randomPlace);
+            if (randomPlaceId != null) {
+                selectedPlaceIds.add(randomPlaceId);
+            }
+            if (filledPlaces.size() >= requestedLimit) {
+                break;
+            }
+        }
+
+        return filledPlaces.stream()
+                .limit(requestedLimit)
+                .toList();
     }
 
     private Comparator<Place> buildRecommendedPlaceComparator(Map<Long, List<String>> tagsByPlaceId) {

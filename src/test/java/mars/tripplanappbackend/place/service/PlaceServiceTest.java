@@ -6,6 +6,7 @@ import mars.tripplanappbackend.mypage.repository.SavedPlaceRepository;
 import mars.tripplanappbackend.place.domain.Place;
 import mars.tripplanappbackend.place.dto.request.RecommendedPlaceRequestDto;
 import mars.tripplanappbackend.place.dto.response.RecommendedPlaceListResponseDto;
+import mars.tripplanappbackend.place.dto.response.RecommendedPlaceResponseDto;
 import mars.tripplanappbackend.place.enums.PlaceType;
 import mars.tripplanappbackend.place.repository.PlaceRepository;
 import mars.tripplanappbackend.place.repository.PlaceTagMapRepository;
@@ -301,31 +302,78 @@ class PlaceServiceTest {
     @Test
     @DisplayName("recommended places fall back to random stored places when no candidates exist")
     void getRecommendedPlacesFallbackToRandomStoredPlacesWhenNoCandidatesExist() {
-        Place randomPlace = Place.builder()
-                .placeId(10L)
-                .name("Random Stored Place")
-                .countryName("Korea")
-                .cityName("Seoul")
-                .description("Stored fallback place.")
-                .imageUrl("https://images.example.com/random-stored-place.jpg")
-                .placeType(PlaceType.ATTRACTION)
-                .ratingAvg(new BigDecimal("3.8"))
-                .reviewCount(2)
-                .build();
+        List<Place> randomPlaces = List.of(
+                createRandomFallbackPlace(10L),
+                createRandomFallbackPlace(11L),
+                createRandomFallbackPlace(12L),
+                createRandomFallbackPlace(13L),
+                createRandomFallbackPlace(14L)
+        );
 
         PlaceService placeService = createPlaceService(
                 List.of(),
-                List.of(randomPlace),
+                randomPlaces,
                 new StubGooglePlaceSearchService(Map.of(), Map.of(), Map.of())
         );
 
         RecommendedPlaceListResponseDto response = placeService.getRecommendedPlaces(new RecommendedPlaceRequestDto());
 
-        assertThat(response.getRecommendedPlaces()).hasSize(1);
+        assertThat(response.getRecommendedPlaces()).hasSize(5);
         assertThat(response.getRecommendedPlaces().get(0).getPlaceId()).isEqualTo(10L);
-        assertThat(response.getRecommendedPlaces().get(0).getName()).isEqualTo("Random Stored Place");
+        assertThat(response.getRecommendedPlaces().get(0).getName()).isEqualTo("Random Stored Place 10");
         assertThat(response.getRecommendedPlaces().get(0).getImageUrl())
-                .isEqualTo("https://images.example.com/random-stored-place.jpg");
+                .isEqualTo("https://images.example.com/random-stored-place-10.jpg");
+    }
+
+    @Test
+    @DisplayName("recommended places fill short results with random stored places")
+    void getRecommendedPlacesFillShortResultsWithRandomStoredPlaces() {
+        Place recommendedPlace = Place.builder()
+                .placeId(1L)
+                .name("Featured Travel Place")
+                .googlePlaceId("google-place-1")
+                .countryName("Korea")
+                .cityName("Seoul")
+                .description("Featured travel place.")
+                .imageUrl("https://images.example.com/featured-place.jpg")
+                .placeType(PlaceType.LANDMARK)
+                .ratingAvg(new BigDecimal("4.9"))
+                .reviewCount(100)
+                .build();
+        List<Place> randomPlaces = List.of(
+                recommendedPlace,
+                createRandomFallbackPlace(20L),
+                createRandomFallbackPlace(21L),
+                createRandomFallbackPlace(22L),
+                createRandomFallbackPlace(23L)
+        );
+
+        PlaceService placeService = createPlaceService(
+                List.of(recommendedPlace),
+                randomPlaces,
+                new StubGooglePlaceSearchService(Map.of(), Map.of(), Map.of())
+        );
+
+        RecommendedPlaceListResponseDto response = placeService.getRecommendedPlaces(new RecommendedPlaceRequestDto());
+
+        assertThat(response.getRecommendedPlaces()).hasSize(5);
+        assertThat(response.getRecommendedPlaces())
+                .extracting(RecommendedPlaceResponseDto::getPlaceId)
+                .containsExactly(1L, 20L, 21L, 22L, 23L);
+    }
+
+    private Place createRandomFallbackPlace(Long placeId) {
+        return Place.builder()
+                .placeId(placeId)
+                .name("Random Stored Place " + placeId)
+                .countryName("Korea")
+                .cityName("Seoul")
+                .description("Stored fallback place.")
+                .imageUrl("https://images.example.com/random-stored-place-" + placeId + ".jpg")
+                .placeType(PlaceType.ATTRACTION)
+                .ratingAvg(new BigDecimal("3.8"))
+                .reviewCount(2)
+                .build();
     }
 
     private PlaceService createPlaceService(
