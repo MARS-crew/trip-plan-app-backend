@@ -1048,8 +1048,7 @@ public class PlaceService {
     private String sanitizeRecommendedImageUrl(String imageUrl) {
         String normalizedImageUrl = truncate(nullableTrim(imageUrl), IMAGE_URL_MAX_LENGTH);
         if (!hasText(normalizedImageUrl)
-                || isPlaceholderImageUrl(normalizedImageUrl)
-                || isTransientGooglePhotoImageUrl(normalizedImageUrl)) {
+                || isPlaceholderImageUrl(normalizedImageUrl)) {
             return null;
         }
         return normalizedImageUrl;

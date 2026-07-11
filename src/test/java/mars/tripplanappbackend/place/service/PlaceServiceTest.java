@@ -226,10 +226,10 @@ class PlaceServiceTest {
     void getRecommendedPlacesDoesNotFallbackToBlankCardsWhenValidCardExists() {
         Place staleImagePlace = Place.builder()
                 .placeId(1L)
-                .name("Stale Image Place")
+                .name("Placeholder Image Place")
                 .countryName("대한민국")
                 .cityName("서울")
-                .imageUrl("https://lh3.googleusercontent.com/place-photos/expired-photo")
+                .imageUrl("https://placehold.co/600x400/png?text=QA_REC_02")
                 .placeType(PlaceType.LANDMARK)
                 .ratingAvg(new BigDecimal("5.0"))
                 .reviewCount(10)
