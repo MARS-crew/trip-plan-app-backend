@@ -205,6 +205,8 @@ public class SearchService {
             }
         }
 
+        places = filterSearchPlacesForKeyword(keyword, places);
+
         int totalCount = places.size();
         List<Place> pagedPlaces = slicePlaces(places, page, size);
         Map<Long, List<String>> tagsByPlaceId = getTagsByPlaceId(pagedPlaces);
@@ -361,9 +363,22 @@ public class SearchService {
             SearchCache existingCache,
             int requiredResultCount
     ) {
-        List<Place> searchPlaces = deduplicateSearchPlaces(syncGooglePlaces(keyword, requiredResultCount));
+        List<Place> searchPlaces = filterSearchPlacesForKeyword(
+                keyword,
+                deduplicateSearchPlaces(syncGooglePlaces(keyword, requiredResultCount))
+        );
         SearchCache searchCache = upsertSearchCache(cacheKey, existingCache, searchPlaces);
         return loadCachePlaces(searchCache);
+    }
+
+    private List<Place> filterSearchPlacesForKeyword(String keyword, List<Place> places) {
+        if (isNullOrEmpty(places) || !isBeachKeyword(keyword.replaceAll("\\s+", ""))) {
+            return places;
+        }
+
+        return places.stream()
+                .filter(place -> !needsLocationRepair(place))
+                .toList();
     }
 
     /**
