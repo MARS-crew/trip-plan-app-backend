@@ -1,5 +1,6 @@
 package mars.tripplanappbackend.search.service;
 
+import mars.tripplanappbackend.place.domain.Place;
 import mars.tripplanappbackend.place.enums.PlaceType;
 import mars.tripplanappbackend.search.enums.SearchCategory;
 import org.junit.jupiter.api.DisplayName;
@@ -97,6 +98,48 @@ class SearchServiceTest {
     }
 
     @Test
+    @DisplayName("해변 검색 결과에서는 위치 정보가 null로 표시될 장소를 제외한다")
+    void beachSearchFiltersPlacesWithMissingLocation() throws Exception {
+        Place validBeach = Place.builder()
+                .placeId(1L)
+                .name("광안리해수욕장")
+                .cityName("부산광역시")
+                .countryName("대한민국")
+                .placeType(PlaceType.BEACH)
+                .build();
+        Place invalidBeach = Place.builder()
+                .placeId(2L)
+                .name("해운대해수욕장")
+                .cityName("null")
+                .countryName("대한민국")
+                .placeType(PlaceType.BEACH)
+                .build();
+
+        List<Place> filteredPlaces = invokeFilterSearchPlacesForKeyword(
+                "해변",
+                List.of(validBeach, invalidBeach)
+        );
+
+        assertThat(filteredPlaces).containsExactly(validBeach);
+    }
+
+    @Test
+    @DisplayName("해변이 아닌 검색 결과에서는 위치 정보 필터를 적용하지 않는다")
+    void nonBeachSearchDoesNotFilterPlacesWithMissingLocation() throws Exception {
+        Place place = Place.builder()
+                .placeId(1L)
+                .name("해운대 맛집")
+                .cityName("null")
+                .countryName("대한민국")
+                .placeType(PlaceType.RESTAURANT)
+                .build();
+
+        List<Place> filteredPlaces = invokeFilterSearchPlacesForKeyword("맛집", List.of(place));
+
+        assertThat(filteredPlaces).containsExactly(place);
+    }
+
+    @Test
     @DisplayName("Google Places beach 타입은 앱의 해변 타입으로 저장한다")
     void googleBeachTypeMapsToBeachPlaceType() throws Exception {
         GooglePlaceSearchService.GooglePlaceCandidate candidate =
@@ -160,5 +203,17 @@ class SearchServiceTest {
         method.setAccessible(true);
 
         return (int) method.invoke(searchService, page, size);
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<Place> invokeFilterSearchPlacesForKeyword(String keyword, List<Place> places) throws Exception {
+        Method method = SearchService.class.getDeclaredMethod(
+                "filterSearchPlacesForKeyword",
+                String.class,
+                List.class
+        );
+        method.setAccessible(true);
+
+        return (List<Place>) method.invoke(searchService, keyword, places);
     }
 }
