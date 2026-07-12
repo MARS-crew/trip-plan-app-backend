@@ -600,6 +600,26 @@ public class SearchService {
             addGoogleSearchQuery(queries, "뚝섬유원지");
             addGoogleSearchQuery(queries, "뚝섬 서울");
         }
+
+        if (isBeachKeyword(compactKeyword)) {
+            addGoogleSearchQuery(queries, "해수욕장");
+            addGoogleSearchQuery(queries, "부산 해수욕장");
+            addGoogleSearchQuery(queries, "제주 해변");
+            addGoogleSearchQuery(queries, "강릉 해변");
+            addGoogleSearchQuery(queries, "beach Korea");
+        }
+    }
+
+    private boolean isBeachKeyword(String compactKeyword) {
+        if (!hasText(compactKeyword)) {
+            return false;
+        }
+
+        String normalizedKeyword = compactKeyword.toLowerCase(Locale.ROOT);
+        return normalizedKeyword.contains("해변")
+                || normalizedKeyword.contains("해수욕장")
+                || normalizedKeyword.contains("바다")
+                || normalizedKeyword.contains("beach");
     }
 
     private void appendRegionalFallbackQueries(Set<String> queries, String keyword) {
@@ -1185,7 +1205,8 @@ public class SearchService {
             case "museum", "art_gallery", "cultural_center", "performing_arts_theater", "library",
                     "church", "hindu_temple", "mosque", "synagogue", "buddhist_temple", "shinto_shrine" ->
                     PlaceType.CULTURE;
-            case "beach", "park", "national_park", "botanical_garden", "garden", "campground",
+            case "beach" -> PlaceType.BEACH;
+            case "park", "national_park", "botanical_garden", "garden", "campground",
                     "hiking_area", "natural_feature" -> PlaceType.NATURE;
             case "tourist_attraction", "historical_landmark", "monument", "observation_deck",
                     "amusement_park", "aquarium", "visitor_center", "zoo" -> PlaceType.ATTRACTION;
