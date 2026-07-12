@@ -12,7 +12,6 @@ public enum PlaceType {
 
     public PlaceType toAppCategory() {
         return switch (this) {
-            case BEACH -> NATURE;
             case LANDMARK -> ATTRACTION;
             default -> this;
         };

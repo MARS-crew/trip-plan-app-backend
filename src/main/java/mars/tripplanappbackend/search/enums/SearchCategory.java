@@ -13,9 +13,10 @@ public enum SearchCategory {
     ACCOMMODATION("ACCOMMODATION", "숙박", 1),
     RESTAURANT("RESTAURANT", "음식점", 2),
     NATURE("NATURE", "자연", 3),
-    SHOPPING("SHOPPING", "쇼핑", 4),
-    CULTURE("CULTURE", "문화", 5),
-    LANDMARK("LANDMARK", "관광명소", 6);
+    BEACH("BEACH", "해변", 4),
+    SHOPPING("SHOPPING", "쇼핑", 5),
+    CULTURE("CULTURE", "문화", 6),
+    LANDMARK("LANDMARK", "관광명소", 7);
 
     private final String code;
     private final String name;
