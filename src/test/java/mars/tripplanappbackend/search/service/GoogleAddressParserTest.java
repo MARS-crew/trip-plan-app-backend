@@ -40,6 +40,26 @@ class GoogleAddressParserTest {
     }
 
     @Test
+    @DisplayName("addressComponents에 국가만 있으면 주소 문자열에서 도시를 보강한다")
+    void parseFillsMissingCityFromFormattedAddress() {
+        List<GooglePlaceSearchService.GoogleAddressComponentCandidate> components = List.of(
+                new GooglePlaceSearchService.GoogleAddressComponentCandidate(
+                        "대한민국",
+                        "KR",
+                        List.of("country", "political")
+                )
+        );
+
+        GoogleAddressParser.ParsedAddress parsed = GoogleAddressParser.parse(
+                "대한민국 부산광역시 해운대구 우동",
+                components
+        );
+
+        assertThat(parsed.countryName()).isEqualTo("대한민국");
+        assertThat(parsed.cityName()).isEqualTo("부산광역시");
+    }
+
+    @Test
     @DisplayName("한국 주소 fallback: 대한민국 제주특별자치도 제주시")
     void parseKoreanJejuAddressFallback() {
         GoogleAddressParser.ParsedAddress parsed = GoogleAddressParser.parse(

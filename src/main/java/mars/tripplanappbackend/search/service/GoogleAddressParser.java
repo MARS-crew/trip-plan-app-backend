@@ -32,16 +32,20 @@ final class GoogleAddressParser {
             List<GooglePlaceSearchService.GoogleAddressComponentCandidate> addressComponents
     ) {
         ParsedAddress fromComponents = parseFromAddressComponents(addressComponents);
+        ParsedAddress fromKoreanRule = parseWithKoreanRule(formattedAddress);
+        ParsedAddress fromGenericRule = parseWithGenericRule(formattedAddress);
         if (fromComponents.hasAnyValue()) {
-            return fromComponents.withDefaultCountry();
+            return fromComponents
+                    .mergeMissing(fromKoreanRule)
+                    .mergeMissing(fromGenericRule)
+                    .withDefaultCountry();
         }
 
-        ParsedAddress fromKoreanRule = parseWithKoreanRule(formattedAddress);
         if (fromKoreanRule.hasAnyValue()) {
             return fromKoreanRule.withDefaultCountry();
         }
 
-        return parseWithGenericRule(formattedAddress).withDefaultCountry();
+        return fromGenericRule.withDefaultCountry();
     }
 
     private static ParsedAddress parseFromAddressComponents(
@@ -255,6 +259,16 @@ final class GoogleAddressParser {
                 return this;
             }
             return new ParsedAddress(DEFAULT_COUNTRY_NAME, cityName);
+        }
+
+        ParsedAddress mergeMissing(ParsedAddress fallback) {
+            if (fallback == null) {
+                return this;
+            }
+            return new ParsedAddress(
+                    hasText(countryName) ? countryName : fallback.countryName(),
+                    hasText(cityName) ? cityName : fallback.cityName()
+            );
         }
 
         private static String trimToNull(String value) {

@@ -447,7 +447,22 @@ public class SearchService {
 
     private boolean needsSearchCacheRefresh(CachedSearch cachedSearch, int requiredResultCount) {
         return cachedSearch.searchCache().getResultCount() != cachedSearch.places().size()
-                || cachedSearch.places().size() < requiredResultCount;
+                || cachedSearch.places().size() < requiredResultCount
+                || cachedSearch.places().stream().anyMatch(this::needsLocationRepair);
+    }
+
+    private boolean needsLocationRepair(Place place) {
+        return place != null
+                && (!hasDisplayableLocationValue(place.getCityName())
+                || !hasDisplayableLocationValue(place.getCountryName())
+                || DEFAULT_COUNTRY_NAME.equalsIgnoreCase(place.getCountryName().trim()));
+    }
+
+    private boolean hasDisplayableLocationValue(String value) {
+        if (!hasText(value)) {
+            return false;
+        }
+        return !"null".equalsIgnoreCase(value.trim());
     }
 
     /**
@@ -601,6 +616,22 @@ public class SearchService {
             addGoogleSearchQuery(queries, "뚝섬 서울");
         }
 
+        if (isTouristAttractionKeyword(compactKeyword)) {
+            addGoogleSearchQuery(queries, "관광명소");
+            addGoogleSearchQuery(queries, "서울 관광명소");
+            addGoogleSearchQuery(queries, "부산 관광명소");
+            addGoogleSearchQuery(queries, "제주 관광지");
+            addGoogleSearchQuery(queries, "tourist attraction Korea");
+        }
+
+        if (isRestaurantKeyword(compactKeyword)) {
+            addGoogleSearchQuery(queries, "음식점");
+            addGoogleSearchQuery(queries, "서울 맛집");
+            addGoogleSearchQuery(queries, "부산 맛집");
+            addGoogleSearchQuery(queries, "제주 맛집");
+            addGoogleSearchQuery(queries, "restaurant Korea");
+        }
+
         if (isBeachKeyword(compactKeyword)) {
             addGoogleSearchQuery(queries, "해수욕장");
             addGoogleSearchQuery(queries, "부산 해수욕장");
@@ -608,6 +639,32 @@ public class SearchService {
             addGoogleSearchQuery(queries, "강릉 해변");
             addGoogleSearchQuery(queries, "beach Korea");
         }
+    }
+
+    private boolean isTouristAttractionKeyword(String compactKeyword) {
+        if (!hasText(compactKeyword)) {
+            return false;
+        }
+
+        String normalizedKeyword = compactKeyword.toLowerCase(Locale.ROOT);
+        return normalizedKeyword.contains("관광지")
+                || normalizedKeyword.contains("관광명소")
+                || normalizedKeyword.contains("명소")
+                || normalizedKeyword.contains("attraction")
+                || normalizedKeyword.contains("landmark");
+    }
+
+    private boolean isRestaurantKeyword(String compactKeyword) {
+        if (!hasText(compactKeyword)) {
+            return false;
+        }
+
+        String normalizedKeyword = compactKeyword.toLowerCase(Locale.ROOT);
+        return normalizedKeyword.contains("맛집")
+                || normalizedKeyword.contains("음식점")
+                || normalizedKeyword.contains("식당")
+                || normalizedKeyword.contains("restaurant")
+                || normalizedKeyword.contains("food");
     }
 
     private boolean isBeachKeyword(String compactKeyword) {
