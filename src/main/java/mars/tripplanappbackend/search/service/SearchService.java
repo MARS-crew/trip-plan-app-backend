@@ -96,9 +96,17 @@ public class SearchService {
     private static final int MAX_SEARCH_PAGE_SIZE = 20;
     private static final int MAX_SEARCH_RESULT_TARGET_COUNT = 100;
     private static final int GOOGLE_TEXT_SEARCH_PAGE_SIZE = 20;
+    private static final int CATEGORY_NEARBY_RESULT_COUNT_PER_SEED = 10;
+    private static final double CATEGORY_NEARBY_RADIUS_METERS = 20_000.0;
     private static final int NEARBY_EXPANSION_RESULT_COUNT_PER_GROUP = 5;
     private static final double NEARBY_EXPANSION_RADIUS_METERS = 5_000.0;
     private static final String GOOGLE_NEARBY_POPULARITY_RANK_PREFERENCE = "POPULARITY";
+    private static final List<SearchSeedLocation> CATEGORY_NEARBY_SEED_LOCATIONS = List.of(
+            new SearchSeedLocation(37.5665, 126.9780),
+            new SearchSeedLocation(35.1796, 129.0756),
+            new SearchSeedLocation(33.4996, 126.5312),
+            new SearchSeedLocation(37.7519, 128.8761)
+    );
     private static final List<List<String>> NEARBY_EXPANSION_INCLUDED_TYPE_GROUPS = List.of(
             List.of(
                     "tourist_attraction",
@@ -441,7 +449,7 @@ public class SearchService {
     }
 
     private int calculateRequiredResultCount(int page, int size) {
-        long required = ((long) page + 2L) * size;
+        long required = ((long) page + 1L) * size;
         return (int) Math.min(required, MAX_SEARCH_RESULT_TARGET_COUNT);
     }
 
@@ -582,6 +590,10 @@ public class SearchService {
         }
 
         if (googleCandidates.size() < maxCount) {
+            appendCategoryNearbyCandidates(keyword, googleCandidates, maxCount);
+        }
+
+        if (googleCandidates.size() < maxCount) {
             appendNearbyExpansionCandidates(googleCandidates, maxCount);
         }
 
@@ -713,6 +725,80 @@ public class SearchService {
         }
 
         return false;
+    }
+
+    private void appendCategoryNearbyCandidates(
+            String keyword,
+            List<GooglePlaceSearchService.GooglePlaceCandidate> googleCandidates,
+            int maxCount
+    ) {
+        List<String> includedTypes = resolveCategoryNearbyIncludedTypes(keyword);
+        if (includedTypes.isEmpty() || googleCandidates.size() >= maxCount) {
+            return;
+        }
+
+        Map<String, GooglePlaceSearchService.GooglePlaceCandidate> uniqueCandidates = new LinkedHashMap<>();
+        googleCandidates.forEach(candidate -> putUniqueGoogleCandidate(uniqueCandidates, candidate));
+
+        for (SearchSeedLocation seedLocation : CATEGORY_NEARBY_SEED_LOCATIONS) {
+            if (uniqueCandidates.size() >= maxCount) {
+                break;
+            }
+
+            List<GooglePlaceSearchService.GooglePlaceCandidate> nearbyCandidates =
+                    googlePlaceSearchService.searchNearbyPlaces(
+                            seedLocation.latitude(),
+                            seedLocation.longitude(),
+                            CATEGORY_NEARBY_RADIUS_METERS,
+                            includedTypes,
+                            CATEGORY_NEARBY_RESULT_COUNT_PER_SEED,
+                            GOOGLE_NEARBY_POPULARITY_RANK_PREFERENCE
+                    );
+
+            if (isNullOrEmpty(nearbyCandidates)) {
+                continue;
+            }
+
+            for (GooglePlaceSearchService.GooglePlaceCandidate candidate : nearbyCandidates) {
+                putUniqueGoogleCandidate(uniqueCandidates, candidate);
+                if (uniqueCandidates.size() >= maxCount) {
+                    break;
+                }
+            }
+        }
+
+        googleCandidates.clear();
+        googleCandidates.addAll(uniqueCandidates.values().stream().limit(maxCount).toList());
+    }
+
+    private List<String> resolveCategoryNearbyIncludedTypes(String keyword) {
+        String compactKeyword = normalizeKeyword(keyword).replaceAll("\\s+", "");
+
+        if (isRestaurantKeyword(compactKeyword)) {
+            return List.of(
+                    "restaurant",
+                    "korean_restaurant",
+                    "seafood_restaurant",
+                    "japanese_restaurant",
+                    "cafe",
+                    "bakery"
+            );
+        }
+        if (isBeachKeyword(compactKeyword)) {
+            return List.of("beach");
+        }
+        if (isTouristAttractionKeyword(compactKeyword)) {
+            return List.of(
+                    "tourist_attraction",
+                    "historical_landmark",
+                    "monument",
+                    "museum",
+                    "art_gallery",
+                    "aquarium"
+            );
+        }
+
+        return List.of();
     }
 
     private void appendNearbyExpansionCandidates(
@@ -989,10 +1075,9 @@ public class SearchService {
      * @return Details 재조회가 필요하면 true
      */
     private boolean needsDetailsFallback(GooglePlaceSearchService.GooglePlaceCandidate candidate) {
-        return !hasText(candidate.editorialSummary())
-                || isNullOrEmpty(candidate.regularOpeningWeekdayDescriptions())
-                || !hasText(candidate.firstPhotoName())
-                || isNullOrEmpty(candidate.addressComponents());
+        return !hasText(candidate.formattedAddress())
+                || !hasCoordinate(candidate)
+                || (isNullOrEmpty(candidate.addressComponents()) && !hasText(candidate.formattedAddress()));
     }
 
     /**
@@ -1559,5 +1644,8 @@ public class SearchService {
      * 검색 캐시 메타데이터와 실제 결과 목록을 함께 들고 다니기 위한 내부 record입니다.
      */
     private record CachedSearch(SearchCache searchCache, List<Place> places) {
+    }
+
+    private record SearchSeedLocation(double latitude, double longitude) {
     }
 }
