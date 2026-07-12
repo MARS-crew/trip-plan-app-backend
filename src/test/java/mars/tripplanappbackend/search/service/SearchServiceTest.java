@@ -47,6 +47,38 @@ class SearchServiceTest {
     }
 
     @Test
+    @DisplayName("관광지 검색어는 실제 관광명소를 찾기 위한 보강 검색어를 함께 사용한다")
+    void touristAttractionKeywordBuildsFallbackQueries() throws Exception {
+        List<String> queries = invokeBuildGoogleSearchQueries("관광지");
+
+        assertThat(queries)
+                .containsSubsequence(
+                        "관광지",
+                        "관광명소",
+                        "서울 관광명소",
+                        "부산 관광명소",
+                        "제주 관광지",
+                        "tourist attraction Korea"
+                );
+    }
+
+    @Test
+    @DisplayName("맛집 검색어는 실제 음식점을 찾기 위한 보강 검색어를 함께 사용한다")
+    void restaurantKeywordBuildsFallbackQueries() throws Exception {
+        List<String> queries = invokeBuildGoogleSearchQueries("맛집");
+
+        assertThat(queries)
+                .containsSubsequence(
+                        "맛집",
+                        "음식점",
+                        "서울 맛집",
+                        "부산 맛집",
+                        "제주 맛집",
+                        "restaurant Korea"
+                );
+    }
+
+    @Test
     @DisplayName("Google Places beach 타입은 앱의 해변 타입으로 저장한다")
     void googleBeachTypeMapsToBeachPlaceType() throws Exception {
         GooglePlaceSearchService.GooglePlaceCandidate candidate =
