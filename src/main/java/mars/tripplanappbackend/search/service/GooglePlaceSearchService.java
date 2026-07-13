@@ -39,7 +39,7 @@ public class GooglePlaceSearchService {
      */
     private static final String GOOGLE_PLACES_TEXT_SEARCH_FIELD_MASK =
             "places.id,places.displayName,places.formattedAddress,places.shortFormattedAddress,places.location,"
-                    + "places.rating,places.userRatingCount,places.primaryType,places.types,"
+                    + "places.primaryType,places.types,"
                     + "places.addressComponents.longText,places.addressComponents.shortText,places.addressComponents.types,"
                     + "places.editorialSummary,places.regularOpeningHours.weekdayDescriptions,places.photos";
 
@@ -49,7 +49,7 @@ public class GooglePlaceSearchService {
      */
     private static final String GOOGLE_PLACES_DETAILS_FIELD_MASK =
             "id,displayName,formattedAddress,shortFormattedAddress,location,"
-                    + "rating,userRatingCount,primaryType,types,"
+                    + "primaryType,types,"
                     + "addressComponents.longText,addressComponents.shortText,addressComponents.types,"
                     + "editorialSummary,regularOpeningHours.weekdayDescriptions,photos";
 
