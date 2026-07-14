@@ -98,6 +98,22 @@ class SearchServiceTest {
     }
 
     @Test
+    @DisplayName("Empty or small cached results do not trigger repeated Google refresh")
+    void emptyOrSmallCachedResultsDoNotTriggerRefresh() throws Exception {
+        assertThat(invokeShouldExpandSearchCache(0, 20)).isFalse();
+        assertThat(invokeShouldExpandSearchCache(5, 20)).isFalse();
+        assertThat(invokeShouldExpandSearchCache(19, 20)).isFalse();
+    }
+
+    @Test
+    @DisplayName("Full first-page cached results can expand when the next page is requested")
+    void fullFirstPageCachedResultsCanExpandForNextPage() throws Exception {
+        assertThat(invokeShouldExpandSearchCache(20, 40)).isTrue();
+        assertThat(invokeShouldExpandSearchCache(40, 40)).isFalse();
+        assertThat(invokeShouldExpandSearchCache(100, 120)).isFalse();
+    }
+
+    @Test
     @DisplayName("Google search errors are treated as empty search candidates")
     void googleSearchErrorsReturnEmptyCandidates() throws Exception {
         SearchService resilientSearchService = new SearchService(
@@ -222,6 +238,17 @@ class SearchServiceTest {
         method.setAccessible(true);
 
         return (int) method.invoke(searchService, page, size);
+    }
+
+    private boolean invokeShouldExpandSearchCache(int cachedPlaceCount, int requiredResultCount) throws Exception {
+        Method method = SearchService.class.getDeclaredMethod(
+                "shouldExpandSearchCache",
+                int.class,
+                int.class
+        );
+        method.setAccessible(true);
+
+        return (boolean) method.invoke(searchService, cachedPlaceCount, requiredResultCount);
     }
 
     @SuppressWarnings("unchecked")
