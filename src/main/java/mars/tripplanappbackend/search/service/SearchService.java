@@ -469,9 +469,15 @@ public class SearchService {
     }
 
     private boolean needsSearchCacheRefresh(CachedSearch cachedSearch, int requiredResultCount) {
+        int cachedPlaceCount = cachedSearch.places().size();
         return cachedSearch.searchCache().getResultCount() != cachedSearch.places().size()
-                || cachedSearch.places().size() < requiredResultCount
-                || cachedSearch.places().stream().anyMatch(this::needsLocationRepair);
+                || shouldExpandSearchCache(cachedPlaceCount, requiredResultCount);
+    }
+
+    private boolean shouldExpandSearchCache(int cachedPlaceCount, int requiredResultCount) {
+        return cachedPlaceCount >= DEFAULT_SEARCH_PAGE_SIZE
+                && cachedPlaceCount < requiredResultCount
+                && cachedPlaceCount < MAX_SEARCH_RESULT_TARGET_COUNT;
     }
 
     private boolean needsLocationRepair(Place place) {
