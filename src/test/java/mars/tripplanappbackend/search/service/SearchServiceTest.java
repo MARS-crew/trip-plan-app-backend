@@ -98,6 +98,25 @@ class SearchServiceTest {
     }
 
     @Test
+    @DisplayName("Google search errors are treated as empty search candidates")
+    void googleSearchErrorsReturnEmptyCandidates() throws Exception {
+        SearchService resilientSearchService = new SearchService(
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                new ThrowingGooglePlaceSearchService()
+        );
+
+        List<GooglePlaceSearchService.GooglePlaceCandidate> candidates =
+                invokeCollectGoogleSearchCandidates(resilientSearchService, "no result keyword", 20);
+
+        assertThat(candidates).isEmpty();
+    }
+
+    @Test
     @DisplayName("해변 검색 결과에서는 위치 정보가 null로 표시될 장소를 제외한다")
     void beachSearchFiltersPlacesWithMissingLocation() throws Exception {
         Place validBeach = Place.builder()
@@ -215,5 +234,45 @@ class SearchServiceTest {
         method.setAccessible(true);
 
         return (List<Place>) method.invoke(searchService, keyword, places);
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<GooglePlaceSearchService.GooglePlaceCandidate> invokeCollectGoogleSearchCandidates(
+            SearchService targetSearchService,
+            String keyword,
+            int maxCount
+    ) throws Exception {
+        Method method = SearchService.class.getDeclaredMethod(
+                "collectGoogleSearchCandidates",
+                String.class,
+                int.class
+        );
+        method.setAccessible(true);
+
+        return (List<GooglePlaceSearchService.GooglePlaceCandidate>) method.invoke(
+                targetSearchService,
+                keyword,
+                maxCount
+        );
+    }
+
+    private static class ThrowingGooglePlaceSearchService extends GooglePlaceSearchService {
+
+        @Override
+        public List<GooglePlaceCandidate> searchPlaces(String keyword, int resultCount) {
+            throw new RuntimeException("text search failed");
+        }
+
+        @Override
+        public List<GooglePlaceCandidate> searchNearbyPlaces(
+                double latitude,
+                double longitude,
+                double radiusMeters,
+                List<String> includedTypes,
+                int maxResultCount,
+                String rankPreference
+        ) {
+            throw new RuntimeException("nearby search failed");
+        }
     }
 }

@@ -590,7 +590,7 @@ public class SearchService {
 
         for (String searchQuery : buildGoogleSearchQueries(keyword)) {
             List<GooglePlaceSearchService.GooglePlaceCandidate> searchResults =
-                    googlePlaceSearchService.searchPlaces(searchQuery, GOOGLE_TEXT_SEARCH_PAGE_SIZE);
+                    searchGooglePlacesSafely(searchQuery);
 
             if (isNullOrEmpty(searchResults)) {
                 continue;
@@ -613,6 +613,18 @@ public class SearchService {
         }
 
         return limitUniqueGoogleCandidates(googleCandidates, maxCount);
+    }
+
+    private List<GooglePlaceSearchService.GooglePlaceCandidate> searchGooglePlacesSafely(String searchQuery) {
+        try {
+            return googlePlaceSearchService.searchPlaces(searchQuery, GOOGLE_TEXT_SEARCH_PAGE_SIZE);
+        } catch (RuntimeException exception) {
+            log.warn("Google Places Text Search failed during search sync. keyword={}, message={}",
+                    searchQuery,
+                    exception.getMessage()
+            );
+            return List.of();
+        }
     }
 
     private List<String> buildGoogleSearchQueries(String keyword) {
@@ -761,7 +773,7 @@ public class SearchService {
             }
 
             List<GooglePlaceSearchService.GooglePlaceCandidate> nearbyCandidates =
-                    googlePlaceSearchService.searchNearbyPlaces(
+                    searchNearbyPlacesSafely(
                             seedLocation.latitude(),
                             seedLocation.longitude(),
                             CATEGORY_NEARBY_RADIUS_METERS,
@@ -850,7 +862,7 @@ public class SearchService {
 
         for (List<String> includedTypes : NEARBY_EXPANSION_INCLUDED_TYPE_GROUPS) {
             List<GooglePlaceSearchService.GooglePlaceCandidate> nearbyCandidates =
-                    googlePlaceSearchService.searchNearbyPlaces(
+                    searchNearbyPlacesSafely(
                             anchorCandidate.latitude(),
                             anchorCandidate.longitude(),
                             NEARBY_EXPANSION_RADIUS_METERS,
@@ -865,6 +877,34 @@ public class SearchService {
         }
 
         return candidateBuckets;
+    }
+
+    private List<GooglePlaceSearchService.GooglePlaceCandidate> searchNearbyPlacesSafely(
+            double latitude,
+            double longitude,
+            double radiusMeters,
+            List<String> includedTypes,
+            int maxResultCount,
+            String rankPreference
+    ) {
+        try {
+            return googlePlaceSearchService.searchNearbyPlaces(
+                    latitude,
+                    longitude,
+                    radiusMeters,
+                    includedTypes,
+                    maxResultCount,
+                    rankPreference
+            );
+        } catch (RuntimeException exception) {
+            log.warn("Google Places Nearby Search failed during search sync. lat={}, lng={}, types={}, message={}",
+                    latitude,
+                    longitude,
+                    includedTypes,
+                    exception.getMessage()
+            );
+            return List.of();
+        }
     }
 
     private void appendRoundRobinGoogleCandidates(
