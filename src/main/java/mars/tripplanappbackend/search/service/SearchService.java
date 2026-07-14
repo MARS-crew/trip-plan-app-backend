@@ -200,8 +200,6 @@ public class SearchService {
                         places,
                         requiredResultCount
                 );
-            } else {
-                repairMissingPlaceImages(places);
             }
         }
 
