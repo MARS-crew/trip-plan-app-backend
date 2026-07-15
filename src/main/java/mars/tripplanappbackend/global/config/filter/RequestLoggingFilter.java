@@ -29,15 +29,18 @@ public class RequestLoggingFilter extends OncePerRequestFilter {
         // 필터 체인의 시작과 끝을 측정하여 실제 비즈니스 로직 및 기타 보안 필터의 소요 시간을 포함함
         long start = System.currentTimeMillis();
 
-        filterChain.doFilter(request, response);
+        try {
+            filterChain.doFilter(request, response);
+        } finally {
+            long time = System.currentTimeMillis() - start;
 
-        long time = System.currentTimeMillis() - start;
-
-        // 운영 환경에서 특정 API의 병목 현상을 빠르게 인지하기 위해 로그 포맷 사용
-        log.info("[{}] {} {}ms",
-                request.getMethod(),
-                request.getRequestURI(),
-                time
-        );
+            // 예외 응답도 누락하지 않고 상태 코드와 전체 요청 시간을 함께 남깁니다.
+            log.info("[{}] {} status={} elapsedMs={}",
+                    request.getMethod(),
+                    request.getRequestURI(),
+                    response.getStatus(),
+                    time
+            );
+        }
     }
 }

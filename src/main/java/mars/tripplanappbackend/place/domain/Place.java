@@ -40,7 +40,7 @@ public class Place extends BaseEntity {
     @Column(name = "name", length = 80, nullable = false)
     private String name;
 
-    @Column(name = "google_place_id", length = 120)
+    @Column(name = "google_place_id", length = 120, unique = true)
     private String googlePlaceId;
 
     @Column(name = "country_name", length = 70, nullable = false)

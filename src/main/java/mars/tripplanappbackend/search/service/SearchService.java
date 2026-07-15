@@ -31,16 +31,20 @@ import mars.tripplanappbackend.search.dto.response.SearchCategoryResponseDto;
 import mars.tripplanappbackend.search.dto.response.SearchResultListResponseDto;
 import mars.tripplanappbackend.search.dto.response.SearchResultResponseDto;
 import mars.tripplanappbackend.search.enums.SearchCategory;
+import mars.tripplanappbackend.search.event.SearchImageEnrichmentRequestedEvent;
 import mars.tripplanappbackend.search.repository.PopularSearchKeywordProjection;
 import mars.tripplanappbackend.search.repository.RecentSearchRepository;
 import mars.tripplanappbackend.search.repository.SearchCachePlaceRepository;
 import mars.tripplanappbackend.search.repository.SearchCacheRepository;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
@@ -90,7 +94,10 @@ public class SearchService {
     private static final int DESCRIPTION_MAX_LENGTH = 2000;
 
     private static final int SEARCH_CACHE_KEY_MAX_LENGTH = 150;
-    private static final String SEARCH_CACHE_KEY_PREFIX = "gplaces-v3:";
+    /**
+     * 오류를 정상 0건으로 저장하던 이전 캐시와 분리하기 위한 캐시 스키마 버전입니다.
+     */
+    private static final String SEARCH_CACHE_KEY_PREFIX = "gplaces-v4:";
     private static final int DEFAULT_SEARCH_PAGE_INDEX = 0;
     private static final int DEFAULT_SEARCH_PAGE_SIZE = 20;
     private static final int MAX_SEARCH_PAGE_SIZE = 20;
@@ -150,6 +157,10 @@ public class SearchService {
     private final SearchCacheRepository searchCacheRepository;
     private final SearchCachePlaceRepository searchCachePlaceRepository;
     private final GooglePlaceSearchService googlePlaceSearchService;
+    private final ApplicationEventPublisher applicationEventPublisher;
+
+    @Value("${search.performance.cold-cache-threshold-ms:5000}")
+    private long coldCacheThresholdMs = 5_000L;
 
     /**
      * 검색 화면 상단에 노출하는 카테고리 목록을 정렬 순서대로 반환합니다.
@@ -176,6 +187,7 @@ public class SearchService {
      */
     @Transactional
     public SearchResultListResponseDto getSearchResults(SearchResultListRequestDto requestDto) {
+        long startedAtNanos = System.nanoTime();
         String keyword = normalizeKeyword(requestDto.getKeyword());
         int page = normalizePage(requestDto.getPage());
         int size = normalizePageSize(requestDto.getSize());
@@ -183,6 +195,7 @@ public class SearchService {
         String cacheKey = buildCacheKey(keyword);
 
         CachedSearch cachedSearch = findCachedSearch(cacheKey).orElse(null);
+        boolean cacheHit = cachedSearch != null;
         List<Place> places;
 
         if (cachedSearch == null) {
@@ -222,7 +235,28 @@ public class SearchService {
 
         saveRecentSearchIfAuthenticated(requestDto.getUsersId(), keyword);
 
-        return SearchResultListResponseDto.of(keyword, page, size, totalCount, searchResults);
+        SearchResultListResponseDto response =
+                SearchResultListResponseDto.of(keyword, page, size, totalCount, searchResults);
+        long elapsedMs = elapsedMillis(startedAtNanos);
+        log.info(
+                "Search request completed. keyword={}, cacheHit={}, page={}, resultCount={}, totalCount={}, elapsedMs={}",
+                keyword,
+                cacheHit,
+                page,
+                response.getResultCount(),
+                response.getTotalCount(),
+                elapsedMs
+        );
+        if (!cacheHit && elapsedMs > coldCacheThresholdMs) {
+            log.warn(
+                    "Cold-cache search exceeded target. keyword={}, targetMs={}, elapsedMs={}, totalCount={}",
+                    keyword,
+                    coldCacheThresholdMs,
+                    elapsedMs,
+                    response.getTotalCount()
+            );
+        }
+        return response;
     }
 
     /**
@@ -361,12 +395,32 @@ public class SearchService {
             SearchCache existingCache,
             int requiredResultCount
     ) {
+        GoogleSyncResult syncResult = syncGooglePlaces(keyword, requiredResultCount);
         List<Place> searchPlaces = filterSearchPlacesForKeyword(
                 keyword,
-                deduplicateSearchPlaces(syncGooglePlaces(keyword, requiredResultCount))
+                deduplicateSearchPlaces(syncResult.places())
         );
         SearchCache searchCache = upsertSearchCache(cacheKey, existingCache, searchPlaces);
+        publishImageEnrichmentRequested(syncResult.imageTasks());
         return loadCachePlaces(searchCache);
+    }
+
+    private void publishImageEnrichmentRequested(List<SearchImageEnrichmentRequestedEvent.Task> imageTasks) {
+        if (imageTasks == null || imageTasks.isEmpty() || applicationEventPublisher == null) {
+            return;
+        }
+
+        Map<Long, SearchImageEnrichmentRequestedEvent.Task> uniqueTasks = new LinkedHashMap<>();
+        imageTasks.stream()
+                .filter(Objects::nonNull)
+                .filter(task -> task.placeId() != null && hasText(task.photoName()))
+                .forEach(task -> uniqueTasks.putIfAbsent(task.placeId(), task));
+
+        if (!uniqueTasks.isEmpty()) {
+            applicationEventPublisher.publishEvent(
+                    new SearchImageEnrichmentRequestedEvent(uniqueTasks.values().stream().toList())
+            );
+        }
     }
 
     private List<Place> filterSearchPlacesForKeyword(String keyword, List<Place> places) {
@@ -493,61 +547,6 @@ public class SearchService {
     }
 
     /**
-     * 검색 캐시에 연결된 place 중 대표 이미지가 비어 있으면 Google Place Details/Photo API로 한 번 더 보강합니다.
-     * 예전에 imageUrl 없이 저장된 데이터를 같은 검색어 재조회만으로 자연스럽게 복구하기 위한 보정 로직입니다.
-     *
-     * @param places 검색 결과 place 목록
-     */
-    private void repairMissingPlaceImages(List<Place> places) {
-        if (places == null || places.isEmpty()) {
-            return;
-        }
-
-        places.stream()
-                .filter(this::needsImageRepair)
-                .forEach(this::repairPlaceImageFromGoogle);
-    }
-
-    /**
-     * place 대표 이미지가 비어 있고, Google Place ID가 남아 있어 재조회가 가능한지 확인합니다.
-     *
-     * @param place 검색 결과 place
-     * @return Google 이미지 재조회가 필요하면 true
-     */
-    private boolean needsImageRepair(Place place) {
-        return place != null
-                && !hasText(place.getImageUrl())
-                && hasText(place.getGooglePlaceId());
-    }
-
-    /**
-     * 단일 place의 대표 이미지를 Google Place Details/Photo API로 다시 조회해 채웁니다.
-     * Google 쪽에도 사진이 없거나 photoUri 조회가 실패하면 기존처럼 null을 유지합니다.
-     *
-     * @param place 대표 이미지 복구 대상 place
-     */
-    private void repairPlaceImageFromGoogle(Place place) {
-        GooglePlaceSearchService.GooglePlaceCandidate details =
-                googlePlaceSearchService.getPlaceDetails(place.getGooglePlaceId());
-        if (details == null || !hasText(details.firstPhotoName())) {
-            log.debug("검색 캐시 이미지 보강 건너뜀 - 사진 메타데이터 없음. placeId={}, googlePlaceId={}",
-                    place.getPlaceId(),
-                    place.getGooglePlaceId());
-            return;
-        }
-
-        String photoUri = googlePlaceSearchService.getPhotoUri(details.firstPhotoName());
-        if (!hasText(photoUri)) {
-            log.debug("검색 캐시 이미지 보강 실패 - photoUri 조회 실패. placeId={}, googlePlaceId={}",
-                    place.getPlaceId(),
-                    place.getGooglePlaceId());
-            return;
-        }
-
-        place.updateImageUrlFromGoogle(truncate(nullableTrim(photoUri), IMAGE_URL_MAX_LENGTH));
-    }
-
-    /**
      * 사용자가 입력한 검색어를 캐시 키 형태로 정규화합니다.
      * 대소문자와 중복 공백 차이로 동일 검색이 여러 캐시로 쪼개지는 것을 막습니다.
      *
@@ -568,36 +567,246 @@ public class SearchService {
      * @param keyword 검색어
      * @return 동기화된 장소 엔티티 목록
      */
-    private List<Place> syncGooglePlaces(String keyword, int maxCount) {
-        List<GooglePlaceSearchService.GooglePlaceCandidate> googleCandidates =
-                collectGoogleSearchCandidates(keyword, maxCount);
+    private GoogleSyncResult syncGooglePlaces(String keyword, int maxCount) {
+        SearchCallMetrics metrics = new SearchCallMetrics();
+        int candidateCount = 0;
+        List<Place> syncedPlaces = new ArrayList<>();
+        List<SearchImageEnrichmentRequestedEvent.Task> imageTasks = new ArrayList<>();
 
-        if (googleCandidates.isEmpty()) {
+        try {
+            List<GooglePlaceSearchService.GooglePlaceCandidate> googleCandidates =
+                    collectGoogleSearchCandidates(keyword, maxCount, metrics);
+            candidateCount = googleCandidates.size();
+
+            List<PreparedGooglePlace> preparedPlaces = googleCandidates.stream()
+                    .map(candidate -> prepareGooglePlace(candidate, metrics))
+                    .filter(Objects::nonNull)
+                    .toList();
+            List<PendingSyncedGooglePlace> pendingPlaces = syncPreparedGooglePlaces(preparedPlaces);
+
+            syncedPlaces.addAll(pendingPlaces.stream()
+                    .map(PendingSyncedGooglePlace::place)
+                    .toList());
+            imageTasks.addAll(pendingPlaces.stream()
+                    .filter(pending -> hasText(pending.firstPhotoName()))
+                    .filter(pending -> !hasText(pending.place().getImageUrl()))
+                    .filter(pending -> pending.place().getPlaceId() != null)
+                    .map(pending -> new SearchImageEnrichmentRequestedEvent.Task(
+                            pending.place().getPlaceId(),
+                            pending.firstPhotoName()
+                    ))
+                    .toList());
+            return new GoogleSyncResult(syncedPlaces, imageTasks);
+        } finally {
+            log.info(
+                    "Google search sync completed. keyword={}, textCalls={}, nearbyCalls={}, detailsCalls={}, candidateCount={}, syncedCount={}, elapsedMs={}",
+                    keyword,
+                    metrics.textSearchCalls,
+                    metrics.nearbySearchCalls,
+                    metrics.detailsCalls,
+                    candidateCount,
+                    syncedPlaces.size(),
+                    metrics.elapsedMillis()
+            );
+        }
+    }
+
+    private PreparedGooglePlace prepareGooglePlace(
+            GooglePlaceSearchService.GooglePlaceCandidate candidate,
+            SearchCallMetrics metrics
+    ) {
+        if (candidate == null || !hasText(candidate.googlePlaceId()) || !hasText(candidate.name())) {
+            return null;
+        }
+
+        GooglePlaceSearchService.GooglePlaceCandidate enrichedCandidate =
+                enrichCandidateWithDetails(candidate, metrics);
+        String name = truncate(enrichedCandidate.name().trim(), PLACE_NAME_MAX_LENGTH);
+        String address = truncate(nullableTrim(enrichedCandidate.formattedAddress()), ADDRESS_MAX_LENGTH);
+        GoogleAddressParser.ParsedAddress parsedAddress = GoogleAddressParser.parse(
+                address,
+                enrichedCandidate.addressComponents()
+        );
+        String countryName = truncate(nullableTrim(parsedAddress.countryName()), COUNTRY_NAME_MAX_LENGTH);
+        if (!hasText(countryName)) {
+            countryName = DEFAULT_COUNTRY_NAME;
+        }
+
+        return new PreparedGooglePlace(
+                enrichedCandidate,
+                name,
+                address,
+                countryName,
+                truncate(nullableTrim(parsedAddress.cityName()), CITY_NAME_MAX_LENGTH),
+                normalizeCoordinate(enrichedCandidate.latitude()),
+                normalizeCoordinate(enrichedCandidate.longitude()),
+                normalizeGoogleRating(enrichedCandidate.rating(), enrichedCandidate.userRatingCount()),
+                normalizeGoogleReviewCount(enrichedCandidate.userRatingCount())
+        );
+    }
+
+    private List<PendingSyncedGooglePlace> syncPreparedGooglePlaces(List<PreparedGooglePlace> preparedPlaces) {
+        if (isNullOrEmpty(preparedPlaces)) {
             return List.of();
         }
 
-        List<Place> syncedPlaces = new ArrayList<>();
-        for (GooglePlaceSearchService.GooglePlaceCandidate candidate : googleCandidates) {
-            Place syncedPlace = syncSingleGooglePlace(candidate);
-            if (syncedPlace != null) {
-                syncedPlaces.add(syncedPlace);
+        Set<String> googlePlaceIds = preparedPlaces.stream()
+                .map(prepared -> prepared.candidate().googlePlaceId())
+                .filter(this::hasText)
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+        Set<String> names = preparedPlaces.stream()
+                .map(PreparedGooglePlace::name)
+                .filter(this::hasText)
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+
+        Map<String, Place> placesByGooglePlaceId = loadPlacesByGooglePlaceId(googlePlaceIds);
+        Map<String, List<Place>> placesByName = placeRepository
+                .findAllByNameInAndIsDeletedFalse(names)
+                .stream()
+                .collect(Collectors.groupingBy(Place::getName));
+
+        Set<Long> claimedExistingPlaceIds = new LinkedHashSet<>();
+        List<Place> newPlaces = new ArrayList<>();
+        List<PendingSyncedGooglePlace> pendingPlaces = new ArrayList<>();
+
+        for (PreparedGooglePlace prepared : preparedPlaces) {
+            Place place = findExistingPreparedPlace(prepared, placesByGooglePlaceId, placesByName)
+                    .filter(existing -> existing.getPlaceId() == null
+                            || claimedExistingPlaceIds.add(existing.getPlaceId()))
+                    .orElse(null);
+            PlaceType placeType = resolvePlaceTypeForSync(prepared.candidate(), place);
+            String description = resolveDescriptionForSync(place, prepared.candidate().editorialSummary());
+            String openingHours = resolveOpeningHoursForSync(
+                    place,
+                    prepared.candidate().regularOpeningWeekdayDescriptions()
+            );
+            String imageUrl = resolveImageUrlForSync(place);
+
+            if (place == null) {
+                place = Place.builder()
+                        .name(prepared.name())
+                        .googlePlaceId(prepared.candidate().googlePlaceId())
+                        .countryName(prepared.countryName())
+                        .cityName(prepared.cityName())
+                        .address(prepared.address())
+                        .description(description)
+                        .latitude(prepared.latitude())
+                        .longitude(prepared.longitude())
+                        .placeType(placeType)
+                        .openingHours(openingHours)
+                        .imageUrl(imageUrl)
+                        .googleRatingAvg(prepared.googleRatingAvg())
+                        .googleReviewCount(prepared.googleReviewCount())
+                        .build();
+                newPlaces.add(place);
+            } else {
+                place.updateFromGoogle(
+                        prepared.candidate().googlePlaceId(),
+                        prepared.name(),
+                        prepared.countryName(),
+                        prepared.cityName(),
+                        prepared.address(),
+                        prepared.latitude(),
+                        prepared.longitude(),
+                        placeType,
+                        description,
+                        openingHours,
+                        imageUrl,
+                        prepared.googleRatingAvg(),
+                        prepared.googleReviewCount()
+                );
             }
+
+            pendingPlaces.add(new PendingSyncedGooglePlace(place, prepared.candidate().firstPhotoName()));
         }
-        return syncedPlaces;
+
+        if (!newPlaces.isEmpty()) {
+            placeRepository.saveAll(newPlaces);
+        }
+        return pendingPlaces;
+    }
+
+    private Map<String, Place> loadPlacesByGooglePlaceId(Set<String> googlePlaceIds) {
+        if (googlePlaceIds.isEmpty()) {
+            return Map.of();
+        }
+
+        Map<String, List<Place>> groupedPlaces = placeRepository
+                .findAllByGooglePlaceIdInAndIsDeletedFalseOrderByUpdatedAtDescCreatedAtDescPlaceIdDesc(googlePlaceIds)
+                .stream()
+                .collect(Collectors.groupingBy(
+                        Place::getGooglePlaceId,
+                        LinkedHashMap::new,
+                        Collectors.toList()
+                ));
+        Map<String, Place> canonicalPlaces = new LinkedHashMap<>();
+        groupedPlaces.forEach((googlePlaceId, places) -> {
+            canonicalPlaces.put(googlePlaceId, places.get(0));
+            if (places.size() > 1) {
+                log.warn(
+                        "Duplicate active places found for googlePlaceId={}. Using latest placeId={}. duplicateCount={}",
+                        googlePlaceId,
+                        places.get(0).getPlaceId(),
+                        places.size()
+                );
+            }
+        });
+        return canonicalPlaces;
+    }
+
+    private Optional<Place> findExistingPreparedPlace(
+            PreparedGooglePlace prepared,
+            Map<String, Place> placesByGooglePlaceId,
+            Map<String, List<Place>> placesByName
+    ) {
+        Place placeByGoogleId = placesByGooglePlaceId.get(prepared.candidate().googlePlaceId());
+        if (placeByGoogleId != null) {
+            return Optional.of(placeByGoogleId);
+        }
+
+        List<Place> sameNamePlaces = placesByName.getOrDefault(prepared.name(), List.of());
+        Optional<Place> placeByAddress = sameNamePlaces.stream()
+                .filter(place -> hasText(prepared.address()))
+                .filter(place -> Objects.equals(place.getAddress(), prepared.address()))
+                .findFirst();
+        if (placeByAddress.isPresent()) {
+            return placeByAddress;
+        }
+
+        return sameNamePlaces.stream()
+                .filter(place -> hasText(prepared.cityName()) && hasText(prepared.countryName()))
+                .filter(place -> Objects.equals(place.getCityName(), prepared.cityName()))
+                .filter(place -> Objects.equals(place.getCountryName(), prepared.countryName()))
+                .findFirst();
     }
 
     private List<GooglePlaceSearchService.GooglePlaceCandidate> collectGoogleSearchCandidates(
             String keyword,
             int maxCount
     ) {
+        return collectGoogleSearchCandidates(keyword, maxCount, new SearchCallMetrics());
+    }
+
+    private List<GooglePlaceSearchService.GooglePlaceCandidate> collectGoogleSearchCandidates(
+            String keyword,
+            int maxCount,
+            SearchCallMetrics metrics
+    ) {
         List<GooglePlaceSearchService.GooglePlaceCandidate> googleCandidates = new ArrayList<>();
 
         for (String searchQuery : buildGoogleSearchQueries(keyword)) {
+            metrics.textSearchCalls++;
             List<GooglePlaceSearchService.GooglePlaceCandidate> searchResults =
-                    searchGooglePlacesSafely(searchQuery);
+                    googlePlaceSearchService.searchPlaces(searchQuery, GOOGLE_TEXT_SEARCH_PAGE_SIZE);
 
             if (isNullOrEmpty(searchResults)) {
                 continue;
+            }
+
+            if (!supportsCategoryExpansion(keyword)) {
+                searchResults = searchResults.stream()
+                        .filter(candidate -> isRelevantGoogleCandidate(keyword, candidate))
+                        .toList();
             }
 
             googleCandidates.addAll(searchResults);
@@ -608,27 +817,15 @@ public class SearchService {
             }
         }
 
-        if (googleCandidates.size() < maxCount) {
-            appendCategoryNearbyCandidates(keyword, googleCandidates, maxCount);
+        if (supportsCategoryExpansion(keyword) && googleCandidates.size() < maxCount) {
+            appendCategoryNearbyCandidates(keyword, googleCandidates, maxCount, metrics);
         }
 
-        if (googleCandidates.size() < maxCount) {
-            appendNearbyExpansionCandidates(googleCandidates, maxCount);
+        if (supportsAnchorNearbyExpansion(keyword) && googleCandidates.size() < maxCount) {
+            appendNearbyExpansionCandidates(googleCandidates, maxCount, metrics);
         }
 
         return limitUniqueGoogleCandidates(googleCandidates, maxCount);
-    }
-
-    private List<GooglePlaceSearchService.GooglePlaceCandidate> searchGooglePlacesSafely(String searchQuery) {
-        try {
-            return googlePlaceSearchService.searchPlaces(searchQuery, GOOGLE_TEXT_SEARCH_PAGE_SIZE);
-        } catch (RuntimeException exception) {
-            log.warn("Google Places Text Search failed during search sync. keyword={}, message={}",
-                    searchQuery,
-                    exception.getMessage()
-            );
-            return List.of();
-        }
     }
 
     private List<String> buildGoogleSearchQueries(String keyword) {
@@ -636,8 +833,10 @@ public class SearchService {
         LinkedHashSet<String> queries = new LinkedHashSet<>();
 
         addGoogleSearchQuery(queries, normalizedKeyword);
-        appendKeywordSpecificFallbackQueries(queries, normalizedKeyword);
-        appendRegionalFallbackQueries(queries, normalizedKeyword);
+        if (supportsCategoryExpansion(normalizedKeyword)) {
+            appendKeywordSpecificFallbackQueries(queries, normalizedKeyword);
+            appendRegionalFallbackQueries(queries, normalizedKeyword);
+        }
 
         return queries.stream().toList();
     }
@@ -682,6 +881,30 @@ public class SearchService {
             addGoogleSearchQuery(queries, "강릉 해변");
             addGoogleSearchQuery(queries, "beach Korea");
         }
+
+        if (isAccommodationKeyword(compactKeyword)) {
+            addGoogleSearchQuery(queries, "호텔");
+            addGoogleSearchQuery(queries, "서울 숙소");
+            addGoogleSearchQuery(queries, "부산 숙소");
+            addGoogleSearchQuery(queries, "제주 숙소");
+            addGoogleSearchQuery(queries, "lodging Korea");
+        }
+
+        if (isNatureKeyword(compactKeyword)) {
+            addGoogleSearchQuery(queries, "자연 명소");
+            addGoogleSearchQuery(queries, "국립공원");
+            addGoogleSearchQuery(queries, "서울 자연 명소");
+            addGoogleSearchQuery(queries, "제주 자연");
+            addGoogleSearchQuery(queries, "nature attraction Korea");
+        }
+
+        if (isCultureKeyword(compactKeyword)) {
+            addGoogleSearchQuery(queries, "문화시설");
+            addGoogleSearchQuery(queries, "박물관");
+            addGoogleSearchQuery(queries, "미술관");
+            addGoogleSearchQuery(queries, "서울 문화 명소");
+            addGoogleSearchQuery(queries, "cultural attraction Korea");
+        }
     }
 
     private boolean isTouristAttractionKeyword(String compactKeyword) {
@@ -720,6 +943,92 @@ public class SearchService {
                 || normalizedKeyword.contains("해수욕장")
                 || normalizedKeyword.contains("바다")
                 || normalizedKeyword.contains("beach");
+    }
+
+    private boolean isAccommodationKeyword(String compactKeyword) {
+        if (!hasText(compactKeyword)) {
+            return false;
+        }
+
+        String normalizedKeyword = compactKeyword.toLowerCase(Locale.ROOT);
+        return normalizedKeyword.contains("숙소")
+                || normalizedKeyword.contains("호텔")
+                || normalizedKeyword.contains("리조트")
+                || normalizedKeyword.contains("lodging")
+                || normalizedKeyword.contains("hotel");
+    }
+
+    private boolean isNatureKeyword(String compactKeyword) {
+        if (!hasText(compactKeyword)) {
+            return false;
+        }
+
+        String normalizedKeyword = compactKeyword.toLowerCase(Locale.ROOT);
+        return normalizedKeyword.contains("자연")
+                || normalizedKeyword.contains("공원")
+                || normalizedKeyword.contains("산림")
+                || normalizedKeyword.contains("nature")
+                || normalizedKeyword.contains("park");
+    }
+
+    private boolean isCultureKeyword(String compactKeyword) {
+        if (!hasText(compactKeyword)) {
+            return false;
+        }
+
+        String normalizedKeyword = compactKeyword.toLowerCase(Locale.ROOT);
+        return normalizedKeyword.contains("문화")
+                || normalizedKeyword.contains("박물관")
+                || normalizedKeyword.contains("미술관")
+                || normalizedKeyword.contains("culture")
+                || normalizedKeyword.contains("museum");
+    }
+
+    private boolean supportsCategoryExpansion(String keyword) {
+        String compactKeyword = normalizeKeyword(keyword).replaceAll("\\s+", "");
+        return compactKeyword.contains("한강")
+                || compactKeyword.contains("뚝섬")
+                || isTouristAttractionKeyword(compactKeyword)
+                || isRestaurantKeyword(compactKeyword)
+                || isBeachKeyword(compactKeyword)
+                || isAccommodationKeyword(compactKeyword)
+                || isNatureKeyword(compactKeyword)
+                || isCultureKeyword(compactKeyword);
+    }
+
+    private boolean supportsAnchorNearbyExpansion(String keyword) {
+        String compactKeyword = normalizeKeyword(keyword).replaceAll("\\s+", "");
+        return compactKeyword.contains("한강") || compactKeyword.contains("뚝섬");
+    }
+
+    private boolean isRelevantGoogleCandidate(
+            String keyword,
+            GooglePlaceSearchService.GooglePlaceCandidate candidate
+    ) {
+        if (candidate == null) {
+            return false;
+        }
+
+        String normalizedKeyword = normalizeForRelevanceCheck(keyword);
+        if (!hasText(normalizedKeyword)) {
+            return false;
+        }
+
+        String candidateText = normalizeForRelevanceCheck(String.join(
+                " ",
+                Objects.toString(candidate.name(), ""),
+                Objects.toString(candidate.formattedAddress(), ""),
+                Objects.toString(candidate.shortFormattedAddress(), "")
+        ));
+        return candidateText.contains(normalizedKeyword);
+    }
+
+    private String normalizeForRelevanceCheck(String value) {
+        if (!hasText(value)) {
+            return "";
+        }
+        return value.toLowerCase(Locale.ROOT)
+                .replaceAll("[^\\p{L}\\p{N}]", "");
     }
 
     private void appendRegionalFallbackQueries(Set<String> queries, String keyword) {
@@ -761,7 +1070,8 @@ public class SearchService {
     private void appendCategoryNearbyCandidates(
             String keyword,
             List<GooglePlaceSearchService.GooglePlaceCandidate> googleCandidates,
-            int maxCount
+            int maxCount,
+            SearchCallMetrics metrics
     ) {
         List<String> includedTypes = resolveCategoryNearbyIncludedTypes(keyword);
         if (includedTypes.isEmpty() || googleCandidates.size() >= maxCount) {
@@ -783,7 +1093,8 @@ public class SearchService {
                             CATEGORY_NEARBY_RADIUS_METERS,
                             includedTypes,
                             CATEGORY_NEARBY_RESULT_COUNT_PER_SEED,
-                            GOOGLE_NEARBY_POPULARITY_RANK_PREFERENCE
+                            GOOGLE_NEARBY_POPULARITY_RANK_PREFERENCE,
+                            metrics
                     );
 
             if (isNullOrEmpty(nearbyCandidates)) {
@@ -828,13 +1139,23 @@ public class SearchService {
                     "aquarium"
             );
         }
+        if (isAccommodationKeyword(compactKeyword)) {
+            return List.of("hotel", "resort_hotel", "guest_house", "hostel", "lodging");
+        }
+        if (isNatureKeyword(compactKeyword)) {
+            return List.of("park", "national_park", "botanical_garden", "garden", "hiking_area");
+        }
+        if (isCultureKeyword(compactKeyword)) {
+            return List.of("museum", "art_gallery", "cultural_center", "performing_arts_theater");
+        }
 
         return List.of();
     }
 
     private void appendNearbyExpansionCandidates(
             List<GooglePlaceSearchService.GooglePlaceCandidate> googleCandidates,
-            int maxCount
+            int maxCount,
+            SearchCallMetrics metrics
     ) {
         Optional<GooglePlaceSearchService.GooglePlaceCandidate> anchorCandidate =
                 findNearbyExpansionAnchor(googleCandidates);
@@ -843,7 +1164,7 @@ public class SearchService {
         }
 
         List<List<GooglePlaceSearchService.GooglePlaceCandidate>> candidateBuckets =
-                searchNearbyExpansionCandidateBuckets(anchorCandidate.get());
+                searchNearbyExpansionCandidateBuckets(anchorCandidate.get(), metrics);
         appendRoundRobinGoogleCandidates(googleCandidates, candidateBuckets, maxCount);
     }
 
@@ -860,7 +1181,8 @@ public class SearchService {
     }
 
     private List<List<GooglePlaceSearchService.GooglePlaceCandidate>> searchNearbyExpansionCandidateBuckets(
-            GooglePlaceSearchService.GooglePlaceCandidate anchorCandidate
+            GooglePlaceSearchService.GooglePlaceCandidate anchorCandidate,
+            SearchCallMetrics metrics
     ) {
         List<List<GooglePlaceSearchService.GooglePlaceCandidate>> candidateBuckets = new ArrayList<>();
 
@@ -872,7 +1194,8 @@ public class SearchService {
                             NEARBY_EXPANSION_RADIUS_METERS,
                             includedTypes,
                             NEARBY_EXPANSION_RESULT_COUNT_PER_GROUP,
-                            GOOGLE_NEARBY_POPULARITY_RANK_PREFERENCE
+                            GOOGLE_NEARBY_POPULARITY_RANK_PREFERENCE,
+                            metrics
                     );
 
             if (!isNullOrEmpty(nearbyCandidates)) {
@@ -889,26 +1212,18 @@ public class SearchService {
             double radiusMeters,
             List<String> includedTypes,
             int maxResultCount,
-            String rankPreference
+            String rankPreference,
+            SearchCallMetrics metrics
     ) {
-        try {
-            return googlePlaceSearchService.searchNearbyPlaces(
-                    latitude,
-                    longitude,
-                    radiusMeters,
-                    includedTypes,
-                    maxResultCount,
-                    rankPreference
-            );
-        } catch (RuntimeException exception) {
-            log.warn("Google Places Nearby Search failed during search sync. lat={}, lng={}, types={}, message={}",
-                    latitude,
-                    longitude,
-                    includedTypes,
-                    exception.getMessage()
-            );
-            return List.of();
-        }
+        metrics.nearbySearchCalls++;
+        return googlePlaceSearchService.searchNearbyPlaces(
+                latitude,
+                longitude,
+                radiusMeters,
+                includedTypes,
+                maxResultCount,
+                rankPreference
+        );
     }
 
     private void appendRoundRobinGoogleCandidates(
@@ -1000,95 +1315,14 @@ public class SearchService {
     }
 
     /**
-     * Google Places 단건 결과를 place 엔티티 한 건으로 upsert 합니다.
-     * 이미지와 소개글이 비어 있으면 Details API/Photo API 결과를 우선 사용해 채웁니다.
-     *
-     * @param candidate Google Places 후보 1건
-     * @return 저장 또는 갱신된 place 엔티티
-     */
-    private Place syncSingleGooglePlace(GooglePlaceSearchService.GooglePlaceCandidate candidate) {
-        if (candidate == null || !hasText(candidate.googlePlaceId()) || !hasText(candidate.name())) {
-            return null;
-        }
-
-        GooglePlaceSearchService.GooglePlaceCandidate enrichedCandidate = enrichCandidateWithDetails(candidate);
-
-        String name = truncate(enrichedCandidate.name().trim(), PLACE_NAME_MAX_LENGTH);
-        String address = truncate(nullableTrim(enrichedCandidate.formattedAddress()), ADDRESS_MAX_LENGTH);
-
-        // 주소 문자열만 믿지 않고 Google address components를 우선 활용해 국가/도시를 파싱합니다.
-        GoogleAddressParser.ParsedAddress parsedAddress = GoogleAddressParser.parse(
-                address,
-                enrichedCandidate.addressComponents()
-        );
-        String countryName = truncate(nullableTrim(parsedAddress.countryName()), COUNTRY_NAME_MAX_LENGTH);
-        if (!hasText(countryName)) {
-            countryName = DEFAULT_COUNTRY_NAME;
-        }
-        String cityName = truncate(nullableTrim(parsedAddress.cityName()), CITY_NAME_MAX_LENGTH);
-
-        BigDecimal latitude = normalizeCoordinate(enrichedCandidate.latitude());
-        BigDecimal longitude = normalizeCoordinate(enrichedCandidate.longitude());
-
-        Place place = findExistingPlaceForGoogleSync(
-                enrichedCandidate.googlePlaceId(),
-                name,
-                address,
-                cityName,
-                countryName
-        ).orElse(null);
-        PlaceType placeType = resolvePlaceTypeForSync(enrichedCandidate, place);
-
-        String description = resolveDescriptionForSync(place, enrichedCandidate.editorialSummary());
-        String openingHours = resolveOpeningHoursForSync(place, enrichedCandidate.regularOpeningWeekdayDescriptions());
-        String imageUrl = resolveImageUrlForSync(place, enrichedCandidate.firstPhotoName());
-        BigDecimal googleRatingAvg = normalizeGoogleRating(enrichedCandidate.rating(), enrichedCandidate.userRatingCount());
-        Integer googleReviewCount = normalizeGoogleReviewCount(enrichedCandidate.userRatingCount());
-
-        if (place == null) {
-            return placeRepository.save(Place.builder()
-                    .name(name)
-                    .googlePlaceId(enrichedCandidate.googlePlaceId())
-                    .countryName(countryName)
-                    .cityName(cityName)
-                    .address(address)
-                    .description(description)
-                    .latitude(latitude)
-                    .longitude(longitude)
-                    .placeType(placeType)
-                    .openingHours(openingHours)
-                    .imageUrl(imageUrl)
-                    .googleRatingAvg(googleRatingAvg)
-                    .googleReviewCount(googleReviewCount)
-                    .build());
-        }
-
-        place.updateFromGoogle(
-                enrichedCandidate.googlePlaceId(),
-                name,
-                countryName,
-                cityName,
-                address,
-                latitude,
-                longitude,
-                placeType,
-                description,
-                openingHours,
-                imageUrl,
-                googleRatingAvg,
-                googleReviewCount
-        );
-        return place;
-    }
-
-    /**
      * Text Search 응답에 메타데이터가 비어 있을 때만 Place Details를 추가 조회해 병합합니다.
      *
      * @param candidate Text Search 결과 1건
      * @return 메타데이터가 보강된 후보 객체
      */
     private GooglePlaceSearchService.GooglePlaceCandidate enrichCandidateWithDetails(
-            GooglePlaceSearchService.GooglePlaceCandidate candidate
+            GooglePlaceSearchService.GooglePlaceCandidate candidate,
+            SearchCallMetrics metrics
     ) {
         if (candidate == null || !hasText(candidate.googlePlaceId())) {
             return candidate;
@@ -1098,6 +1332,7 @@ public class SearchService {
             return candidate;
         }
 
+        metrics.detailsCalls++;
         GooglePlaceSearchService.GooglePlaceCandidate details =
                 googlePlaceSearchService.getPlaceDetails(candidate.googlePlaceId());
         if (details == null) {
@@ -1181,21 +1416,13 @@ public class SearchService {
 
     /**
      * 이미지 URL 저장 우선순위를 결정합니다.
-     * Google photo 리소스가 있으면 실제 photoUri를 받아오고,
-     * 실패하면 기존 place 이미지 값을 유지합니다.
+     * 최초 검색 응답에서는 외부 Photo API를 호출하지 않고 기존 이미지만 유지합니다.
+     * 신규 장소의 이미지는 트랜잭션 커밋 후 비동기 이벤트로 보강합니다.
      *
      * @param place 기존 place 엔티티
-     * @param photoName Google photo 리소스명
      * @return 저장할 이미지 URL
      */
-    private String resolveImageUrlForSync(Place place, String photoName) {
-        if (hasText(photoName)) {
-            String photoUri = googlePlaceSearchService.getPhotoUri(photoName);
-            if (hasText(photoUri)) {
-                return truncate(photoUri, IMAGE_URL_MAX_LENGTH);
-            }
-        }
-
+    private String resolveImageUrlForSync(Place place) {
         if (place != null) {
             return truncate(nullableTrim(place.getImageUrl()), IMAGE_URL_MAX_LENGTH);
         }
@@ -1281,65 +1508,6 @@ public class SearchService {
         }
 
         return placesById.values().stream().toList();
-    }
-
-    /**
-     * Google Place ID가 없거나 불안정한 경우를 대비해 이름+주소로 기존 place를 찾습니다.
-     *
-     * @param name 장소명
-     * @param address 주소
-     * @return 일치하는 place가 있으면 Optional
-     */
-    private Optional<Place> findByNameAndAddress(String name, String address) {
-        if (!hasText(name) || !hasText(address)) {
-            return Optional.empty();
-        }
-        return placeRepository.findFirstByNameAndAddressAndIsDeletedFalse(name, address);
-    }
-
-    private Optional<Place> findExistingPlaceForGoogleSync(
-            String googlePlaceId,
-            String name,
-            String address,
-            String cityName,
-            String countryName
-    ) {
-        if (hasText(googlePlaceId)) {
-            List<Place> placesByGooglePlaceId =
-                    placeRepository.findAllByGooglePlaceIdAndIsDeletedFalseOrderByUpdatedAtDescCreatedAtDescPlaceIdDesc(
-                            googlePlaceId
-                    );
-            if (!isNullOrEmpty(placesByGooglePlaceId)) {
-                if (placesByGooglePlaceId.size() > 1) {
-                    log.warn(
-                            "Duplicate active places found for googlePlaceId={}. Using latest placeId={}. duplicateCount={}",
-                            googlePlaceId,
-                            placesByGooglePlaceId.get(0).getPlaceId(),
-                            placesByGooglePlaceId.size()
-                    );
-                }
-                return Optional.of(placesByGooglePlaceId.get(0));
-            }
-        }
-
-        Optional<Place> placeByNameAndAddress = findByNameAndAddress(name, address);
-        if (placeByNameAndAddress.isPresent()) {
-            return placeByNameAndAddress;
-        }
-
-        return findByNameAndRegion(name, cityName, countryName);
-    }
-
-    private Optional<Place> findByNameAndRegion(String name, String cityName, String countryName) {
-        if (!hasText(name) || !hasText(cityName) || !hasText(countryName)) {
-            return Optional.empty();
-        }
-
-        return placeRepository.findFirstByNameAndCityNameAndCountryNameAndIsDeletedFalse(
-                name,
-                cityName,
-                countryName
-        );
     }
 
     /**
@@ -1685,6 +1853,10 @@ public class SearchService {
         return value != null && !value.isBlank();
     }
 
+    private long elapsedMillis(long startedAtNanos) {
+        return Duration.ofNanos(System.nanoTime() - startedAtNanos).toMillis();
+    }
+
     /**
      * 검색어 입력값을 검증하고 앞뒤 공백을 제거합니다.
      *
@@ -1703,6 +1875,43 @@ public class SearchService {
      * 검색 캐시 메타데이터와 실제 결과 목록을 함께 들고 다니기 위한 내부 record입니다.
      */
     private record CachedSearch(SearchCache searchCache, List<Place> places) {
+    }
+
+    private record GoogleSyncResult(
+            List<Place> places,
+            List<SearchImageEnrichmentRequestedEvent.Task> imageTasks
+    ) {
+    }
+
+    private record PreparedGooglePlace(
+            GooglePlaceSearchService.GooglePlaceCandidate candidate,
+            String name,
+            String address,
+            String countryName,
+            String cityName,
+            BigDecimal latitude,
+            BigDecimal longitude,
+            BigDecimal googleRatingAvg,
+            Integer googleReviewCount
+    ) {
+    }
+
+    private record PendingSyncedGooglePlace(
+            Place place,
+            String firstPhotoName
+    ) {
+    }
+
+    private static class SearchCallMetrics {
+
+        private final long startedAtNanos = System.nanoTime();
+        private int textSearchCalls;
+        private int nearbySearchCalls;
+        private int detailsCalls;
+
+        private long elapsedMillis() {
+            return Duration.ofNanos(System.nanoTime() - startedAtNanos).toMillis();
+        }
     }
 
     private record SearchSeedLocation(double latitude, double longitude) {

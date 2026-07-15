@@ -49,7 +49,11 @@ public class SearchController {
     }
 
     @GetMapping("/results")
-    @ApiErrorExceptions({ErrorCode.INVALID_INPUT, ErrorCode.INTERNAL_ERROR})
+    @ApiErrorExceptions({
+            ErrorCode.INVALID_INPUT,
+            ErrorCode.GOOGLE_PLACES_UNAVAILABLE,
+            ErrorCode.INTERNAL_ERROR
+    })
     @Operation(
             summary = "검색 결과 조회",
             description = "검색어 기반 장소 검색 결과를 페이지 단위로 조회합니다."
