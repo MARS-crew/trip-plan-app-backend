@@ -18,6 +18,7 @@ public enum ErrorCode {
     VISITED_PLACE_ALREADY_EXISTS(HttpStatus.CONFLICT, "VISITED_PLACE_ALREADY_EXISTS", "이미 방문 기록이 있는 장소입니다."),
     UNAUTHORIZED(HttpStatus.UNAUTHORIZED, "UNAUTHORIZED", "인증이 필요합니다."),
     FORBIDDEN(HttpStatus.FORBIDDEN, "FORBIDDEN", "권한이 없습니다."),
+    GOOGLE_PLACES_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "GOOGLE_PLACES_UNAVAILABLE", "장소 검색 서비스에 일시적으로 연결할 수 없습니다."),
     INTERNAL_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "INTERNAL_ERROR", "서버 오류가 발생했습니다."),
     PASSWORD_MISMATCH(HttpStatus.BAD_REQUEST, "PASSWORD_MISMATCH", "비밀번호가 일치하지 않습니다."),
     INVALID_TOKEN(HttpStatus.BAD_REQUEST, "INVALID_TOKEN", "유효하지 않은 토큰입니다."),

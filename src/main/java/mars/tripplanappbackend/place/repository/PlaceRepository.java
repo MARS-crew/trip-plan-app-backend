@@ -12,6 +12,7 @@ import org.springframework.stereotype.Repository;
 import java.util.List;
 import java.util.Optional;
 import java.math.BigDecimal;
+import java.util.Collection;
 
 @Repository
 public interface PlaceRepository extends JpaRepository<Place, Long> {
@@ -42,6 +43,12 @@ public interface PlaceRepository extends JpaRepository<Place, Long> {
     List<Place> findAllByGooglePlaceIdAndIsDeletedFalseOrderByUpdatedAtDescCreatedAtDescPlaceIdDesc(
             String googlePlaceId
     );
+
+    List<Place> findAllByGooglePlaceIdInAndIsDeletedFalseOrderByUpdatedAtDescCreatedAtDescPlaceIdDesc(
+            Collection<String> googlePlaceIds
+    );
+
+    List<Place> findAllByNameInAndIsDeletedFalse(Collection<String> names);
 
     Optional<Place> findFirstByNameAndAddressAndIsDeletedFalse(String name, String address);
 

@@ -1,0 +1,45 @@
+spring:
+  datasource:
+    url: jdbc:h2:mem:trip;MODE=MySQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1
+    username: sa
+    password:
+    driver-class-name: org.h2.Driver
+  jpa:
+    database-platform: org.hibernate.dialect.H2Dialect
+    hibernate:
+      ddl-auto: create-drop
+    show-sql: false
+  jwt:
+    secret: test-secret-key-test-secret-key-test-secret-key
+    accessTokenExpiration: 3600000
+    refreshTokenExpiration: 86400000
+  mail:
+    username: test@example.com
+    password: test-password
+  data:
+    redis:
+      repositories:
+        enabled: false
+
+NAVER_CLIENT_ID: test-naver-client-id
+NAVER_CLIENT_SECRET: test-naver-client-secret
+GOOGLE_CLIENT_ID: test-google-client-id
+GOOGLE_CLIENT_SECRET: test-google-client-secret
+GOOGLE_USERNAME: test@example.com
+GOOGLE_PASSWORD: test-password
+OPENWEATHER_API_KEY: test-openweather-key
+GOOGLE_TRANSLATE_API_KEY: test-translate-key
+
+google:
+  places:
+    api-key: test-places-key
+
+minio:
+  endpoint: http://localhost:9000
+  accessKey: test-access-key
+  secretKey: test-secret-key
+  bucket: test-bucket
+
+place:
+  localization:
+    run-on-startup: false

@@ -2,18 +2,36 @@ package mars.tripplanappbackend.search.service;
 
 import mars.tripplanappbackend.place.domain.Place;
 import mars.tripplanappbackend.place.enums.PlaceType;
+import mars.tripplanappbackend.place.repository.PlaceRepository;
+import mars.tripplanappbackend.global.enums.ErrorCode;
+import mars.tripplanappbackend.global.exception.BusinessException;
+import mars.tripplanappbackend.search.dto.request.SearchResultListRequestDto;
+import mars.tripplanappbackend.search.domain.SearchCache;
 import mars.tripplanappbackend.search.enums.SearchCategory;
+import mars.tripplanappbackend.search.repository.SearchCachePlaceRepository;
+import mars.tripplanappbackend.search.repository.SearchCacheRepository;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Method;
 import java.util.List;
+import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyDouble;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 class SearchServiceTest {
 
     private final SearchService searchService = new SearchService(
+            null,
             null,
             null,
             null,
@@ -88,6 +106,19 @@ class SearchServiceTest {
                 .contains("tourist_attraction", "historical_landmark", "museum");
         assertThat(invokeResolveCategoryNearbyIncludedTypes("해변"))
                 .containsExactly("beach");
+        assertThat(invokeResolveCategoryNearbyIncludedTypes("숙소"))
+                .contains("hotel", "resort_hotel", "lodging");
+        assertThat(invokeResolveCategoryNearbyIncludedTypes("자연"))
+                .contains("park", "national_park", "hiking_area");
+        assertThat(invokeResolveCategoryNearbyIncludedTypes("문화"))
+                .contains("museum", "art_gallery", "cultural_center");
+    }
+
+    @Test
+    @DisplayName("일반 키워드는 원문 검색 한 번만 사용하고 카테고리 보강어를 붙이지 않는다")
+    void genericKeywordBuildsOnlyOriginalQuery() throws Exception {
+        assertThat(invokeBuildGoogleSearchQueries("존재하지않는장소_QA_987654321"))
+                .containsExactly("존재하지않는장소_QA_987654321");
     }
 
     @Test
@@ -114,22 +145,164 @@ class SearchServiceTest {
     }
 
     @Test
-    @DisplayName("Google search errors are treated as empty search candidates")
-    void googleSearchErrorsReturnEmptyCandidates() throws Exception {
-        SearchService resilientSearchService = new SearchService(
+    @DisplayName("Google search errors stop fallback searches instead of becoming empty results")
+    void googleSearchErrorsStopFallbackSearches() {
+        ThrowingGooglePlaceSearchService throwingGooglePlaceSearchService =
+                new ThrowingGooglePlaceSearchService();
+        SearchService failFastSearchService = new SearchService(
                 null,
                 null,
                 null,
                 null,
                 null,
                 null,
-                new ThrowingGooglePlaceSearchService()
+                throwingGooglePlaceSearchService,
+                null
         );
 
-        List<GooglePlaceSearchService.GooglePlaceCandidate> candidates =
-                invokeCollectGoogleSearchCandidates(resilientSearchService, "no result keyword", 20);
+        assertThatThrownBy(() ->
+                invokeCollectGoogleSearchCandidates(failFastSearchService, "no result keyword", 20))
+                .hasRootCauseMessage("text search failed");
+        assertThat(throwingGooglePlaceSearchService.getSearchCallCount()).isEqualTo(1);
+    }
 
-        assertThat(candidates).isEmpty();
+    @Test
+    @DisplayName("Google provider errors are not saved as zero-result search caches")
+    void googleProviderErrorsAreNotCached() {
+        SearchCacheRepository searchCacheRepository = mock(SearchCacheRepository.class);
+        GooglePlaceSearchService googlePlaceSearchService = mock(GooglePlaceSearchService.class);
+        when(searchCacheRepository.findByKeyword(any())).thenReturn(Optional.empty());
+        when(googlePlaceSearchService.searchPlaces(any(), anyInt()))
+                .thenThrow(new BusinessException(ErrorCode.GOOGLE_PLACES_UNAVAILABLE));
+
+        SearchService targetSearchService = new SearchService(
+                null,
+                null,
+                null,
+                null,
+                searchCacheRepository,
+                null,
+                googlePlaceSearchService,
+                null
+        );
+
+        SearchResultListRequestDto requestDto =
+                SearchResultListRequestDto.of("해변", null, 0, 20);
+
+        assertThatThrownBy(() -> targetSearchService.getSearchResults(requestDto))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.GOOGLE_PLACES_UNAVAILABLE);
+        verify(searchCacheRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("정상 Google 응답의 검색 결과 0건은 정상 캐시로 저장한다")
+    void normalEmptyGoogleResultsAreCached() {
+        SearchCacheRepository searchCacheRepository = mock(SearchCacheRepository.class);
+        SearchCachePlaceRepository searchCachePlaceRepository = mock(SearchCachePlaceRepository.class);
+        GooglePlaceSearchService googlePlaceSearchService = mock(GooglePlaceSearchService.class);
+        when(searchCacheRepository.findByKeyword(any())).thenReturn(Optional.empty());
+        when(searchCacheRepository.save(any(SearchCache.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+        when(searchCachePlaceRepository.findAllBySearchCache_SearchCacheIdOrderBySortOrderAsc(any()))
+                .thenReturn(List.of());
+        when(googlePlaceSearchService.searchPlaces(any(), anyInt())).thenReturn(List.of());
+
+        SearchService targetSearchService = new SearchService(
+                null,
+                null,
+                null,
+                null,
+                searchCacheRepository,
+                searchCachePlaceRepository,
+                googlePlaceSearchService,
+                null
+        );
+
+        SearchResultListRequestDto requestDto =
+                SearchResultListRequestDto.of("결과없는검색어", null, 0, 20);
+
+        assertThat(targetSearchService.getSearchResults(requestDto).getTotalCount()).isZero();
+        verify(searchCacheRepository).save(any(SearchCache.class));
+        verify(googlePlaceSearchService, times(1)).searchPlaces(any(), anyInt());
+        verify(googlePlaceSearchService, never()).searchNearbyPlaces(
+                anyDouble(),
+                anyDouble(),
+                anyDouble(),
+                any(),
+                anyInt(),
+                any()
+        );
+    }
+
+    @Test
+    @DisplayName("일반 키워드와 관련 없는 Google 유사 결과는 정상 0건으로 캐시한다")
+    void irrelevantFuzzyGoogleResultsAreCachedAsZero() {
+        SearchCacheRepository searchCacheRepository = mock(SearchCacheRepository.class);
+        SearchCachePlaceRepository searchCachePlaceRepository = mock(SearchCachePlaceRepository.class);
+        GooglePlaceSearchService googlePlaceSearchService = mock(GooglePlaceSearchService.class);
+        when(searchCacheRepository.findByKeyword(any())).thenReturn(Optional.empty());
+        when(searchCacheRepository.save(any(SearchCache.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+        when(searchCachePlaceRepository.findAllBySearchCache_SearchCacheIdOrderBySortOrderAsc(any()))
+                .thenReturn(List.of());
+        when(googlePlaceSearchService.searchPlaces(any(), anyInt()))
+                .thenReturn(List.of(googleCandidate("google-fuzzy-1", "서울 관광 명소")));
+
+        SearchService targetSearchService = new SearchService(
+                null, null, null, null,
+                searchCacheRepository,
+                searchCachePlaceRepository,
+                googlePlaceSearchService,
+                null
+        );
+
+        SearchResultListRequestDto requestDto = SearchResultListRequestDto.of(
+                "존재하지않는장소_QA_987654321",
+                null,
+                0,
+                20
+        );
+
+        assertThat(targetSearchService.getSearchResults(requestDto).getTotalCount()).isZero();
+        verify(searchCacheRepository).save(any(SearchCache.class));
+        verify(googlePlaceSearchService, times(1)).searchPlaces(any(), anyInt());
+    }
+
+    @Test
+    @DisplayName("Google 후보 여러 건은 장소 DB를 후보별 조회하지 않고 일괄 조회·저장한다")
+    void googleCandidatesAreLoadedAndSavedInBatch() throws Exception {
+        PlaceRepository placeRepository = mock(PlaceRepository.class);
+        GooglePlaceSearchService googlePlaceSearchService = mock(GooglePlaceSearchService.class);
+        when(googlePlaceSearchService.searchPlaces(any(), anyInt())).thenReturn(List.of(
+                googleCandidate("google-batch-1", "테스트장소 A"),
+                googleCandidate("google-batch-2", "테스트장소 B")
+        ));
+        when(placeRepository.findAllByGooglePlaceIdInAndIsDeletedFalseOrderByUpdatedAtDescCreatedAtDescPlaceIdDesc(any()))
+                .thenReturn(List.of());
+        when(placeRepository.findAllByNameInAndIsDeletedFalse(any())).thenReturn(List.of());
+        when(placeRepository.saveAll(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        SearchService targetSearchService = new SearchService(
+                null,
+                placeRepository,
+                null,
+                null,
+                null,
+                null,
+                googlePlaceSearchService,
+                null
+        );
+
+        invokeSyncGooglePlaces(targetSearchService, "테스트장소", 20);
+
+        verify(placeRepository, times(1))
+                .findAllByGooglePlaceIdInAndIsDeletedFalseOrderByUpdatedAtDescCreatedAtDescPlaceIdDesc(any());
+        verify(placeRepository, times(1)).findAllByNameInAndIsDeletedFalse(any());
+        verify(placeRepository, times(1)).saveAll(any());
+        verify(placeRepository, never())
+                .findAllByGooglePlaceIdAndIsDeletedFalseOrderByUpdatedAtDescCreatedAtDescPlaceIdDesc(any());
     }
 
     @Test
@@ -221,6 +394,35 @@ class SearchServiceTest {
         return (PlaceType) method.invoke(searchService, candidate);
     }
 
+    private void invokeSyncGooglePlaces(
+            SearchService targetSearchService,
+            String keyword,
+            int maxCount
+    ) throws Exception {
+        Method method = SearchService.class.getDeclaredMethod("syncGooglePlaces", String.class, int.class);
+        method.setAccessible(true);
+        method.invoke(targetSearchService, keyword, maxCount);
+    }
+
+    private GooglePlaceSearchService.GooglePlaceCandidate googleCandidate(String googlePlaceId, String name) {
+        return new GooglePlaceSearchService.GooglePlaceCandidate(
+                googlePlaceId,
+                name,
+                "서울특별시 대한민국",
+                "서울",
+                37.5665,
+                126.9780,
+                4.5,
+                100,
+                List.of(),
+                null,
+                List.of(),
+                null,
+                "tourist_attraction",
+                List.of("tourist_attraction")
+        );
+    }
+
     @SuppressWarnings("unchecked")
     private List<String> invokeResolveCategoryNearbyIncludedTypes(String keyword) throws Exception {
         Method method = SearchService.class.getDeclaredMethod("resolveCategoryNearbyIncludedTypes", String.class);
@@ -285,8 +487,11 @@ class SearchServiceTest {
 
     private static class ThrowingGooglePlaceSearchService extends GooglePlaceSearchService {
 
+        private int searchCallCount;
+
         @Override
         public List<GooglePlaceCandidate> searchPlaces(String keyword, int resultCount) {
+            searchCallCount++;
             throw new RuntimeException("text search failed");
         }
 
@@ -300,6 +505,10 @@ class SearchServiceTest {
                 String rankPreference
         ) {
             throw new RuntimeException("nearby search failed");
+        }
+
+        private int getSearchCallCount() {
+            return searchCallCount;
         }
     }
 }
